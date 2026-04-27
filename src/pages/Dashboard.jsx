@@ -1,230 +1,61 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/api/base44Client";
-import { useAuth } from "@/lib/AuthContext";
-import { hasPageAccess } from "@/lib/pageAccess";
-import {
-  Users,
-  Clock,
-  Briefcase,
-  TrendingUp,
-  AlertCircle,
-  CheckCircle,
-  Calendar,
-} from "lucide-react";
+import { ClipboardList, Home, Package } from "lucide-react";
 import { Link } from "react-router-dom";
 
+const cards = [
+  {
+    label: "Dashboard",
+    value: "Active",
+    icon: Home,
+    link: "/",
+    color: "bg-[#2E6F40]",
+  },
+  {
+    label: "Borrowing",
+    value: "Open",
+    icon: ClipboardList,
+    link: "/borrowing",
+    color: "bg-amber-500",
+  },
+  {
+    label: "Inventory",
+    value: "Ready",
+    icon: Package,
+    link: "/inventory",
+    color: "bg-slate-700",
+  },
+];
+
 export default function Dashboard() {
-  const { user } = useAuth();
-  const isSuperAdmin = user?.role === "superadmin";
-  const pageAccess = user?.page_access || [];
-
-  const [stats, setStats] = useState({
-    employees: 0,
-    leaves: 0,
-    openJobs: 0,
-    pendingOT: 0,
-  });
-  const [announcements, setAnnouncements] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-
-        const [
-          { count: empCount },
-          { count: leavesCount },
-          { count: jobsCount },
-          { count: otCount },
-          { data: annData },
-        ] = await Promise.all([
-          supabase
-            .from("employees")
-            .select("*", { count: "exact", head: true }),
-          supabase
-            .from("leave_requests")
-            .select("*", { count: "exact", head: true })
-            .eq("status", "pending"),
-          supabase
-            .from("job_postings")
-            .select("*", { count: "exact", head: true })
-            .eq("status", "open"),
-          supabase
-            .from("overtime_requests")
-            .select("*", { count: "exact", head: true })
-            .eq("status", "pending"),
-          supabase
-            .from("announcements")
-            .select("*")
-            .order("created_at", { ascending: false })
-            .limit(5),
-        ]);
-
-        setStats({
-          employees: empCount || 0,
-          leaves: leavesCount || 0,
-          openJobs: jobsCount || 0,
-          pendingOT: otCount || 0,
-        });
-        setAnnouncements(annData || []);
-      } catch (error) {
-        console.error("Dashboard Error:", error.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, []);
-
-  const cards = [
-    {
-      label: "Total Employees",
-      value: stats.employees,
-      icon: Users,
-      color: "bg-[#2E6F40]", // Brand Primary Green
-      link: "/employees",
-    },
-    {
-      label: "Pending Leaves",
-      value: stats.leaves,
-      icon: Calendar,
-      color: "bg-amber-500", // Amber for pending/attention
-      link: "/leaves",
-    },
-    {
-      label: "Open Job Postings",
-      value: stats.openJobs,
-      icon: Briefcase,
-      color: "bg-slate-700", // Professional Slate
-      link: "/job-postings",
-    },
-    {
-      label: "Pending Overtime",
-      value: stats.pendingOT,
-      icon: Clock,
-      color: "bg-[#235330]", // Brand Dark Green
-      link: "/overtime",
-    },
-  ];
-
-  if (loading)
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="w-8 h-8 border-4 border-[#2E6F40]/30 border-t-[#2E6F40] rounded-full animate-spin" />
-      </div>
-    );
-
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">HR Dashboard</h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Welcome back! Here's an overview of your workforce.
+        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Quick access to your enabled modules.
         </p>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => {
           const Icon = card.icon;
           return (
             <Link
               key={card.label}
               to={card.link}
-              className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md transition-shadow group"
+              className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-slate-500 group-hover:text-slate-700 transition-colors">
-                    {card.label}
-                  </p>
-                  <p className="text-3xl font-bold text-slate-900 mt-1">
-                    {card.value}
-                  </p>
+                  <p className="text-sm font-medium text-slate-500">{card.label}</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-900">{card.value}</p>
                 </div>
-                <div className={`${card.color} p-3 rounded-xl shadow-sm`}>
-                  <Icon className="w-6 h-6 text-white" />
+                <div className={`${card.color} rounded-xl p-3 shadow-sm`}>
+                  <Icon className="h-6 w-6 text-white" />
                 </div>
               </div>
             </Link>
           );
         })}
-      </div>
-
-      {/* Announcements */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Latest Announcements
-          </h2>
-          <Link
-            to="/announcements"
-            className="text-[#2E6F40] font-medium text-sm hover:underline"
-          >
-            View all
-          </Link>
-        </div>
-        {announcements.length === 0 ? (
-          <p className="text-slate-400 text-sm text-center py-8">
-            No announcements yet.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {announcements.map((a) => (
-              <div
-                key={a.id}
-                className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100"
-              >
-                <AlertCircle className="w-5 h-5 text-[#2E6F40] mt-0.5 shrink-0" />
-                <div>
-                  <p className="font-medium text-slate-800 text-sm">
-                    {a.title}
-                  </p>
-                  <p className="text-slate-500 text-xs mt-0.5 line-clamp-2">
-                    {a.content}
-                  </p>
-                  <p className="text-slate-400 text-[10px] uppercase font-semibold mt-1.5 tracking-wider">
-                    {new Date(a.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Quick Links */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          {
-            label: "Add Employee",
-            link: "/employees",
-          },
-          {
-            label: "Process Payroll",
-            link: "/payroll",
-          },
-          {
-            label: "Approve Leaves",
-            link: "/leaves",
-          },
-          {
-            label: "View Reports",
-            link: "/reports?tab=headcount",
-          },
-        ]
-          .filter((q) => isSuperAdmin || hasPageAccess(pageAccess, q.link))
-          .map((q) => (
-            <Link
-              key={q.label}
-              to={q.link}
-              className="border border-[#2E6F40]/20 bg-[#2E6F40]/5 text-[#2E6F40] rounded-xl p-4 text-sm font-semibold text-center hover:bg-[#2E6F40]/10 transition-colors"
-            >
-              {q.label}
-            </Link>
-          ))}
       </div>
     </div>
   );

@@ -1,109 +1,66 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
-import { supabase } from "@/api/base44Client";
-import { useAuth } from "@/lib/AuthContext";
 import arkLogo from "@/assets/imgs/ark-logo.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+
+const SESSION_KEY = "app_session";
+const SESSION_EVENT = "app_session_change";
+const HARDCODED_EMAIL = "teresa_mis@gmail.com";
+const HARDCODED_PASSWORD = "123456";
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, isAuthenticated, authError } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [projectSiteId, setProjectSiteId] = useState("");
-  const [projectSites, setProjectSites] = useState([]);
-  const [loadingSites, setLoadingSites] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate("/", { replace: true });
-    }
-  }, [isAuthenticated, navigate]);
-
-  useEffect(() => {
-    const loadProjectSites = async () => {
-      setLoadingSites(true);
-      try {
-        const { data, error: fetchError } = await supabase
-          .from("project_sites")
-          .select("id, name, location")
-          .order("name", { ascending: true });
-
-        if (fetchError) throw fetchError;
-        setProjectSites(data || []);
-      } catch (e) {
-        console.error("Failed to load project sites:", e.message);
-        setProjectSites([]);
-      } finally {
-        setLoadingSites(false);
-      }
-    };
-
-    loadProjectSites();
-  }, []);
-
-  const selectedProjectSite = useMemo(() => {
-    return projectSites.find((site) => String(site.id) === String(projectSiteId));
-  }, [projectSites, projectSiteId]);
-
-  const authStateMessage = useMemo(() => {
-    if (!authError?.type) return "";
-    if (authError.type === "account_deactivated") {
-      return "Your account is terminated. Please contact HR admin.";
-    }
-    if (authError.type === "user_not_registered") {
-      return "No employee record is linked to this account.";
-    }
-    return "Authentication required. Please sign in.";
-  }, [authError]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    const normalizedEmail = email.trim().toLowerCase();
 
-    if (!email.trim()) {
+    if (!normalizedEmail) {
       setError("Email is required.");
       return;
     }
 
-    if (!password.trim()) {
+    const normalizedPassword = password.trim();
+
+    if (!normalizedPassword) {
       setError("Password is required.");
       return;
     }
 
-    if (!projectSiteId) {
-      setError("Please select a project site.");
+    if (
+      normalizedEmail !== HARDCODED_EMAIL ||
+      normalizedPassword !== HARDCODED_PASSWORD
+    ) {
+      setError("Invalid email or password.");
       return;
     }
 
     setSubmitting(true);
-    const result = await login({
-      email,
-      password,
-      projectSite: {
-        id: selectedProjectSite?.id,
-        name: selectedProjectSite?.name,
-      },
-    });
-    setSubmitting(false);
-
-    if (!result.success) {
-      setError(result.message || "Failed to log in.");
-      return;
+    if (typeof window !== "undefined") {
+      const now = Date.now();
+      window.localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({
+          email: normalizedEmail,
+          role: "superadmin",
+          displayName: "Teresa MIS Admin",
+          loggedInAt: now,
+          expiresAt: now + SESSION_TTL_MS,
+        }),
+      );
+      window.dispatchEvent(new Event(SESSION_EVENT));
     }
+    setSubmitting(false);
 
     navigate("/", { replace: true });
   };
@@ -122,8 +79,8 @@ export default function Login() {
               className="w-12 h-12 bg-white rounded p-1 object-contain"
             />
             <div>
-              <p className="text-2xl font-bold leading-tight">Ark Industries</p>
-              <p className="text-white/80 text-sm">ERP Management System</p>
+              <p className="text-2xl font-bold leading-tight">St Teresa</p>
+              <p className="text-white/80 text-sm">Management System</p>
             </div>
           </div>
 
@@ -132,7 +89,7 @@ export default function Login() {
               Welcome Back,
             </p>
             <p className="text-white/85 text-base">
-              Log in to continue into Ark Industries.
+              Log in to continue into St Teresa.
             </p>
           </div>
         </div>
@@ -150,7 +107,7 @@ export default function Login() {
               <p className="text-lg font-bold text-slate-900 leading-tight">
                 Ark Industries
               </p>
-              <p className="text-xs text-slate-500">ERP Management System</p>
+              <p className="text-xs text-slate-500">Management System</p>
             </div>
           </div>
 
@@ -160,12 +117,6 @@ export default function Login() {
               Use your authorized credentials to continue.
             </p>
           </div>
-
-          {authStateMessage ? (
-            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-              {authStateMessage}
-            </div>
-          ) : null}
 
           {error ? (
             <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -209,35 +160,6 @@ export default function Login() {
                   )}
                 </button>
               </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-slate-700">Project Site</label>
-              <Select
-                value={projectSiteId}
-                onValueChange={setProjectSiteId}
-                disabled={loadingSites || projectSites.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      loadingSites
-                        ? "Loading project sites..."
-                        : projectSites.length
-                          ? "Select project site"
-                          : "No project sites found"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {projectSites.map((site) => (
-                    <SelectItem key={site.id} value={String(site.id)}>
-                      {site.name}
-                      {site.location ? ` - ${site.location}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
 
             <Button
