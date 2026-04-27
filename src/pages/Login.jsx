@@ -67,7 +67,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-slate-100 grid lg:grid-cols-2">
-      <div className="hidden lg:flex relative overflow-hidden bg-[#2E6F40] p-10">
+      <div className="hidden lg:flex relative overflow-hidden bg-[#170000] p-10">
         <div className="absolute -top-24 -left-10 w-72 h-72 rounded-full bg-white/10" />
         <div className="absolute -bottom-16 right-10 w-64 h-64 rounded-full bg-black/10" />
 
@@ -164,7 +164,7 @@ export default function Login() {
 
             <Button
               type="submit"
-              className="w-full bg-[#2E6F40] hover:bg-[#265B34]"
+              className="w-full bg-[#450c0c] hover:bg-[#170000]"
               disabled={submitting}
             >
               {submitting ? "Signing in..." : "Sign In"}

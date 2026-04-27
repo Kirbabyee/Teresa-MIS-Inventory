@@ -62,8 +62,8 @@ function App() {
             }
           >
             <Route index element={<Dashboard />} />
-            <Route path="borrowing" element={<Borrowing />} />
-            <Route path="inventory" element={<Inventory />} />
+            <Route path="laboratory/borrowing" element={<Borrowing />} />
+            <Route path="laboratory/inventory" element={<Inventory />} />
             <Route path="*" element={<PageNotFound />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
