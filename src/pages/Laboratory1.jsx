@@ -115,8 +115,11 @@ export default function Laboratory1() {
             <tbody className="divide-y divide-slate-200 bg-white">
               {loading ? (
                 <tr>
-                  <td className="px-4 py-4 text-sm text-slate-500" colSpan={tableHeading.length}>
-                    Loading components...
+                  <td className="px-4 py-12 text-center" colSpan={tableHeading.length}>
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <div className="h-12 w-12 rounded-full border-4 border-slate-200 border-t-slate-700 animate-spin" />
+                      <p className="text-sm text-slate-500">Loading components...</p>
+                    </div>
                   </td>
                 </tr>
               ) : error ? (

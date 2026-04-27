@@ -236,7 +236,7 @@ export default function HRISLayout() {
                 className="w-9 h-9 bg-white rounded p-1 object-contain shrink-0"
               />
               <div className="overflow-hidden">
-                <p className="text-white font-bold text-lg leading-tight truncate">Ark Industries</p>
+                <p className="text-white font-bold text-sm leading-tight truncate">Sta. Teresa de Avila</p>
                 <p className="text-white/70 text-[10px] uppercase tracking-wider mt-0.5">Management</p>
               </div>
             </div>
