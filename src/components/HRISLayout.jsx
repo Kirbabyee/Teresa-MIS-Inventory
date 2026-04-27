@@ -214,7 +214,10 @@ export default function HRISLayout() {
         )}
       >
         {/* Sidebar Header */}
-        <div className="flex items-center justify-between p-4 border-b border-white/10">
+        <div className={cn(
+          "flex items-center p-4 border-b border-white/10 transition-all duration-300",
+          collapsed ? "justify-center" : "justify-between"
+        )}>
           {!collapsed && (
             <div className="flex items-center gap-3">
               <img
@@ -227,9 +230,6 @@ export default function HRISLayout() {
                 <p className="text-white/70 text-[10px] uppercase tracking-wider mt-0.5">Management</p>
               </div>
             </div>
-          )}
-          {collapsed && (
-             <img src={arkLogo} alt="Logo" className="w-8 h-8 mx-auto bg-white rounded p-1" />
           )}
           <button
             onClick={() => setCollapsed(!collapsed)}
