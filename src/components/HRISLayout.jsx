@@ -42,16 +42,29 @@ const navItems = [
 		icon: Home,
 		path: "/",
 	},
+  {
+		label: "Inventory",
+		icon: Package,
+		path: "/inventory",
+    children: [
+      {
+        label: "Inventory",
+        icon: Package,
+        path: "/inventory/laboratory-1"
+      },
+      {
+        label: "Borrowing",
+        icon: Package,
+        path: "/inventory/laboratory-2"
+      },
+    ]
+	},
 	{
 		label: "Borrowing",
 		icon: ClipboardList,
 		path: "/borrowing",
 	},
-	{
-		label: "Inventory",
-		icon: Package,
-		path: "/inventory",
-	},
+	
 ];
 
 function NavItem({ item, collapsed }) {
