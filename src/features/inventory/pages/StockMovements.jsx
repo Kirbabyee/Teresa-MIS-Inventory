@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ function MovementModal({ onClose, onSaved }) {
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const save = async () => {
     setSaving(true);
-    await base44.entities.StockMovement.create({ ...form, item_id:"manual", performed_by:"manual" });
+    await backend.entities.StockMovement.create({ ...form, item_id:"manual", performed_by:"manual" });
     onSaved();
   };
   return (
@@ -43,7 +43,7 @@ export default function StockMovements() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const load = async () => { setLoading(true); const d = await base44.entities.StockMovement.list("-movement_date",200); setItems(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.StockMovement.list("-movement_date",200); setItems(d); setLoading(false); };
   useEffect(() => { load(); }, []);
   return (
     <div className="p-6 space-y-5">

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ function DisciplinaryModal({ item, onClose, onSaved }) {
   const [form, setForm] = useState({ employee_name:"", incident_date:"", violation_type:"", description:"", sanction:"", status:"active", ...item });
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = async () => { setSaving(true); if (item?.id) await base44.entities.DisciplinaryRecord.update(item.id, form); else await base44.entities.DisciplinaryRecord.create({...form, employee_id:"manual"}); onSaved(); };
+  const save = async () => { setSaving(true); if (item?.id) await backend.entities.DisciplinaryRecord.update(item.id, form); else await backend.entities.DisciplinaryRecord.create({...form, employee_id:"manual"}); onSaved(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -38,7 +38,7 @@ export default function DisciplinaryAction() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const load = async () => { setLoading(true); const d = await base44.entities.DisciplinaryRecord.list("-incident_date",200); setItems(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.DisciplinaryRecord.list("-incident_date",200); setItems(d); setLoading(false); };
   useEffect(() => { load(); }, []);
   return (
     <div className="p-6 space-y-5">
@@ -56,7 +56,7 @@ export default function DisciplinaryAction() {
                 <td className="px-4 py-3 text-slate-700">{d.violation_type}</td>
                 <td className="px-4 py-3 text-slate-600">{d.sanction}</td>
                 <td className="px-4 py-3"><span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${statusColors[d.status]}`}>{d.status}</span></td>
-                <td className="px-4 py-3 flex gap-1"><button onClick={()=>{setEditItem(d);setShowModal(true);}} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit className="w-4 h-4"/></button><button onClick={async()=>{if(!confirm("Delete?"))return;await base44.entities.DisciplinaryRecord.delete(d.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button></td>
+                <td className="px-4 py-3 flex gap-1"><button onClick={()=>{setEditItem(d);setShowModal(true);}} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit className="w-4 h-4"/></button><button onClick={async()=>{if(!confirm("Delete?"))return;await backend.entities.DisciplinaryRecord.delete(d.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button></td>
               </tr>
             ))}</tbody>
           </table>

@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from "react";
-import { supabase } from "@/api/base44Client";
+import { supabase } from "@/api/backendClient";
 
 const AuthContext = createContext(null);
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ function PostingModal({ item, onClose, onSaved }) {
   const [form, setForm] = useState({ title: "", department_name: "", description: "", requirements: "", salary_range: "", status: "open", positions_available: 1, ...item });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const save = async () => { setSaving(true); if (item?.id) await base44.entities.JobPosting.update(item.id, form); else await base44.entities.JobPosting.create(form); onSaved(); };
+  const save = async () => { setSaving(true); if (item?.id) await backend.entities.JobPosting.update(item.id, form); else await backend.entities.JobPosting.create(form); onSaved(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -40,7 +40,7 @@ export default function JobPostings() {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
 
-  const load = async () => { setLoading(true); const d = await base44.entities.JobPosting.list("-created_date", 200); setItems(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.JobPosting.list("-created_date", 200); setItems(d); setLoading(false); };
   useEffect(() => { load(); }, []);
 
   return (
@@ -55,7 +55,7 @@ export default function JobPostings() {
             <div key={p.id} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-3">
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${statusColors[p.status]}`}>{p.status.replace("_"," ")}</span>
-                <div className="flex gap-1"><button onClick={() => {setEditItem(p);setShowModal(true);}} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit className="w-4 h-4"/></button><button onClick={async()=>{if(!confirm("Delete?"))return;await base44.entities.JobPosting.delete(p.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button></div>
+                <div className="flex gap-1"><button onClick={() => {setEditItem(p);setShowModal(true);}} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit className="w-4 h-4"/></button><button onClick={async()=>{if(!confirm("Delete?"))return;await backend.entities.JobPosting.delete(p.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button></div>
               </div>
               <h3 className="font-semibold text-slate-900">{p.title}</h3>
               <p className="text-sm text-slate-500 mt-0.5">{p.department_name||"No department"}</p>

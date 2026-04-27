@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,8 @@ function ClientModal({ item, onClose, onSaved }) {
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const save = async () => {
     setSaving(true);
-    if (item?.id) await base44.entities.Client.update(item.id, form);
-    else await base44.entities.Client.create(form);
+    if (item?.id) await backend.entities.Client.update(item.id, form);
+    else await backend.entities.Client.create(form);
     onSaved();
   };
   return (
@@ -46,7 +46,7 @@ export default function ClientManagement() {
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const load = async () => { setLoading(true); const d = await base44.entities.Client.list(); setItems(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.Client.list(); setItems(d); setLoading(false); };
   useEffect(() => { load(); }, []);
   const filtered = items.filter(i => !search || i.name?.toLowerCase().includes(search.toLowerCase()));
   const statusColors = { active:"bg-green-100 text-green-700", inactive:"bg-gray-100 text-gray-600", prospect:"bg-blue-100 text-blue-700" };
@@ -69,7 +69,7 @@ export default function ClientManagement() {
                 <td className="px-4 py-3"><span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${statusColors[c.status]||"bg-gray-100 text-gray-600"}`}>{c.status}</span></td>
                 <td className="px-4 py-3 flex gap-1">
                   <button onClick={()=>{setEditItem(c);setShowModal(true);}} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit className="w-4 h-4"/></button>
-                  <button onClick={async()=>{if(!confirm("Delete?"))return;await base44.entities.Client.delete(c.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
+                  <button onClick={async()=>{if(!confirm("Delete?"))return;await backend.entities.Client.delete(c.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
                 </td>
               </tr>
             ))}</tbody>

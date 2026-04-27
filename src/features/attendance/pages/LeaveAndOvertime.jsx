@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, X, Check, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,8 +17,8 @@ function LeaveModal({ item, onClose, onSaved, canCreate }) {
       return;
     }
     setSaving(true);
-    if (item?.id) await base44.entities.LeaveRequest.update(item.id, form);
-    else await base44.entities.LeaveRequest.create({ ...form, employee_id:"manual" });
+    if (item?.id) await backend.entities.LeaveRequest.update(item.id, form);
+    else await backend.entities.LeaveRequest.create({ ...form, employee_id:"manual" });
     onSaved();
   };
   return (
@@ -60,8 +60,8 @@ function OTModal({ item, onClose, onSaved, canCreate }) {
       return;
     }
     setSaving(true);
-    if (item?.id) await base44.entities.OvertimeRequest.update(item.id, form);
-    else await base44.entities.OvertimeRequest.create({ ...form, employee_id:"manual" });
+    if (item?.id) await backend.entities.OvertimeRequest.update(item.id, form);
+    else await backend.entities.OvertimeRequest.create({ ...form, employee_id:"manual" });
     onSaved();
   };
   return (
@@ -97,13 +97,13 @@ export default function LeaveAndOvertime() {
   const [editItem, setEditItem] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const load = async () => { setLoading(true); const [l,o] = await Promise.all([base44.entities.LeaveRequest.list("-created_date",300), base44.entities.OvertimeRequest.list("-created_date",300)]); setLeaves(l); setOt(o); setLoading(false); };
+  const load = async () => { setLoading(true); const [l,o] = await Promise.all([backend.entities.LeaveRequest.list("-created_date",300), backend.entities.OvertimeRequest.list("-created_date",300)]); setLeaves(l); setOt(o); setLoading(false); };
   useEffect(() => { load(); }, []);
 
-  const approveLeave = async (id) => { await base44.entities.LeaveRequest.update(id,{status:"approved"}); load(); };
-  const rejectLeave = async (id) => { await base44.entities.LeaveRequest.update(id,{status:"rejected"}); load(); };
-  const approveOT = async (id) => { await base44.entities.OvertimeRequest.update(id,{status:"approved"}); load(); };
-  const rejectOT = async (id) => { await base44.entities.OvertimeRequest.update(id,{status:"rejected"}); load(); };
+  const approveLeave = async (id) => { await backend.entities.LeaveRequest.update(id,{status:"approved"}); load(); };
+  const rejectLeave = async (id) => { await backend.entities.LeaveRequest.update(id,{status:"rejected"}); load(); };
+  const approveOT = async (id) => { await backend.entities.OvertimeRequest.update(id,{status:"approved"}); load(); };
+  const rejectOT = async (id) => { await backend.entities.OvertimeRequest.update(id,{status:"rejected"}); load(); };
 
   const filteredLeaves = statusFilter==="all" ? leaves : leaves.filter(l=>l.status===statusFilter);
   const filteredOT = statusFilter==="all" ? ot : ot.filter(o=>o.status===statusFilter);

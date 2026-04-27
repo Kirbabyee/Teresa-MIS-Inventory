@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 
 const COLORS = ["#6366f1","#22c55e","#f59e0b","#ef4444"];
@@ -9,7 +9,7 @@ export default function ProjectReports() {
   const [timesheets, setTimesheets] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    Promise.all([base44.entities.Project.list(), base44.entities.ProjectTimesheet.list()])
+    Promise.all([backend.entities.Project.list(), backend.entities.ProjectTimesheet.list()])
       .then(([p,t])=>{ setProjects(p); setTimesheets(t); setLoading(false); });
   }, []);
   const byStatus = ["active","completed","on_hold","cancelled"].map(s=>({ name:s.replace("_"," "), value:projects.filter(p=>p.status===s).length })).filter(x=>x.value>0);

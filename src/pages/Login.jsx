@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
-const HARDCODED_EMAIL = "teresa_mis@gmail.com";
+const HARDCODED_EMAIL = "st-teresa-mis@gmail.com";
 const HARDCODED_PASSWORD = "123456";
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 

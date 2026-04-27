@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, X, Calendar, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ function ApplicantModal({ item, onClose, onSaved }) {
   const [form, setForm] = useState({ first_name:"", last_name:"", email:"", phone:"", job_posting_title:"", status:"applied", source:"", notes:"", ...item });
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = async () => { setSaving(true); if (item?.id) await base44.entities.Applicant.update(item.id, form); else await base44.entities.Applicant.create({...form, job_posting_id: form.job_posting_id||"manual"}); onSaved(); };
+  const save = async () => { setSaving(true); if (item?.id) await backend.entities.Applicant.update(item.id, form); else await backend.entities.Applicant.create({...form, job_posting_id: form.job_posting_id||"manual"}); onSaved(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
@@ -44,13 +44,13 @@ export default function ApplicantTracking() {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
 
-  const load = async () => { setLoading(true); const d = await base44.entities.Applicant.list("-created_date",500); setApplicants(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.Applicant.list("-created_date",500); setApplicants(d); setLoading(false); };
   useEffect(() => { load(); }, []);
 
   const grouped = STAGES.reduce((acc, s) => ({ ...acc, [s]: applicants.filter(a => a.status===s) }), {});
   const advance = async (a) => {
     const idx = STAGES.indexOf(a.status);
-    if (idx < STAGES.length-2) { await base44.entities.Applicant.update(a.id, { status: STAGES[idx+1] }); load(); }
+    if (idx < STAGES.length-2) { await backend.entities.Applicant.update(a.id, { status: STAGES[idx+1] }); load(); }
   };
 
   return (

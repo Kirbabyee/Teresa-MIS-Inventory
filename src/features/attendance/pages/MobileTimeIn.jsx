@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { MapPin, Fingerprint, Wifi, WifiOff, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -136,7 +136,7 @@ export default function MobileTimeIn() {
         is_offline_sync: false,
       };
       if (navigator.onLine) {
-        await base44.entities.AttendanceLog.create(record);
+        await backend.entities.AttendanceLog.create(record);
         setStatus({ type, time: new Date(deviceTimestamp).toLocaleTimeString(), synced: true });
 
         // Mark same-day triggers for the geofence watcher logic.
@@ -242,7 +242,7 @@ export default function MobileTimeIn() {
   const syncOffline = async () => {
     setLoading(true);
     const queue = JSON.parse(localStorage.getItem("offline_timein_queue") || "[]");
-    for (const r of queue) { await base44.entities.AttendanceLog.create({ ...r, is_offline_sync: true }); }
+    for (const r of queue) { await backend.entities.AttendanceLog.create({ ...r, is_offline_sync: true }); }
     localStorage.removeItem("offline_timein_queue");
     setOfflineQueue([]);
     setStatus({ type: "sync", time: new Date().toLocaleTimeString(), synced: true });

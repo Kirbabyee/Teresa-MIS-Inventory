@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ function BudgetModal({ onClose, onSaved }) {
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const save = async () => {
     setSaving(true);
-    await base44.entities.ProjectBudgetItem.create({ ...form, project_id:"manual" });
+    await backend.entities.ProjectBudgetItem.create({ ...form, project_id:"manual" });
     onSaved();
   };
   return (
@@ -40,7 +40,7 @@ export default function ProjectBudget() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const load = async () => { setLoading(true); const d = await base44.entities.ProjectBudgetItem.list(); setItems(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.ProjectBudgetItem.list(); setItems(d); setLoading(false); };
   useEffect(() => { load(); }, []);
   const totalBudgeted = items.reduce((s,i)=>s+Number(i.budgeted_amount||0),0);
   const totalActual = items.reduce((s,i)=>s+Number(i.actual_amount||0),0);

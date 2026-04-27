@@ -1,5 +1,5 @@
 import emailjs from "@emailjs/browser";
-import { supabase } from "@/api/base44Client";
+import { supabase } from "@/api/backendClient";
 
 const INVITE_VALIDITY_DAYS = 7;
 
@@ -46,7 +46,7 @@ function isLocalHost(origin) {
 function resolveInviteBaseUrl() {
   const envUrls = [
     normalizeBaseUrl(import.meta.env.VITE_PUBLIC_SITE_URL),
-    normalizeBaseUrl(import.meta.env.VITE_BASE44_APP_BASE_URL),
+    normalizeBaseUrl(import.meta.env.VITE_APP_BASE_URL),
   ].filter(Boolean);
 
   const firstNonLocalEnv = envUrls.find((url) => !isLocalHost(url));

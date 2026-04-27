@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ function DeptModal({ dept, onClose, onSaved }) {
   const [form, setForm] = useState({ name: "", head_employee_name: "", description: "", ...dept });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const save = async () => { setSaving(true); if (dept?.id) await base44.entities.Department.update(dept.id, form); else await base44.entities.Department.create(form); onSaved(); };
+  const save = async () => { setSaving(true); if (dept?.id) await backend.entities.Department.update(dept.id, form); else await backend.entities.Department.create(form); onSaved(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -28,7 +28,7 @@ function PosModal({ pos, onClose, onSaved }) {
   const [form, setForm] = useState({ title: "", salary_grade: "", base_salary_min: "", base_salary_max: "", department_name: "", ...pos });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const save = async () => { setSaving(true); if (pos?.id) await base44.entities.Position.update(pos.id, form); else await base44.entities.Position.create(form); onSaved(); };
+  const save = async () => { setSaving(true); if (pos?.id) await backend.entities.Position.update(pos.id, form); else await backend.entities.Position.create(form); onSaved(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -57,10 +57,10 @@ export default function OrganizationSetup() {
   const [modal, setModal] = useState(null);
   const [editItem, setEditItem] = useState(null);
 
-  const load = async () => { setLoading(true); const [d, p, e] = await Promise.all([base44.entities.Department.list(), base44.entities.Position.list(), base44.entities.Employee.filter({ status: "regular" })]); setDepts(d); setPositions(p); setEmployees(e); setLoading(false); };
+  const load = async () => { setLoading(true); const [d, p, e] = await Promise.all([backend.entities.Department.list(), backend.entities.Position.list(), backend.entities.Employee.filter({ status: "regular" })]); setDepts(d); setPositions(p); setEmployees(e); setLoading(false); };
   useEffect(() => { load(); }, []);
-  const delDept = async (id) => { if (!confirm("Delete?")) return; await base44.entities.Department.delete(id); load(); };
-  const delPos = async (id) => { if (!confirm("Delete?")) return; await base44.entities.Position.delete(id); load(); };
+  const delDept = async (id) => { if (!confirm("Delete?")) return; await backend.entities.Department.delete(id); load(); };
+  const delPos = async (id) => { if (!confirm("Delete?")) return; await backend.entities.Position.delete(id); load(); };
   const initials = (e) => `${e.first_name?.[0]||""}${e.last_name?.[0]||""}`.toUpperCase();
   const grouped = depts.map(d => ({ ...d, members: employees.filter(e => e.department_name === d.name) }));
 

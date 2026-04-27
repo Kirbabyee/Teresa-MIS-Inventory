@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, X, Search, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ function LogModal({ onClose, onSaved }) {
   const [form, setForm] = useState({ employee_name:"", type:"TIME_IN", device_timestamp:"", notes:"" });
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = async () => { setSaving(true); await base44.entities.AttendanceLog.create({ employee_id:"manual", type:form.type, device_timestamp: form.device_timestamp || new Date().toISOString(), calculated_server_time: new Date().toISOString(), is_within_geofence:false, biometric_verified:false, is_offline_sync:false }); onSaved(); };
+  const save = async () => { setSaving(true); await backend.entities.AttendanceLog.create({ employee_id:"manual", type:form.type, device_timestamp: form.device_timestamp || new Date().toISOString(), calculated_server_time: new Date().toISOString(), is_within_geofence:false, biometric_verified:false, is_offline_sync:false }); onSaved(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -34,7 +34,7 @@ export default function AttendanceLogs() {
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().split("T")[0]);
   const [showModal, setShowModal] = useState(false);
 
-  const load = async () => { setLoading(true); const d = await base44.entities.AttendanceLog.list("-device_timestamp",500); setLogs(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.AttendanceLog.list("-device_timestamp",500); setLogs(d); setLoading(false); };
   useEffect(() => { load(); }, []);
 
   const filtered = dateFilter ? logs.filter(l => l.device_timestamp?.startsWith(dateFilter)) : logs;

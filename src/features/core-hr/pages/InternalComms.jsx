@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, Trash2, X, Bell, MessageSquare, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ function AnnouncementModal({ item, onClose, onSaved }) {
   const [form, setForm] = useState({ title: "", content: "", target_department_name: "", priority: "normal", is_pinned: false, ...item });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const save = async () => { setSaving(true); if (item?.id) await base44.entities.Announcement.update(item.id, form); else await base44.entities.Announcement.create(form); onSaved(); };
+  const save = async () => { setSaving(true); if (item?.id) await backend.entities.Announcement.update(item.id, form); else await backend.entities.Announcement.create(form); onSaved(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -37,7 +37,7 @@ function TaskModal({ item, onClose, onSaved }) {
   const [form, setForm] = useState({ title: "", description: "", employee_name: "", assigned_by_name: "", status: "pending", priority: "medium", due_date: "", ...item });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const save = async () => { setSaving(true); if (item?.id) await base44.entities.EmployeeTask.update(item.id, form); else await base44.entities.EmployeeTask.create({ ...form, employee_id: "manual" }); onSaved(); };
+  const save = async () => { setSaving(true); if (item?.id) await backend.entities.EmployeeTask.update(item.id, form); else await backend.entities.EmployeeTask.create({ ...form, employee_id: "manual" }); onSaved(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -75,7 +75,7 @@ export default function InternalComms() {
   const [modal, setModal] = useState(null);
   const [editItem, setEditItem] = useState(null);
 
-  const load = async () => { setLoading(true); const [a, t] = await Promise.all([base44.entities.Announcement.list("-created_date",100), base44.entities.EmployeeTask.list("-created_date",200)]); setAnnouncements(a); setTasks(t); setLoading(false); };
+  const load = async () => { setLoading(true); const [a, t] = await Promise.all([backend.entities.Announcement.list("-created_date",100), backend.entities.EmployeeTask.list("-created_date",200)]); setAnnouncements(a); setTasks(t); setLoading(false); };
   useEffect(() => { load(); }, []);
 
   return (
@@ -104,7 +104,7 @@ export default function InternalComms() {
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <button onClick={() => {setEditItem(a);setModal("announcement");}} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit className="w-4 h-4"/></button>
-                      <button onClick={async()=>{if(!confirm("Delete?"))return;await base44.entities.Announcement.delete(a.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
+                      <button onClick={async()=>{if(!confirm("Delete?"))return;await backend.entities.Announcement.delete(a.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
                     </div>
                   </div>
                 </div>
@@ -119,7 +119,7 @@ export default function InternalComms() {
                     <td className="px-4 py-3"><span className="text-xs font-medium capitalize">{t.priority}</span></td>
                     <td className="px-4 py-3"><span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${taskStatusColors[t.status]}`}>{t.status?.replace("_"," ")}</span></td>
                     <td className="px-4 py-3 text-slate-500">{t.due_date||"—"}</td>
-                    <td className="px-4 py-3 flex gap-1"><button onClick={()=>{setEditItem(t);setModal("task");}} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit className="w-4 h-4"/></button><button onClick={async()=>{if(!confirm("Delete?"))return;await base44.entities.EmployeeTask.delete(t.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button></td>
+                    <td className="px-4 py-3 flex gap-1"><button onClick={()=>{setEditItem(t);setModal("task");}} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit className="w-4 h-4"/></button><button onClick={async()=>{if(!confirm("Delete?"))return;await backend.entities.EmployeeTask.delete(t.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button></td>
                   </tr>
                 ))}</tbody>
               </table>

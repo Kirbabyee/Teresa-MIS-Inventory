@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from "recharts";
 
 export default function AttritionReport() {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { base44.entities.Employee.list("-hire_date",1000).then(d=>{ setEmployees(d); setLoading(false); }); }, []);
+  useEffect(() => { backend.entities.Employee.list("-hire_date",1000).then(d=>{ setEmployees(d); setLoading(false); }); }, []);
 
   const separated = employees.filter(e => ["resigned","terminated"].includes(e.status));
   const active = employees.filter(e => !["resigned","terminated"].includes(e.status));

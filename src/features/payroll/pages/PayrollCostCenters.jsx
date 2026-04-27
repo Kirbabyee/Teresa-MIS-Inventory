@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 
 const COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4"];
@@ -10,7 +10,7 @@ export default function PayrollCostCenters() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([base44.entities.Payslip.list("-created_date",500), base44.entities.Employee.list()]).then(([ps, es]) => { setPayslips(ps); setEmployees(es); setLoading(false); });
+    Promise.all([backend.entities.Payslip.list("-created_date",500), backend.entities.Employee.list()]).then(([ps, es]) => { setPayslips(ps); setEmployees(es); setLoading(false); });
   }, []);
 
   const byDept = payslips.reduce((acc, p) => {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,8 @@ function ItemModal({ item, onClose, onSaved }) {
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const save = async () => {
     setSaving(true);
-    if (item?.id) await base44.entities.InventoryItem.update(item.id, form);
-    else await base44.entities.InventoryItem.create(form);
+    if (item?.id) await backend.entities.InventoryItem.update(item.id, form);
+    else await backend.entities.InventoryItem.create(form);
     onSaved();
   };
   return (
@@ -41,7 +41,7 @@ export default function ItemMasterlist() {
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const load = async () => { setLoading(true); const d = await base44.entities.InventoryItem.list(); setItems(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.InventoryItem.list(); setItems(d); setLoading(false); };
   useEffect(() => { load(); }, []);
   const filtered = items.filter(i => !search || i.name?.toLowerCase().includes(search.toLowerCase()) || i.sku?.toLowerCase().includes(search.toLowerCase()));
   return (
@@ -64,7 +64,7 @@ export default function ItemMasterlist() {
                 <td className="px-4 py-3 text-center">{i.reorder_level||0}</td>
                 <td className="px-4 py-3 flex gap-1">
                   <button onClick={()=>{setEditItem(i);setShowModal(true);}} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit className="w-4 h-4"/></button>
-                  <button onClick={async()=>{if(!confirm("Delete?"))return;await base44.entities.InventoryItem.delete(i.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
+                  <button onClick={async()=>{if(!confirm("Delete?"))return;await backend.entities.InventoryItem.delete(i.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
                 </td>
               </tr>
             ))}</tbody>

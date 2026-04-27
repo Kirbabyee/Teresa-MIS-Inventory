@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Trash2, X, Download, Search, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,8 +14,8 @@ function UploadModal({ onClose, onSaved }) {
   const save = async () => {
     if (!file) return alert("Please select a file.");
     setSaving(true);
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    await base44.entities.EmployeeDocument.create({ ...form, employee_id: "manual", file_url, file_name: file.name });
+    const { file_url } = await backend.integrations.Core.UploadFile({ file });
+    await backend.entities.EmployeeDocument.create({ ...form, employee_id: "manual", file_url, file_name: file.name });
     onSaved();
   };
   return (
@@ -51,9 +51,9 @@ export default function DocumentManagement() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [showModal, setShowModal] = useState(false);
 
-  const load = async () => { setLoading(true); const d = await base44.entities.EmployeeDocument.list("-created_date", 500); setDocs(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.EmployeeDocument.list("-created_date", 500); setDocs(d); setLoading(false); };
   useEffect(() => { load(); }, []);
-  const del = async (id) => { if (!confirm("Delete?")) return; await base44.entities.EmployeeDocument.delete(id); load(); };
+  const del = async (id) => { if (!confirm("Delete?")) return; await backend.entities.EmployeeDocument.delete(id); load(); };
 
   const filtered = docs.filter(d => {
     const matchS = !search || (d.employee_name || "").toLowerCase().includes(search.toLowerCase());

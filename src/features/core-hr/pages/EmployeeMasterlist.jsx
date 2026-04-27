@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/api/base44Client";
+import { supabase } from "@/api/backendClient";
 import { Plus, Edit, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

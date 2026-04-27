@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/api/base44Client";
+import { supabase } from "@/api/backendClient";
 import { ChevronDown, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {

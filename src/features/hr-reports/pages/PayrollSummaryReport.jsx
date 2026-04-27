@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 export default function PayrollSummaryReport() {
@@ -7,7 +7,7 @@ export default function PayrollSummaryReport() {
   const [periods, setPeriods] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { Promise.all([base44.entities.Payslip.list("-created_date",500), base44.entities.PayrollPeriod.list("-start_date",20)]).then(([ps,pp])=>{ setPayslips(ps); setPeriods(pp); setLoading(false); }); }, []);
+  useEffect(() => { Promise.all([backend.entities.Payslip.list("-created_date",500), backend.entities.PayrollPeriod.list("-start_date",20)]).then(([ps,pp])=>{ setPayslips(ps); setPeriods(pp); setLoading(false); }); }, []);
 
   const byPeriod = periods.map(p => {
     const pSlips = payslips.filter(s => s.period_id === p.id || s.period_name === p.name);

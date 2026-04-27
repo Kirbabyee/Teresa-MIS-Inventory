@@ -1,6 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClientInstance } from "@/lib/query-client";
+import { useSyncExternalStore } from "react";
 import {
   BrowserRouter as Router,
   Navigate,
@@ -15,50 +16,78 @@ import Borrowing from "./pages/Borrowing";
 import Inventory from "./pages/Inventory";
 
 const SESSION_KEY = "app_session";
+const SESSION_EVENT = "app_session_change";
+let cachedSessionRaw = null;
+let cachedSessionParsed = null;
 
-const getSession = () => {
-  if (typeof window === "undefined") return null;
-
-  const raw = window.localStorage.getItem(SESSION_KEY);
-  if (!raw) return null;
-
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed?.email) return null;
-    if (parsed?.expiresAt && Date.now() > Number(parsed.expiresAt)) {
-      window.localStorage.removeItem(SESSION_KEY);
-      return null;
-    }
-    return parsed;
-  } catch {
-    window.localStorage.removeItem(SESSION_KEY);
+const getSessionSnapshot = () => {
+  if (typeof window === "undefined") {
     return null;
   }
+
+  const raw = window.localStorage.getItem(SESSION_KEY);
+  if (!raw) {
+    cachedSessionRaw = null;
+    cachedSessionParsed = null;
+    return null;
+  }
+
+  if (raw !== cachedSessionRaw) {
+    cachedSessionRaw = raw;
+    try {
+      cachedSessionParsed = JSON.parse(raw);
+    } catch {
+      cachedSessionParsed = null;
+    }
+  }
+
+  const session = cachedSessionParsed;
+  if (!session?.email) return null;
+
+  if (session?.expiresAt && Date.now() > Number(session.expiresAt)) {
+    return null;
+  }
+
+  return session;
 };
 
-const isAuthenticated = () => {
-  return Boolean(getSession());
+const subscribeToSessionChanges = (onStoreChange) => {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const notify = () => onStoreChange();
+  window.addEventListener(SESSION_EVENT, notify);
+  window.addEventListener("storage", notify);
+
+  return () => {
+    window.removeEventListener(SESSION_EVENT, notify);
+    window.removeEventListener("storage", notify);
+  };
 };
 
-function RequireAuth({ children }) {
-  return isAuthenticated() ? children : <Navigate to="/login" replace />;
-}
+const getServerSnapshot = () => null;
 
 function App() {
+  const session = useSyncExternalStore(
+    subscribeToSessionChanges,
+    getSessionSnapshot,
+    getServerSnapshot,
+  );
+  const authenticated = Boolean(session);
+
   return (
     <QueryClientProvider client={queryClientInstance}>
       <Router>
         <Routes>
           <Route
             path="/login"
-            element={isAuthenticated() ? <Navigate to="/" replace /> : <Login />}
+            element={authenticated ? <Navigate to="/" replace /> : <Login />}
           />
           <Route
             path="/"
             element={
-              <RequireAuth>
-                <HRISLayout />
-              </RequireAuth>
+              authenticated ? <HRISLayout /> : <Navigate to="/login" replace />
             }
           >
             <Route index element={<Dashboard />} />
@@ -66,7 +95,10 @@ function App() {
             <Route path="laboratory/inventory" element={<Inventory />} />
             <Route path="*" element={<PageNotFound />} />
           </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route
+            path="*"
+            element={<Navigate to={authenticated ? "/" : "/login"} replace />}
+          />
         </Routes>
       </Router>
       <Toaster />

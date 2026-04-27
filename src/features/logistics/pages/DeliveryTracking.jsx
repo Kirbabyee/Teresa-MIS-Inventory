@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, X, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,8 +12,8 @@ function DeliveryModal({ item, onClose, onSaved }) {
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const save = async () => {
     setSaving(true);
-    if (item?.id) await base44.entities.Delivery.update(item.id, form);
-    else await base44.entities.Delivery.create(form);
+    if (item?.id) await backend.entities.Delivery.update(item.id, form);
+    else await backend.entities.Delivery.create(form);
     onSaved();
   };
   return (
@@ -49,7 +49,7 @@ export default function DeliveryTracking() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const load = async () => { setLoading(true); const d = await base44.entities.Delivery.list("-scheduled_date",200); setItems(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.Delivery.list("-scheduled_date",200); setItems(d); setLoading(false); };
   useEffect(() => { load(); }, []);
   return (
     <div className="p-6 space-y-5">

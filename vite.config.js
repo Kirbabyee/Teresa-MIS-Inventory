@@ -13,7 +13,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    // Explicitly disabling any proxy logic to prevent [base44] warnings
+    // Explicitly disable proxy logic for local development
     proxy: {},
   },
 });

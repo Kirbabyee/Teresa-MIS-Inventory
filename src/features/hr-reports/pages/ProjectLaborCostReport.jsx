@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function ProjectLaborCostReport() {
@@ -7,7 +7,7 @@ export default function ProjectLaborCostReport() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { Promise.all([base44.entities.TimesheetAllocation?.list("-date",1000)||Promise.resolve([]), base44.entities.Project.list()]).then(([a,p])=>{ setAllocations(a); setProjects(p); setLoading(false); }); }, []);
+  useEffect(() => { Promise.all([backend.entities.TimesheetAllocation?.list("-date",1000)||Promise.resolve([]), backend.entities.Project.list()]).then(([a,p])=>{ setAllocations(a); setProjects(p); setLoading(false); }); }, []);
 
   const byProject = projects.map(p => {
     const allocs = allocations.filter(a => a.project_id === p.id || a.project_name === p.name);

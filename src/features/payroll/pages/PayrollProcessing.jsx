@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, X, Calculator } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ function PeriodModal({ item, onClose, onSaved }) {
   const [form, setForm] = useState({ name:"", start_date:"", end_date:"", pay_date:"", processing_status:"draft", ...item });
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = async () => { setSaving(true); if (item?.id) await base44.entities.PayrollPeriod.update(item.id, form); else await base44.entities.PayrollPeriod.create(form); onSaved(); };
+  const save = async () => { setSaving(true); if (item?.id) await backend.entities.PayrollPeriod.update(item.id, form); else await backend.entities.PayrollPeriod.create(form); onSaved(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -40,7 +40,7 @@ export default function PayrollProcessing() {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
 
-  const load = async () => { setLoading(true); const d = await base44.entities.PayrollPeriod.list("-start_date",50); setPeriods(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.PayrollPeriod.list("-start_date",50); setPeriods(d); setLoading(false); };
   useEffect(() => { load(); }, []);
 
   return (

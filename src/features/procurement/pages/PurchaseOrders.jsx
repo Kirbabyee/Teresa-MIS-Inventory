@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ function POModal({ item, onClose, onSaved }) {
   const [form, setForm] = useState({ supplier_name:"", po_date:"", delivery_due_date:"", total_amount:0, status:"pending", ...item });
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = async () => { setSaving(true); if (item?.id) await base44.entities.PurchaseOrder.update(item.id, form); else await base44.entities.PurchaseOrder.create({...form, supplier_id:"manual"}); onSaved(); };
+  const save = async () => { setSaving(true); if (item?.id) await backend.entities.PurchaseOrder.update(item.id, form); else await backend.entities.PurchaseOrder.create({...form, supplier_id:"manual"}); onSaved(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -39,7 +39,7 @@ export default function PurchaseOrders() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const load = async () => { setLoading(true); const d = await base44.entities.PurchaseOrder.list("-po_date",200); setItems(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.PurchaseOrder.list("-po_date",200); setItems(d); setLoading(false); };
   useEffect(() => { load(); }, []);
   return (
     <div className="p-6 space-y-5">

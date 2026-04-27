@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, Trash2, X, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ function KPIModal({ item, onClose, onSaved }) {
   const [form, setForm] = useState({ metric_name:"", target_value:"", unit:"", description:"", department_name:"", ...item });
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = async () => { setSaving(true); if (item?.id) await base44.entities.KPIDefinition.update(item.id, form); else await base44.entities.KPIDefinition.create(form); onSaved(); };
+  const save = async () => { setSaving(true); if (item?.id) await backend.entities.KPIDefinition.update(item.id, form); else await backend.entities.KPIDefinition.create(form); onSaved(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -32,7 +32,7 @@ function EvalModal({ item, onClose, onSaved }) {
   const [form, setForm] = useState({ employee_name:"", evaluator_name:"", period_start:"", period_end:"", total_score:"", feedback:"", ...item });
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = async () => { setSaving(true); if (item?.id) await base44.entities.Evaluation.update(item.id, form); else await base44.entities.Evaluation.create({...form, employee_id:"manual", evaluator_id:"manual"}); onSaved(); };
+  const save = async () => { setSaving(true); if (item?.id) await backend.entities.Evaluation.update(item.id, form); else await backend.entities.Evaluation.create({...form, employee_id:"manual", evaluator_id:"manual"}); onSaved(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -61,7 +61,7 @@ export default function KPIAppraisals() {
   const [modal, setModal] = useState(null);
   const [editItem, setEditItem] = useState(null);
 
-  const load = async () => { setLoading(true); const [k,e] = await Promise.all([base44.entities.KPIDefinition.list(),base44.entities.Evaluation.list("-created_date",200)]); setKpis(k); setEvals(e); setLoading(false); };
+  const load = async () => { setLoading(true); const [k,e] = await Promise.all([backend.entities.KPIDefinition.list(),backend.entities.Evaluation.list("-created_date",200)]); setKpis(k); setEvals(e); setLoading(false); };
   useEffect(() => { load(); }, []);
 
   const renderStars = (score) => {
@@ -88,7 +88,7 @@ export default function KPIAppraisals() {
                 <div key={k.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
                   <div className="flex items-start justify-between mb-2">
                     <p className="font-semibold text-slate-900">{k.metric_name}</p>
-                    <div className="flex gap-1"><button onClick={()=>{setEditItem(k);setModal("kpi");}} className="p-1 text-slate-400 hover:text-blue-600 rounded"><Edit className="w-4 h-4"/></button><button onClick={async()=>{if(!confirm("Delete?"))return;await base44.entities.KPIDefinition.delete(k.id);load();}} className="p-1 text-slate-400 hover:text-red-600 rounded"><Trash2 className="w-4 h-4"/></button></div>
+                    <div className="flex gap-1"><button onClick={()=>{setEditItem(k);setModal("kpi");}} className="p-1 text-slate-400 hover:text-blue-600 rounded"><Edit className="w-4 h-4"/></button><button onClick={async()=>{if(!confirm("Delete?"))return;await backend.entities.KPIDefinition.delete(k.id);load();}} className="p-1 text-slate-400 hover:text-red-600 rounded"><Trash2 className="w-4 h-4"/></button></div>
                   </div>
                   <p className="text-xs text-slate-500">{k.department_name||"All Departments"}</p>
                   <div className="mt-2 flex items-center gap-2"><span className="text-lg font-bold text-blue-600">{k.target_value}</span>{k.unit&&<span className="text-xs text-slate-500">{k.unit}</span>}</div>

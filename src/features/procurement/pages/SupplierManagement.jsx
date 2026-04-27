@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, Trash2, X, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ function SupplierModal({ item, onClose, onSaved }) {
   const [form, setForm] = useState({ name:"", status:"accredited", payment_terms:"", performance_rating:5, contact_person:"", email:"", phone:"", address:"", ...item });
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = async () => { setSaving(true); if (item?.id) await base44.entities.Supplier.update(item.id, form); else await base44.entities.Supplier.create(form); onSaved(); };
+  const save = async () => { setSaving(true); if (item?.id) await backend.entities.Supplier.update(item.id, form); else await backend.entities.Supplier.create(form); onSaved(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
@@ -39,7 +39,7 @@ export default function SupplierManagement() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const load = async () => { setLoading(true); const d = await base44.entities.Supplier.list(); setItems(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.Supplier.list(); setItems(d); setLoading(false); };
   useEffect(() => { load(); }, []);
   return (
     <div className="p-6 space-y-5">
@@ -57,7 +57,7 @@ export default function SupplierManagement() {
                 <td className="px-4 py-3 text-slate-600">{s.payment_terms||"—"}</td>
                 <td className="px-4 py-3"><div className="flex items-center gap-1"><Star className="w-4 h-4 fill-yellow-400 text-yellow-400"/><span className="font-medium">{s.performance_rating||5}</span></div></td>
                 <td className="px-4 py-3 text-slate-500">{s.contact_person||"—"}</td>
-                <td className="px-4 py-3 flex gap-1"><button onClick={()=>{setEditItem(s);setShowModal(true);}} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit className="w-4 h-4"/></button><button onClick={async()=>{if(!confirm("Delete?"))return;await base44.entities.Supplier.delete(s.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button></td>
+                <td className="px-4 py-3 flex gap-1"><button onClick={()=>{setEditItem(s);setShowModal(true);}} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit className="w-4 h-4"/></button><button onClick={async()=>{if(!confirm("Delete?"))return;await backend.entities.Supplier.delete(s.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button></td>
               </tr>
             ))}</tbody>
           </table>

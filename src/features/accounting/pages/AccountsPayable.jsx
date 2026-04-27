@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,8 +12,8 @@ function APModal({ item, onClose, onSaved }) {
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const save = async () => {
     setSaving(true);
-    if (item?.id) await base44.entities.AccountPayable.update(item.id, form);
-    else await base44.entities.AccountPayable.create({ ...form, supplier_id:"manual" });
+    if (item?.id) await backend.entities.AccountPayable.update(item.id, form);
+    else await backend.entities.AccountPayable.create({ ...form, supplier_id:"manual" });
     onSaved();
   };
   return (
@@ -48,7 +48,7 @@ export default function AccountsPayable() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const load = async () => { setLoading(true); const d = await base44.entities.AccountPayable.list("-invoice_date",200); setItems(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.AccountPayable.list("-invoice_date",200); setItems(d); setLoading(false); };
   useEffect(() => { load(); }, []);
   const totalOwed = items.filter(i=>i.status!=="paid").reduce((s,i)=>s+Number(i.amount||0)-Number(i.paid_amount||0),0);
   return (

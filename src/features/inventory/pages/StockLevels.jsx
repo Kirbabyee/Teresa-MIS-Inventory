@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { AlertTriangle } from "lucide-react";
 
 export default function StockLevels() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { base44.entities.InventoryItem.list().then(d=>{setItems(d);setLoading(false);}); }, []);
+  useEffect(() => { backend.entities.InventoryItem.list().then(d=>{setItems(d);setLoading(false);}); }, []);
   const low = items.filter(i => Number(i.current_stock||0) <= Number(i.reorder_level||0));
   return (
     <div className="p-6 space-y-5">

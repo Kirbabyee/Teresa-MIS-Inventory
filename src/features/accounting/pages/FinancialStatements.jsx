@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 
 export default function FinancialStatements() {
   const [entries, setEntries] = useState([]);
@@ -7,7 +7,7 @@ export default function FinancialStatements() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("income");
   useEffect(() => {
-    Promise.all([base44.entities.JournalEntry.list(), base44.entities.Account.list()])
+    Promise.all([backend.entities.JournalEntry.list(), backend.entities.Account.list()])
       .then(([j,a])=>{ setEntries(j.filter(e=>e.status==="posted")); setAccounts(a); setLoading(false); });
   }, []);
   const totalRevenue = accounts.filter(a=>a.type==="revenue").length;

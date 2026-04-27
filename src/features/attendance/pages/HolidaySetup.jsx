@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ function HolidayModal({ item, onClose, onSaved }) {
   const [form, setForm] = useState({ name:"", date:"", type:"regular", ...item });
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
-  const save = async () => { setSaving(true); if (item?.id) await base44.entities.Holiday.update(item.id, form); else await base44.entities.Holiday.create(form); onSaved(); };
+  const save = async () => { setSaving(true); if (item?.id) await backend.entities.Holiday.update(item.id, form); else await backend.entities.Holiday.create(form); onSaved(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
@@ -37,7 +37,7 @@ export default function HolidaySetup() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const load = async () => { setLoading(true); const d = await base44.entities.Holiday.list("date",100); setItems(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.Holiday.list("date",100); setItems(d); setLoading(false); };
   useEffect(() => { load(); }, []);
   return (
     <div className="p-6 space-y-5">
@@ -53,7 +53,7 @@ export default function HolidaySetup() {
                 <td className="px-4 py-3 font-medium">{h.date}</td>
                 <td className="px-4 py-3 font-medium text-slate-900">{h.name}</td>
                 <td className="px-4 py-3"><span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeColors[h.type]||"bg-gray-100 text-gray-600"}`}>{h.type?.replace(/_/g," ")}</span></td>
-                <td className="px-4 py-3 flex gap-1"><button onClick={()=>{setEditItem(h);setShowModal(true);}} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit className="w-4 h-4"/></button><button onClick={async()=>{if(!confirm("Delete?"))return;await base44.entities.Holiday.delete(h.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button></td>
+                <td className="px-4 py-3 flex gap-1"><button onClick={()=>{setEditItem(h);setShowModal(true);}} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit className="w-4 h-4"/></button><button onClick={async()=>{if(!confirm("Delete?"))return;await backend.entities.Holiday.delete(h.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button></td>
               </tr>
             ))}</tbody>
           </table>

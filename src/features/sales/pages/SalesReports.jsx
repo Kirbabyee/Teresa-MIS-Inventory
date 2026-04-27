@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function SalesReports() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { base44.entities.SalesOrder.list("-order_date",500).then(d=>{setOrders(d);setLoading(false);}); }, []);
+  useEffect(() => { backend.entities.SalesOrder.list("-order_date",500).then(d=>{setOrders(d);setLoading(false);}); }, []);
   const totalRevenue = orders.filter(o=>["confirmed","invoiced","paid"].includes(o.status)).reduce((s,o)=>s+Number(o.total_amount||0),0);
   const paid = orders.filter(o=>o.status==="paid").reduce((s,o)=>s+Number(o.total_amount||0),0);
   const pending = orders.filter(o=>["confirmed","invoiced"].includes(o.status)).length;

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,8 +12,8 @@ function ProjectModal({ item, onClose, onSaved }) {
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const save = async () => {
     setSaving(true);
-    if (item?.id) await base44.entities.Project.update(item.id, form);
-    else await base44.entities.Project.create(form);
+    if (item?.id) await backend.entities.Project.update(item.id, form);
+    else await backend.entities.Project.create(form);
     onSaved();
   };
   return (
@@ -46,7 +46,7 @@ export default function ProjectList() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const load = async () => { setLoading(true); const d = await base44.entities.Project.list("-start_date",200); setItems(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.Project.list("-start_date",200); setItems(d); setLoading(false); };
   useEffect(() => { load(); }, []);
   return (
     <div className="p-6 space-y-5">
@@ -60,7 +60,7 @@ export default function ProjectList() {
             <div key={p.id} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={()=>{setEditItem(p);setShowModal(true);}}>
               <div className="flex items-start justify-between gap-2">
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${statusColors[p.status]||"bg-gray-100 text-gray-600"}`}>{p.status?.replace("_"," ")}</span>
-                <button onClick={e=>{e.stopPropagation();if(!confirm("Delete?"))return;base44.entities.Project.delete(p.id).then(load);}} className="p-1 text-slate-300 hover:text-red-500 rounded"><Trash2 className="w-4 h-4"/></button>
+                <button onClick={e=>{e.stopPropagation();if(!confirm("Delete?"))return;backend.entities.Project.delete(p.id).then(load);}} className="p-1 text-slate-300 hover:text-red-500 rounded"><Trash2 className="w-4 h-4"/></button>
               </div>
               <h3 className="font-semibold text-slate-900 mt-3">{p.name}</h3>
               {p.client_name && <p className="text-sm text-slate-500 mt-0.5">Client: {p.client_name}</p>}

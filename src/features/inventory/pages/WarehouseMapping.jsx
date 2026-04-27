@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, Edit, Trash2, X, Warehouse } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,8 @@ function WarehouseModal({ item, onClose, onSaved }) {
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const save = async () => {
     setSaving(true);
-    if (item?.id) await base44.entities.Warehouse.update(item.id, form);
-    else await base44.entities.Warehouse.create(form);
+    if (item?.id) await backend.entities.Warehouse.update(item.id, form);
+    else await backend.entities.Warehouse.create(form);
     onSaved();
   };
   return (
@@ -40,7 +40,7 @@ export default function WarehouseMapping() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const load = async () => { setLoading(true); const d = await base44.entities.Warehouse.list(); setItems(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.Warehouse.list(); setItems(d); setLoading(false); };
   useEffect(() => { load(); }, []);
   return (
     <div className="p-6 space-y-5">
@@ -56,7 +56,7 @@ export default function WarehouseMapping() {
                 <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center"><Warehouse className="w-5 h-5 text-blue-600"/></div>
                 <div className="flex gap-1">
                   <button onClick={()=>{setEditItem(w);setShowModal(true);}} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit className="w-4 h-4"/></button>
-                  <button onClick={async()=>{if(!confirm("Delete?"))return;await base44.entities.Warehouse.delete(w.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
+                  <button onClick={async()=>{if(!confirm("Delete?"))return;await backend.entities.Warehouse.delete(w.id);load();}} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
                 </div>
               </div>
               <h3 className="font-semibold text-slate-900 mt-3">{w.name}</h3>

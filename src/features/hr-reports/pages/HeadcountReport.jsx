@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 const COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899"];
@@ -8,7 +8,7 @@ const statusColors = { probationary:"bg-yellow-100 text-yellow-700", regular:"bg
 export default function HeadcountReport() {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { base44.entities.Employee.list("-created_date",1000).then(d=>{ setEmployees(d); setLoading(false); }); }, []);
+  useEffect(() => { backend.entities.Employee.list("-created_date",1000).then(d=>{ setEmployees(d); setLoading(false); }); }, []);
 
   const byDept = employees.reduce((acc,e)=>{ const k=e.department_name||"Unassigned"; acc[k]=(acc[k]||0)+1; return acc; },{});
   const byStatus = employees.reduce((acc,e)=>{ acc[e.status]=(acc[e.status]||0)+1; return acc; },{});

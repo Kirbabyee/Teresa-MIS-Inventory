@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function InventoryReports() {
@@ -7,7 +7,7 @@ export default function InventoryReports() {
   const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    Promise.all([base44.entities.InventoryItem.list(), base44.entities.StockMovement.list()])
+    Promise.all([backend.entities.InventoryItem.list(), backend.entities.StockMovement.list()])
       .then(([i,m])=>{ setItems(i); setMovements(m); setLoading(false); });
   }, []);
   const totalItems = items.length;

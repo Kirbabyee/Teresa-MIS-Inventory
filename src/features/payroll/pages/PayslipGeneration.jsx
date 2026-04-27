@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Plus, X, Search, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ function PayslipModal({ item, onClose, onSaved }) {
   const [form, setForm] = useState({ employee_name:"", period_name:"", department_name:"", gross_pay:0, overtime_pay:0, allowances:0, sss_deduction:0, philhealth_deduction:0, pagibig_deduction:0, tax_deduction:0, loan_deductions:0, net_pay:0, ...item });
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>{const nf={...f,[k]:v}; nf.total_deductions=(Number(nf.sss_deduction)||0)+(Number(nf.philhealth_deduction)||0)+(Number(nf.pagibig_deduction)||0)+(Number(nf.tax_deduction)||0)+(Number(nf.loan_deductions)||0); nf.net_pay=(Number(nf.gross_pay)||0)+(Number(nf.overtime_pay)||0)+(Number(nf.allowances)||0)-nf.total_deductions; return nf; });
-  const save = async () => { setSaving(true); if (item?.id) await base44.entities.Payslip.update(item.id, form); else await base44.entities.Payslip.create({...form, employee_id:"manual", period_id:"manual"}); onSaved(); };
+  const save = async () => { setSaving(true); if (item?.id) await backend.entities.Payslip.update(item.id, form); else await backend.entities.Payslip.create({...form, employee_id:"manual", period_id:"manual"}); onSaved(); };
   const numField = (k, label) => (<div><label className="text-xs font-medium text-slate-600">{label}</label><Input className="mt-1" type="number" value={form[k]||""} onChange={e=>set(k,Number(e.target.value))}/></div>);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -39,7 +39,7 @@ export default function PayslipGeneration() {
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const load = async () => { setLoading(true); const d = await base44.entities.Payslip.list("-created_date",500); setItems(d); setLoading(false); };
+  const load = async () => { setLoading(true); const d = await backend.entities.Payslip.list("-created_date",500); setItems(d); setLoading(false); };
   useEffect(() => { load(); }, []);
   const filtered = items.filter(i => !search || (i.employee_name||"").toLowerCase().includes(search.toLowerCase()) || (i.period_name||"").toLowerCase().includes(search.toLowerCase()));
   return (

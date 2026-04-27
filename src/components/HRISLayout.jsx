@@ -21,6 +21,7 @@ import {
   LogOut,
   ChevronDown,
   ChevronRight,
+  Users,
 } from "lucide-react";
 import arkLogo from "@/assets/imgs/ark-logo.png";
 
@@ -44,20 +45,37 @@ const navItems = [
     icon: Home,
     path: "/",
   },
-  {
-    label: "Laboratory",
+  {label: "Manage", icon: Home, path: "/employees", children: [{label : "User Accounts", icon: Users, path: "/manage/accounts"}, {label: "Laboratories",
     icon: Package,
-    path: "/inventory",
+    path: "/inventory",}]},
+  {
+    label: "Inventory",
+    icon: ClipboardList,
     children: [
       {
-        label: "Inventory",
+        label: "Laboratory 1",
         icon: Package,
         path: "/inventory/laboratory-1",
       },
       {
-        label: "Borrowing",
+        label: "Laboratory 2",
         icon: Package,
-        path: "/laboratory/borrowing",
+        path: "/laboratory/laboratory-2",
+      },
+      {
+        label: "Laboratory 3",
+        icon: Package,
+        path: "/laboratory/laboratory-2",
+      },
+      {
+        label: "Laboratory 4",
+        icon: Package,
+        path: "/laboratory/laboratory-2",
+      },
+      {
+        label: "Laboratory 5",
+        icon: Package,
+        path: "/laboratory/laboratory-2",
       },
     ],
   },

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -9,7 +9,7 @@ export default function LeaveBalanceReport() {
   const [search, setSearch] = useState("");
   const [year, setYear] = useState(new Date().getFullYear());
 
-  useEffect(() => { base44.entities.LeaveBalance.list("-year",500).then(d=>{ setBalances(d); setLoading(false); }); }, []);
+  useEffect(() => { backend.entities.LeaveBalance.list("-year",500).then(d=>{ setBalances(d); setLoading(false); }); }, []);
 
   const filtered = balances.filter(b => {
     const matchYear = !year || b.year === year;

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { backend } from "@/api/backendClient";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function LogisticsReports() {
@@ -7,7 +7,7 @@ export default function LogisticsReports() {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    Promise.all([base44.entities.Delivery.list(), base44.entities.Vehicle.list()])
+    Promise.all([backend.entities.Delivery.list(), backend.entities.Vehicle.list()])
       .then(([d,v])=>{ setDeliveries(d); setVehicles(v); setLoading(false); });
   }, []);
   const byStatus = ["pending","in_transit","delivered","failed","returned"].map(s=>({
