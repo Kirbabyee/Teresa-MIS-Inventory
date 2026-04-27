@@ -76,10 +76,10 @@ export default function Login() {
             <img
               src={arkLogo}
               alt="St Teresa"
-              className="w-12 h-12 bg-white rounded p-1 object-contain"
+              className="w-12 bg-white rounded p-1 object-contain"
             />
             <div>
-              <p className="text-2xl font-bold leading-tight">St Teresa</p>
+              <p className="text-2xl font-bold leading-tight">Colegio de Sta. Teresa de Avila</p>
               <p className="text-white/80 text-sm">Management System</p>
             </div>
           </div>

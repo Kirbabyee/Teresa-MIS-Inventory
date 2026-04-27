@@ -14,6 +14,7 @@ import HRISLayout from "./components/HRISLayout";
 import Dashboard from "./pages/Dashboard";
 import Borrowing from "./pages/Borrowing";
 import Inventory from "./pages/Inventory";
+import Laboratory1 from "./pages/Laboratory1";
 import UserAccounts from "./pages/UserAccounts";
 
 const SESSION_KEY = "app_session";
@@ -95,6 +96,7 @@ function App() {
             <Route path="manage/accounts" element={<UserAccounts />} />
             <Route path="laboratory/borrowing" element={<Borrowing />} />
             <Route path="laboratory/inventory" element={<Inventory />} />
+            <Route path="laboratory/laboratory-1" element={<Laboratory1 />} />
             <Route path="*" element={<PageNotFound />} />
           </Route>
           <Route

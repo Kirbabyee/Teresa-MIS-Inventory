@@ -45,9 +45,19 @@ const navItems = [
     icon: Home,
     path: "/",
   },
-  {label: "Manage", icon: Home, path: "/employees", children: [{label : "User Accounts", icon: Users, path: "/manage/accounts"}, {label: "Laboratories",
-    icon: Package,
-    path: "/inventory",}]},
+  {label: "Manage", 
+    icon: Home, 
+    path: "/employees", children: [{
+      label : "User Accounts", 
+      icon: Users, 
+      path: "/manage/accounts"
+    }, 
+    {
+      label: "Laboratories",
+      icon: Package,
+      path: "/inventory",
+    }]
+  },
   {
     label: "Inventory",
     icon: ClipboardList,
@@ -55,7 +65,7 @@ const navItems = [
       {
         label: "Laboratory 1",
         icon: Package,
-        path: "/inventory/laboratory-1",
+        path: "/laboratory/laboratory-1",
       },
       {
         label: "Laboratory 2",
