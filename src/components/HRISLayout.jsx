@@ -190,7 +190,7 @@ export default function HRISLayout() {
       {/* Sidebar Sidebar */}
       <aside
         className={cn(
-          "fixed lg:static z-50 h-full bg-[#2E6F40] transition-all duration-300 flex flex-col shadow-xl",
+          "fixed lg:static z-50 h-full bg-[#170000] transition-all duration-300 flex flex-col shadow-xl",
           collapsed ? "w-20" : "w-64",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}

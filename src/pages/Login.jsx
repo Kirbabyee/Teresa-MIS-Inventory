@@ -75,7 +75,7 @@ export default function Login() {
           <div className="flex items-center gap-3">
             <img
               src={arkLogo}
-              alt="Ark Industries"
+              alt="St Teresa"
               className="w-12 h-12 bg-white rounded p-1 object-contain"
             />
             <div>
@@ -100,12 +100,12 @@ export default function Login() {
           <div className="flex items-center gap-3 mb-6 lg:hidden">
             <img
               src={arkLogo}
-              alt="Ark Industries"
-              className="w-10 h-10 bg-[#2E6F40] rounded p-1 object-contain"
+              alt="St Teresa"
+              className="w-10 h-10 bg-[#450c0c] rounded p-1 object-contain"
             />
             <div>
               <p className="text-lg font-bold text-slate-900 leading-tight">
-                Ark Industries
+                St Teresa
               </p>
               <p className="text-xs text-slate-500">Management System</p>
             </div>
