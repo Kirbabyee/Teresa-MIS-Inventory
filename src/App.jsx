@@ -98,7 +98,7 @@ function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="manage/accounts" element={<UserAccounts />} />
-            <Route path="laboratory/borrowing" element={<Borrowing />} />
+            <Route path="/borrowing" element={<Borrowing />} />
             <Route path="laboratory/inventory" element={<Inventory />} />
             <Route path="laboratory/laboratory-1" element={<Laboratory1 />} />
             <Route path="laboratory/laboratory-2" element={<Laboratory2 />} />
