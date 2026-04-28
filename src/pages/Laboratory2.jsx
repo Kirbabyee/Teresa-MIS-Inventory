@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/api/supabaseClient";
 
-export default function Laboratory1() {
+export default function Laboratory2() {
   const tableHeading = [
     "COMPUTER #",
     "MOTHERBOARD",
@@ -32,7 +32,7 @@ export default function Laboratory1() {
       const { data, error: fetchError } = await supabase
         .from("computers_components")
         .select("computer_number, type, brand, description, status")
-        .eq("lab_number", 1)
+        .eq("lab_number", 2)
         .order("computer_number", { ascending: true });
 
       if (fetchError) {
@@ -74,11 +74,11 @@ export default function Laboratory1() {
   }, []);
 
   return (
-    <div className="h-full overflow-hidden bg-slate-100 p-6 sm:p-10">
-      <div className="flex min-h-full flex-col mx-auto max-w-8xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+    <div className="bg-slate-100 p-6 sm:p-10">
+      <div className="mx-auto max-w-8xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Laboratory 1</h1>
+            <h1 className="text-2xl font-bold text-slate-900">Laboratory 2</h1>
             <p className="text-slate-500 text-sm mt-1">Live component inventory from the database.</p>
           </div>
           <div className="flex items-center gap-2">
@@ -105,7 +105,7 @@ export default function Laboratory1() {
                   <th
                     key={heading}
                     scope="col"
-                    className="text-center whitespace-nowrap px-4 py-3 text-left text-sm font-semibold text-slate-700"
+                    className="whitespace-nowrap px-4 py-3 text-left text-sm font-semibold text-slate-700"
                   >
                     {heading}
                   </th>
@@ -131,7 +131,7 @@ export default function Laboratory1() {
               ) : rows.length === 0 ? (
                 <tr>
                   <td className="px-4 py-4 text-sm text-slate-500" colSpan={tableHeading.length}>
-                    No component records found for Laboratory 1.
+                    No component records found for Laboratory 2.
                   </td>
                 </tr>
               ) : (
@@ -142,7 +142,7 @@ export default function Laboratory1() {
                     ["Description", "description"],
                     ["Remarks", "remarks"],
                   ].map(([label, field], rowIndex) => (
-                    <tr key={`${row["COMPUTER #"]}-${field}`}> 
+                    <tr key={`${row["COMPUTER #"]}-${field}`}>
                       {rowIndex === 0 && (
                         <td
                           rowSpan={3}

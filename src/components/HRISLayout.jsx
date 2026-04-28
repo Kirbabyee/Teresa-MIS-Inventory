@@ -75,17 +75,17 @@ const navItems = [
       {
         label: "Laboratory 3",
         icon: Package,
-        path: "/laboratory/laboratory-2",
+        path: "/laboratory/laboratory-3",
       },
       {
         label: "Laboratory 4",
         icon: Package,
-        path: "/laboratory/laboratory-2",
+        path: "/laboratory/laboratory-4",
       },
       {
         label: "Laboratory 5",
         icon: Package,
-        path: "/laboratory/laboratory-2",
+        path: "/laboratory/laboratory-5",
       },
     ],
   },
@@ -322,7 +322,7 @@ export default function HRISLayout() {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+        <main className="flex-1 overflow-hidden p-6 bg-slate-50/50">
           <Outlet />
         </main>
       </div>

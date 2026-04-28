@@ -15,6 +15,10 @@ import Dashboard from "./pages/Dashboard";
 import Borrowing from "./pages/Borrowing";
 import Inventory from "./pages/Inventory";
 import Laboratory1 from "./pages/Laboratory1";
+import Laboratory2 from "./pages/Laboratory2";
+import Laboratory3 from "./pages/Laboratory3";
+import Laboratory4 from "./pages/Laboratory4";
+import Laboratory5 from "./pages/Laboratory5";
 import UserAccounts from "./pages/UserAccounts";
 
 const SESSION_KEY = "app_session";
@@ -97,6 +101,10 @@ function App() {
             <Route path="laboratory/borrowing" element={<Borrowing />} />
             <Route path="laboratory/inventory" element={<Inventory />} />
             <Route path="laboratory/laboratory-1" element={<Laboratory1 />} />
+            <Route path="laboratory/laboratory-2" element={<Laboratory2 />} />
+            <Route path="laboratory/laboratory-3" element={<Laboratory3 />} />
+            <Route path="laboratory/laboratory-4" element={<Laboratory4 />} />
+            <Route path="laboratory/laboratory-5" element={<Laboratory5 />} />
             <Route path="*" element={<PageNotFound />} />
           </Route>
           <Route
