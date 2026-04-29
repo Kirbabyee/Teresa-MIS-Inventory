@@ -10,10 +10,12 @@ import {
 } from "react-router-dom";
 import PageNotFound from "./lib/PageNotFound";
 import Login from "./pages/Login";
-import HRISLayout from "./components/HRISLayout";
+import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Borrowing from "./pages/Borrowing";
 import Inventory from "./pages/Inventory";
+import InventorySection from "./pages/InventorySection";
+import InventoryTableTest from "./pages/InventoryTableTest";
 import Laboratory1 from "./pages/Laboratory1";
 import Laboratory2 from "./pages/Laboratory2";
 import Laboratory3 from "./pages/Laboratory3";
@@ -93,13 +95,18 @@ function App() {
           <Route
             path="/"
             element={
-              authenticated ? <HRISLayout /> : <Navigate to="/login" replace />
+              authenticated ? <Layout /> : <Navigate to="/login" replace />
             }
           >
             <Route index element={<Dashboard />} />
             <Route path="manage/accounts" element={<UserAccounts />} />
+            <Route path="manage/inventory" element={<Inventory />} />
+            <Route path="manage/inventory-table-test" element={<InventoryTableTest />} />
             <Route path="laboratory/borrowing" element={<Borrowing />} />
-            <Route path="laboratory/inventory" element={<Inventory />} />
+            <Route path="inventory" element={<Navigate to="/manage/inventory" replace />} />
+            <Route path="inventory/manage" element={<Navigate to="/manage/inventory" replace />} />
+            <Route path="inventory/:sectionSlug" element={<InventorySection />} />
+            <Route path="laboratory/inventory" element={<Navigate to="/manage/inventory" replace />} />
             <Route path="laboratory/laboratory-1" element={<Laboratory1 />} />
             <Route path="laboratory/laboratory-2" element={<Laboratory2 />} />
             <Route path="laboratory/laboratory-3" element={<Laboratory3 />} />

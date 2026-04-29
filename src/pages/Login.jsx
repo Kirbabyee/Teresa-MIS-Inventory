@@ -4,12 +4,43 @@ import { Eye, EyeOff } from "lucide-react";
 import arkLogo from "@/assets/imgs/ark-logo.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { supabase } from "@/api/supabaseClient";
 
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
-const HARDCODED_EMAIL = "st-teresa-mis@gmail.com";
-const HARDCODED_PASSWORD = "123456";
-const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+
+const fetchAccountTypeForUser = async (user) => {
+  const normalizedUserId = String(user?.id || "").trim();
+  const normalizedEmail = String(user?.email || "").trim().toLowerCase();
+
+  if (normalizedUserId) {
+    const byId = await supabase
+      .from("user_accounts")
+      .select("account_type")
+      .eq("id", normalizedUserId)
+      .maybeSingle();
+
+    if (!byId.error && byId.data?.account_type) {
+      return byId.data.account_type;
+    }
+  }
+
+  if (normalizedEmail) {
+    const byEmail = await supabase
+      .from("user_accounts")
+      .select("account_type")
+      .ilike("email", normalizedEmail)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!byEmail.error && byEmail.data?.account_type) {
+      return byEmail.data.account_type;
+    }
+  }
+
+  return null;
+};
 
 export default function Login() {
   const navigate = useNavigate();
@@ -37,32 +68,55 @@ export default function Login() {
       return;
     }
 
-    if (
-      normalizedEmail !== HARDCODED_EMAIL ||
-      normalizedPassword !== HARDCODED_PASSWORD
-    ) {
-      setError("Invalid email or password.");
-      return;
-    }
-
     setSubmitting(true);
-    if (typeof window !== "undefined") {
-      const now = Date.now();
-      window.localStorage.setItem(
-        SESSION_KEY,
-        JSON.stringify({
-          email: normalizedEmail,
-          role: "superadmin",
-          displayName: "Teresa MIS Admin",
-          loggedInAt: now,
-          expiresAt: now + SESSION_TTL_MS,
-        }),
-      );
-      window.dispatchEvent(new Event(SESSION_EVENT));
-    }
-    setSubmitting(false);
 
-    navigate("/", { replace: true });
+    try {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password: normalizedPassword,
+      });
+
+      if (signInError) {
+        setError(signInError.message || "Invalid email or password.");
+        return;
+      }
+
+      const session = data?.session || null;
+      const user = data?.user || session?.user || null;
+
+      if (!session || !user) {
+        setError("Login succeeded but no session was returned.");
+        return;
+      }
+
+      if (typeof window !== "undefined") {
+        const now = Date.now();
+        const accountType = await fetchAccountTypeForUser(user);
+        const role = accountType || user.user_metadata?.role || user.app_metadata?.role || "employee";
+        const displayName = user.user_metadata?.name || user.user_metadata?.full_name || user.email || "User";
+        const expiresAt = session.expires_at ? Number(session.expires_at) * 1000 : now + 8 * 60 * 60 * 1000;
+
+        window.localStorage.setItem(
+          SESSION_KEY,
+          JSON.stringify({
+            email: user.email || normalizedEmail,
+            role,
+            account_type: accountType || null,
+            displayName,
+            loggedInAt: now,
+            expiresAt,
+            supabaseUserId: user.id,
+          }),
+        );
+        window.dispatchEvent(new Event(SESSION_EVENT));
+      }
+
+      navigate("/", { replace: true });
+    } catch (authError) {
+      setError(authError?.message || "Unable to sign in.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

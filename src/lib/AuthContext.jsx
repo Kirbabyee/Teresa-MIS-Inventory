@@ -2,6 +2,8 @@ import React, { createContext, useState, useContext, useEffect } from "react";
 import { supabase } from "@/api/backendClient";
 
 const AuthContext = createContext(null);
+const SESSION_KEY = "app_session";
+const SESSION_EVENT = "app_session_change";
 
 const isSuperadminIdentity = (identity) => {
   const role = String(
@@ -357,6 +359,10 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setIsAuthenticated(false);
     setAuthError(null);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(SESSION_KEY);
+      window.dispatchEvent(new Event(SESSION_EVENT));
+    }
     await supabase.auth.signOut();
   };
 

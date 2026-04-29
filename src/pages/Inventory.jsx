@@ -1,28 +1,873 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Edit, FolderOpen, Plus, Trash2, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  deleteInventorySection,
+  deleteInventoryTab,
+  makeUniqueSlug,
+  upsertInventorySection,
+  upsertInventoryTab,
+  useInventoryCatalog,
+  callCreateInventoryTable,
+  callModifyInventoryTable,
+  upsertSetting,
+  getInventoryCreateTableEndpoint,
+  getInventoryModifyTableEndpoint,
+  getTabTableConfig,
+} from "@/lib/inventoryApi";
+import { isCurrentUserAdmin } from "@/lib/inventoryApi";
 
-export default function Inventory() {
+const iconButtonClass =
+  "inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700";
+
+const normalizeColumnConfig = (column) => ({
+  key: String(column?.key || "").trim(),
+  label: String(column?.label || column?.key || "").trim(),
+  data_type: String(column?.data_type || column?.type || "text").toLowerCase(),
+  visible: column?.visible !== false,
+  subColumns: Array.isArray(column?.subColumns)
+    ? column.subColumns
+        .filter((subColumn) => subColumn && subColumn.key)
+        .map((subColumn) => ({
+          key: String(subColumn.key).trim(),
+          label: String(subColumn.label || subColumn.key).trim(),
+        }))
+    : [],
+});
+
+const flattenColumnsForDDL = (columns) => {
+  const flattened = [];
+  for (const col of columns) {
+    // Edge functions expect a flat list of { key, type }.
+    // If sub-columns exist, we flatten them using the parent type.
+    const colType = col.data_type || col.type || "text";
+    if (Array.isArray(col.subColumns) && col.subColumns.length > 0) {
+      for (const sub of col.subColumns) {
+        flattened.push({
+          key: `${col.key}_${sub.key}`,
+          type: colType,
+        });
+      }
+    } else {
+      flattened.push({ key: col.key, type: colType });
+    }
+  }
+  return flattened;
+};
+
+const hasNestedFields = (column) => Array.isArray(column?.subColumns) && column.subColumns.length > 0;
+
+function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
+  const labelToKey = (l) => l.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+
+  const [form, setForm] = useState({
+    key: column?.key || "",
+    label: column?.label || "",
+    data_type: "text", // Data type is always text, not shown in frontend
+    visible: column?.visible ?? true,
+    hasSubColumns: column?.subColumns && column.subColumns.length > 0,
+    subColumns: column?.subColumns || [],
+    newSubColLabel: "",
+  });
+
+  useEffect(() => {
+    setForm({
+      key: column?.key || "",
+      label: column?.label || "",
+      data_type: "text", // Data type is always text, not shown in frontend
+      visible: column?.visible ?? true,
+      hasSubColumns: column?.subColumns && column.subColumns.length > 0,
+      subColumns: column?.subColumns || [],
+      newSubColLabel: "",
+    });
+  }, [column]);
+
+  const addSubColumn = (existingField) => {
+    if (existingField) {
+      if (form.subColumns.some((sc) => sc.key === existingField.key)) return;
+      setForm((c) => ({
+        ...c,
+        subColumns: [...c.subColumns, { ...existingField }],
+      }));
+      return;
+    }
+
+    const label = form.newSubColLabel.trim();
+    if (label) {
+      const key = labelToKey(label);
+      if (form.subColumns.some((sc) => sc.key === key)) return;
+
+      setForm((c) => ({
+        ...c,
+        subColumns: [
+          ...c.subColumns,
+          { key, label },
+        ],
+        newSubColLabel: "",
+      }));
+    }
+  };
+
+  const removeSubColumn = (subColKey) => {
+    setForm((c) => ({
+      ...c,
+      subColumns: c.subColumns.filter((sc) => sc.key !== subColKey),
+    }));
+  };
+
+  const existingFieldsLibrary = useMemo(() => {
+    const fields = new Map();
+    existingColumns.forEach((col) => {
+      if (Array.isArray(col.subColumns)) {
+        col.subColumns.forEach((sc) => {
+          if (sc.key && sc.label) fields.set(sc.key, sc);
+        });
+      }
+    });
+    return Array.from(fields.values()).filter((f) => !form.subColumns.some((sc) => sc.key === f.key));
+  }, [existingColumns, form.subColumns]);
+
   return (
-    <div className="min-h-screen bg-slate-100 p-6 sm:p-10">
-      <div className="mx-auto max-w-4xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-        <div className="flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-bold text-slate-900">Inventory</h1>
-          <div className="flex items-center gap-2">
-            <Link
-              to="/borrowing"
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Go to Borrowing
-            </Link>
-            <Link
-              to="/login"
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Logout
-            </Link>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">{column ? "Edit column" : "Add column"}</h3>
+            <p className="text-sm text-slate-500">Define a custom column for this tab.</p>
+          </div>
+          <button type="button" onClick={onClose} className={iconButtonClass} title="Close">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="grid gap-4 px-5 py-5">
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Column Name</label>
+            <Input
+              className="mt-2"
+              value={form.label}
+              onChange={(e) => setForm((c) => ({ ...c, label: e.target.value, key: labelToKey(e.target.value) }))}
+              placeholder="e.g., Keyboard, Mouse, Monitor, etc"
+            />
+          </div>
+
+          <div className="border-t border-slate-200 pt-4">
+            <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+              <input
+                type="checkbox"
+                checked={form.hasSubColumns}
+                onChange={(e) => setForm((c) => ({ ...c, hasSubColumns: e.target.checked }))}
+              />
+              Add sub fields
+            </label>
+
+            {form.hasSubColumns && (
+              <div className="mt-3 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Add new nested field</label>
+                  <div className="mt-2 flex gap-2">
+                    <Input
+                      placeholder="Field Name (e.g., Brand)"
+                      value={form.newSubColLabel}
+                      onChange={(e) => setForm((c) => ({ ...c, newSubColLabel: e.target.value }))}
+                      className="flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => addSubColumn()}
+                      className="rounded-md bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-700"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+
+                {existingFieldsLibrary.length > 0 && (
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Pick from existing fields</label>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {existingFieldsLibrary.map((field) => (
+                        <button
+                          key={field.key}
+                          type="button"
+                          onClick={() => addSubColumn(field)}
+                          className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+                        >
+                          + {field.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {form.subColumns.length > 0 && (
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Nested fields</label>
+                    <div className="mt-2 space-y-1">
+                      {form.subColumns.map((subCol) => (
+                        <div key={subCol.key} className="flex items-center justify-between rounded bg-white px-2 py-1">
+                          <span className="text-sm text-slate-700">{subCol.label}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeSubColumn(subCol.key)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
-        <p className="mt-3 text-slate-600">Inventory page content here.</p>
+
+        <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            Cancel
+          </button>
+          <button type="button" onClick={() => onSave(form)} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
+            Save Column
+          </button>
+        </div>
       </div>
     </div>
+  );
+}
+
+function SectionModal({ section, onClose, onSave }) {
+  const [form, setForm] = useState({
+    name: section?.name || "",
+    description: section?.description || "",
+  });
+
+  useEffect(() => {
+    setForm({
+      name: section?.name || "",
+      description: section?.description || "",
+    });
+  }, [section]);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">{section ? "Edit section" : "Add section"}</h3>
+            <p className="text-sm text-slate-500">Sections belong to a tab and hold the inventory items.</p>
+          </div>
+          <button type="button" onClick={onClose} className={iconButtonClass} title="Close">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="grid gap-4 px-5 py-5">
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Section name</label>
+            <Input
+              className="mt-2"
+              value={form.name}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Laboratory 1"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Description</label>
+            <Textarea
+              className="mt-2 min-h-[110px]"
+              value={form.description}
+              onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+              placeholder="Optional description"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            Cancel
+          </button>
+          <button type="button" onClick={() => onSave(form)} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
+            Save Section
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TabModal({ tab, onClose, onSave }) {
+  const [tabForm, setTabForm] = useState({
+    name: tab?.name || "",
+    slug: tab?.slug || "",
+    description: tab?.description || "",
+  });
+  const [sections, setSections] = useState(tab?.sections || []);
+  const [columns, setColumns] = useState(tab?.columns || []);
+  const [editingSectionIndex, setEditingSectionIndex] = useState(null);
+  const [editingColumnIndex, setEditingColumnIndex] = useState(null);
+  const [showSectionModal, setShowSectionModal] = useState(false);
+  const [showColumnModal, setShowColumnModal] = useState(false);
+  const [sectionToEdit, setSectionToEdit] = useState(null);
+  const [columnToEdit, setColumnToEdit] = useState(null);
+
+  useEffect(() => {
+    setTabForm({
+      name: tab?.name || "",
+      slug: tab?.slug || "",
+      description: tab?.description || "",
+    });
+    setSections(tab?.sections || []);
+    setColumns(tab?.id ? [] : tab?.columns || []);
+    setEditingSectionIndex(null);
+    setEditingColumnIndex(null);
+    setSectionToEdit(null);
+    setColumnToEdit(null);
+    setShowSectionModal(false);
+    setShowColumnModal(false);
+  }, [tab]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTabConfig = async () => {
+      if (!tab?.id) return;
+
+      try {
+        const config = await getTabTableConfig(tab.id);
+        if (!cancelled && config?.columns) {
+          setColumns((config.columns || []).filter((column) => column && column.key).map((column) => normalizeColumnConfig(column)));
+        }
+      } catch (error) {
+        console.warn("Failed to load tab config:", error);
+      }
+    };
+
+    loadTabConfig();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab?.id]);
+
+  const editSection = (index) => {
+    const current = sections[index];
+    if (!current) return;
+    setEditingSectionIndex(index);
+    setSectionToEdit(current);
+    setShowSectionModal(true);
+  };
+
+  const deleteSection = (index) => {
+    setSections((currentSections) => currentSections.filter((_, currentIndex) => currentIndex !== index));
+    if (editingSectionIndex === index) setEditingSectionIndex(null);
+  };
+
+  const editColumn = (index) => {
+    const current = columns[index];
+    if (!current) return;
+    setEditingColumnIndex(index);
+    setColumnToEdit(current);
+    setShowColumnModal(true);
+  };
+
+  const deleteColumn = (index) => {
+    setColumns((currentColumns) => currentColumns.filter((_, currentIndex) => currentIndex !== index));
+    if (editingColumnIndex === index) setEditingColumnIndex(null);
+  };
+
+  const handleSaveTab = () => {
+    onSave({ ...tabForm, sections, columns });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 p-5">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">{tab ? "Edit inventory tab" : "Add inventory tab"}</h3>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="grid gap-4 px-5 py-5 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Tab name</label>
+            <Input
+              className="mt-2"
+              value={tabForm.name}
+              onChange={(event) => setTabForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder=""
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Description (Optional)</label>
+            <Textarea
+              className="mt-2 min-h-[96px]"
+              value={tabForm.description}
+              onChange={(event) => setTabForm((current) => ({ ...current, description: event.target.value }))}
+              placeholder=""
+            />
+          </div>
+        </div>
+
+        <div className="border-t border-slate-200 px-5 py-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">Sections</h4>
+              <p className="text-sm text-slate-500"></p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSectionToEdit(null);
+                setEditingSectionIndex(null);
+                setShowSectionModal(true);
+              }}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              <Plus className="h-4 w-4" />
+              Add Section
+            </button>
+          </div>
+
+          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Section Name</th>
+                  <th className="px-4 py-3">Description</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {sections.length === 0 ? (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-slate-500" colSpan={3}>
+                      Add atleast one or more sections.
+                    </td>
+                  </tr>
+                ) : (
+                  sections.map((currentSection, index) => (
+                    <tr key={currentSection.id || currentSection.slug || index} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-medium text-slate-900">{currentSection.name}</td>
+                      <td className="px-4 py-3 text-slate-600">{currentSection.description || "—"}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2">
+                          <button type="button" onClick={() => editSection(index)} className={iconButtonClass} title="Edit Section">
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button type="button" onClick={() => deleteSection(index)} className={iconButtonClass} title="Delete Section">
+                            <Trash2 className="h-4 w-4 text-rose-500" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-200 px-5 py-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setColumnToEdit(null);
+                setEditingColumnIndex(null);
+                setShowColumnModal(true);
+              }}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              <Plus className="h-4 w-4" />
+              Add Column
+            </button>
+          </div>
+
+          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <tr>
+                 
+                  <th className="px-4 py-3">Name</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {columns.length === 0 ? (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
+                       Add at least one column.
+                    </td>
+                  </tr>
+                ) : (
+                  columns.map((currentColumn, index) => (
+                    <tr key={currentColumn.id || currentColumn.key || index} className="hover:bg-slate-50">          
+                      <td className="px-4 py-3 text-slate-600">{currentColumn.label}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2">
+                          <button type="button" onClick={() => editColumn(index)} className={iconButtonClass} title="Edit Column">
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button type="button" onClick={() => deleteColumn(index)} className={iconButtonClass} title="Delete Column">
+                            <Trash2 className="h-4 w-4 text-rose-500" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4">
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            Cancel
+          </button>
+          <button type="button" onClick={handleSaveTab} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
+            Save Tab
+          </button>
+        </div>
+      </div>
+
+      {showSectionModal && (
+        <SectionModal
+          section={sectionToEdit}
+          onClose={() => {
+            setShowSectionModal(false);
+            setSectionToEdit(null);
+            setEditingSectionIndex(null);
+          }}
+          onSave={(form) => {
+            const name = form.name.trim();
+            if (!name) return;
+
+            setSections((currentSections) => {
+              const currentSection = editingSectionIndex !== null ? currentSections[editingSectionIndex] : null;
+              const nextSlug = makeUniqueSlug(
+                name,
+                currentSections.map((section) => section.slug),
+                currentSection?.slug || "",
+              );
+
+              const nextSection = currentSection
+                ? { ...currentSection, name, slug: nextSlug, description: form.description.trim() }
+                : { name, slug: nextSlug, description: form.description.trim() };
+
+              const nextSections = [...currentSections];
+              if (editingSectionIndex !== null && nextSections[editingSectionIndex]) {
+                nextSections[editingSectionIndex] = nextSection;
+              } else {
+                nextSections.push(nextSection);
+              }
+
+              return nextSections;
+            });
+
+            setShowSectionModal(false);
+            setSectionToEdit(null);
+            setEditingSectionIndex(null);
+          }}
+        />
+      )}
+      {showColumnModal && (
+        <ColumnRowModal
+          column={columnToEdit}
+          existingColumns={columns}
+          onClose={() => {
+            setShowColumnModal(false);
+            setColumnToEdit(null);
+            setEditingColumnIndex(null);
+          }}
+          onSave={(colForm) => {
+            const key = (colForm.key || "").trim();
+            if (!key) return;
+
+            const nextColumn = normalizeColumnConfig({ ...colForm, key });
+            setColumns((currentColumns) => {
+              const next = [...currentColumns];
+              if (editingColumnIndex !== null && next[editingColumnIndex]) {
+                next[editingColumnIndex] = nextColumn;
+              } else {
+                next.push(nextColumn);
+              }
+              return next;
+            });
+
+            setShowColumnModal(false);
+            setColumnToEdit(null);
+            setEditingColumnIndex(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+export default function Inventory() {
+  const { tabs, loading, error, refetch } = useInventoryCatalog();
+  const [showModal, setShowModal] = useState(false);
+  const [editingSlug, setEditingSlug] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const editingTab = useMemo(() => tabs.find((tab) => tab.slug === editingSlug) || null, [tabs, editingSlug]);
+  const ddlEndpoint = getInventoryCreateTableEndpoint();
+
+  const handleSave = async (form) => {
+    const currentTab = editingTab;
+    const savedTab = await upsertInventoryTab({
+      id: currentTab?.id,
+      name: form.name.trim(),
+      slug: form.slug || form.name,
+      description: form.description.trim(),
+      sort_order: currentTab?.sort_order || tabs.length + 1,
+    });
+
+    const existingSections = currentTab?.sections || [];
+    const keptSectionIds = [];
+
+    for (let index = 0; index < form.sections.length; index += 1) {
+      const section = form.sections[index];
+      const savedSection = await upsertInventorySection({
+        id: section.id,
+        tabId: savedTab.id,
+        name: section.name.trim(),
+        slug: section.slug || section.name,
+        description: section.description?.trim() || "",
+        sort_order: index + 1,
+      });
+      keptSectionIds.push(savedSection.id);
+    }
+
+    for (const section of existingSections) {
+      if (!keptSectionIds.includes(section.id)) {
+        await deleteInventorySection(section.id);
+      }
+    }
+
+    // Handle column modifications for existing tabs
+    if (currentTab) {
+      try {
+        // Get the existing tab config to compare columns
+        const existingConfig = await getTabTableConfig(currentTab.id);
+        const updatedColumns = (form.columns || [])
+          .filter((col) => col && col.key)
+          .map((col) => normalizeColumnConfig(col));
+        const tabConfig = { tableName: existingConfig?.tableName, columns: updatedColumns };
+
+        const tableName = existingConfig?.tableName;
+        if (tableName) {
+          const modifyEndpoint = getInventoryModifyTableEndpoint();
+          // Ensure columns are flattened for the SQL generation (DDL)
+          const flattened = flattenColumnsForDDL(updatedColumns);
+          await callModifyInventoryTable(modifyEndpoint, tableName, "sync", flattened);
+        }
+
+        // Always persist the latest column config, including nested field metadata.
+        try {
+          window.localStorage.setItem(`inventory.tab_table.${currentTab.id}`, JSON.stringify(tabConfig));
+        } catch (storageErr) {
+          console.warn("Failed to update localStorage config:", storageErr);
+        }
+
+        try {
+          await upsertSetting(`inventory.tab_table.${currentTab.id}`, tabConfig);
+        } catch (settingErr) {
+          console.warn("Failed to update inventory_settings config:", settingErr);
+        }
+      } catch (err) {
+        console.warn("Failed to modify table columns:", err);
+        try {
+          alert(`Failed to modify table columns: ${err.message}`);
+        } catch (e) {}
+        refetch();
+        return;
+      }
+    }
+
+    setShowModal(false);
+    setEditingSlug("");
+    refetch();
+    // If creating a new tab, create the physical table and persist tab->table mapping
+    if (!currentTab) {
+      try {
+        const tableName = `inventory_${String(savedTab.name || "tab")
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z0-9_]+/g, "_")
+          .replace(/^_+|_+$/g, "")}`;
+        const cols = (form.columns || [])
+          .filter((it) => it && it.key)
+          .map((it) => normalizeColumnConfig(it));
+        const endpoint = ddlEndpoint;
+
+        // Flatten columns so the Edge Function creates physical sub-columns in the DB
+        const flattened = flattenColumnsForDDL(cols);
+        await callCreateInventoryTable(endpoint, tableName, flattened);
+
+        // persist mapping and create-time template columns for this tab
+        const tabConfig = { tableName, columns: cols };
+        try {
+          window.localStorage.setItem(`inventory.tab_table.${savedTab.id}`, JSON.stringify(tabConfig));
+        } catch (storageError) {
+          console.warn("Failed to write tab config to localStorage:", storageError);
+        }
+
+        try {
+          await upsertSetting(`inventory.tab_table.${savedTab.id}`, tabConfig);
+        } catch (settingError) {
+          console.warn("Failed to persist tab config to inventory_settings:", settingError);
+        }
+      } catch (err) {
+        // keep tab creation strict: rollback tab if physical table setup fails
+        try {
+          await deleteInventoryTab(savedTab.id);
+        } catch (rollbackError) {
+          console.warn("Rollback failed after table creation error:", rollbackError);
+        }
+
+        console.warn("Failed to create physical table:", err);
+        try {
+          alert("Tab creation failed because physical table creation failed. Please check endpoint/config and try again.");
+        } catch (e) {}
+        refetch();
+        return;
+      }
+    }
+
+    setShowModal(false);
+    setEditingSlug("");
+    refetch();
+  };
+
+  const handleDelete = async (tab) => {
+    if (!window.confirm(`Delete ${tab.name}?`)) return;
+    await deleteInventoryTab(tab.id);
+    refetch();
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const checkAdmin = async () => {
+      try {
+        const admin = await isCurrentUserAdmin();
+        if (!cancelled) setIsAdmin(admin);
+      } catch (err) {
+        if (!cancelled) setIsAdmin(false);
+      }
+    };
+    checkAdmin();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-5">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading inventory tabs...</div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+    <div className="p-6 space-y-5">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Inventory Manager</h1>
+          <p className="text-slate-500 text-sm">{tabs.length} total tabs</p>
+        </div>
+        <Button onClick={() => setShowModal(true)} className="gap-2">
+          <Plus className="w-4 h-4" /> Add Tab
+        </Button>
+      </div>
+
+      {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Description</th>
+                <th className="px-4 py-3">Sections</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {tabs.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-10 text-center text-slate-500" colSpan={4}>
+                    No inventory tabs yet. Add Laboratory or any custom tab from the modal.
+                  </td>
+                </tr>
+              ) : (
+                tabs.map((tab) => (
+                  <tr key={tab.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 font-medium text-slate-900">{tab.name}</td>
+                    <td className="px-4 py-3 text-slate-600">{tab.description || "—"}</td>
+                    <td className="px-4 py-3 text-slate-600">{tab.sections?.length || 0}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
+                        <Link
+                          to={`/inventory/${tab.slug}${tab.sections?.[0]?.slug ? `?section=${tab.sections[0].slug}` : ""}`}
+                          className={iconButtonClass}
+                          title="Open Tab"
+                        >
+                          <FolderOpen className="h-4 w-4" />
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingSlug(tab.slug);
+                            setShowModal(true);
+                          }}
+                          className={iconButtonClass}
+                          title="Edit Tab"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(tab)}
+                          className={iconButtonClass}
+                          title="Delete Tab"
+                        >
+                          <Trash2 className="h-4 w-4 text-rose-500" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {showModal && (
+        <TabModal
+          tab={editingTab}
+          onClose={() => setShowModal(false)}
+          onSave={handleSave}
+        />
+      )}
+    </div>
+    </>
   );
 }

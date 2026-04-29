@@ -1,0 +1,2 @@
+[functions.create-inventory-table]
+verify_jwt = false

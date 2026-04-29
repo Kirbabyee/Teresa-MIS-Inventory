@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useInventoryCatalog } from "@/lib/inventoryApi";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,7 +15,6 @@ import {
 import {
   Bell,
   Menu,
-  X,
   Home,
   Package,
   ClipboardList,
@@ -22,11 +22,15 @@ import {
   ChevronDown,
   ChevronRight,
   Users,
+  Boxes,
+  FlaskConical,
 } from "lucide-react";
 import arkLogo from "@/assets/imgs/ark-logo.png";
+import { supabase } from "@/api/supabaseClient";
 
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
+const SIDEBAR_COLLAPSED_KEY = "layout_sidebar_collapsed";
 
 const readSession = () => {
   if (typeof window === "undefined") return null;
@@ -39,83 +43,27 @@ const readSession = () => {
   }
 };
 
-const navItems = [
-  {
-    label: "Dashboard",
-    icon: Home,
-    path: "/",
-  },
-  {label: "Manage", 
-    icon: Home, 
-    path: "/employees", children: [{
-      label : "User Accounts", 
-      icon: Users, 
-      path: "/manage/accounts"
-    }, 
-    {
-      label: "Laboratories",
-      icon: Package,
-      path: "/inventory",
-    }]
-  },
-  {
-    label: "Inventory",
-    icon: ClipboardList,
-    children: [
-      {
-        label: "Laboratory 1",
-        icon: Package,
-        path: "/laboratory/laboratory-1",
-      },
-      {
-        label: "Laboratory 2",
-        icon: Package,
-        path: "/laboratory/laboratory-2",
-      },
-      {
-        label: "Laboratory 3",
-        icon: Package,
-        path: "/laboratory/laboratory-3",
-      },
-      {
-        label: "Laboratory 4",
-        icon: Package,
-        path: "/laboratory/laboratory-4",
-      },
-      {
-        label: "Laboratory 5",
-        icon: Package,
-        path: "/laboratory/laboratory-5",
-      },
-    ],
-  },
-  {
-    label: "Borrowing",
-    icon: ClipboardList,
-    path: "/borrowing",
-  },
-];
-
 function NavItem({ item, collapsed, setMobileOpen }) {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const Icon = item.icon;
 
   // Check if current path matches this item or any of its children
-  const isDirectActive = location.pathname === item.path;
+  const isDirectActive = item.path ? location.pathname === item.path : false;
   const isChildActive = item.children?.some((child) => location.pathname === child.path);
   const isActive = isDirectActive || isChildActive;
 
   // Auto-expand if a child is active
   useEffect(() => {
-    if (isChildActive) setIsOpen(true);
-  }, [isChildActive]);
+    if (item.children && isActive) setIsOpen(true);
+  }, [isActive, item.children]);
 
   return (
-    <div className="w-full">
+    <div className="relative w-full">
       <div className="relative flex items-center">
         <Link
           to={item.children ? "#" : item.path}
+          title={collapsed ? item.label : undefined}
           onClick={(e) => {
             if (item.children) {
               e.preventDefault();
@@ -125,46 +73,83 @@ function NavItem({ item, collapsed, setMobileOpen }) {
             }
           }}
           className={cn(
-            "flex-1 flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+            "group relative flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
             isActive
-              ? "bg-white/20 text-white shadow-sm"
+              ? "bg-[linear-gradient(90deg,rgba(255,255,255,0.22),rgba(255,255,255,0.12))] text-white shadow-sm ring-1 ring-white/30"
               : "text-white/80 hover:bg-white/10 hover:text-white"
           )}
         >
-          <Icon className="w-5 h-5 shrink-0" />
+          <span
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ring-1 transition-colors",
+              isActive
+                ? "bg-white/20 ring-white/25"
+                : "bg-white/5 ring-white/15 group-hover:bg-white/15"
+            )}
+          >
+            <Icon className="w-4 h-4" />
+          </span>
+
+          {item.children && (
+            <>
+              {/* Chevron background highlight when hovered */}
+              <span
+                className={cn(
+                  "pointer-events-none absolute rounded-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100",
+                  "h-8 w-8 bg-black/50",
+                  collapsed ? "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" : "hidden"
+                )}
+              />
+              {/* Chevron icon */}
+              <span
+                className={cn(
+                  "pointer-events-none absolute text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100",
+                  collapsed
+                    ? "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+                    : "right-2 top-1/2 -translate-y-1/2"
+                )}
+              >
+                {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              </span>
+            </>
+          )}
+
           {!collapsed && (
             <div className="flex flex-1 items-center justify-between">
               <span>{item.label}</span>
-              {item.children && (
-                <div className="transition-transform duration-200">
-                  {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                </div>
-              )}
             </div>
           )}
         </Link>
       </div>
 
       {/* Nested Children Rendering */}
-      {!collapsed && isOpen && item.children && (
-        <div className="mt-1 ml-4 pl-5 border-l border-white/10 space-y-1">
+      {isOpen && item.children && (
+        <div
+          className={cn(
+            "mt-1.5 space-y-1.5",
+            collapsed ? "ml-0" : "ml-4 pl-5 border-l border-white/20"
+          )}
+        >
           {item.children.map((child) => {
             const ChildIcon = child.icon;
             const isSubActive = location.pathname === child.path;
+
             return (
               <Link
                 key={child.path}
                 to={child.path}
+                title={collapsed ? child.label : undefined}
                 onClick={() => setMobileOpen(false)}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
+                  "group flex items-center rounded-lg text-xs font-medium transition-all duration-200",
+                  collapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
                   isSubActive
-                    ? "text-white bg-white/10"
-                    : "text-white/60 hover:text-white hover:bg-white/5"
+                    ? "text-white bg-white/18 ring-1 ring-white/25"
+                    : "text-white/65 hover:text-white hover:bg-white/12"
                 )}
               >
-                <ChildIcon className="w-4 h-4" />
-                <span>{child.label}</span>
+                <ChildIcon className="w-3 h-3" />
+                {!collapsed && <span>{child.label}</span>}
               </Link>
             );
           })}
@@ -174,12 +159,17 @@ function NavItem({ item, collapsed, setMobileOpen }) {
   );
 }
 
-export default function HRISLayout() {
-  const [collapsed, setCollapsed] = useState(false);
+export default function Layout() {
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+  });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const { tabs: inventoryTabs } = useInventoryCatalog();
   const navigate = useNavigate();
+  const location = useLocation();
   
   const session = readSession();
   const displayName = session?.displayName || session?.email || "User";
@@ -192,12 +182,78 @@ export default function HRISLayout() {
     .join("")
     .toUpperCase();
 
+  const sectionTitle = useMemo(() => {
+    if (location.pathname === "/") return "Dashboard";
+    const lastSegment = location.pathname.split("/").filter(Boolean).pop();
+    if (!lastSegment) return "Workspace";
+
+    return lastSegment
+      .replace(/[-_]/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  }, [location.pathname]);
+
+  const navItems = useMemo(() => {
+    const inventoryChildren = inventoryTabs.map((tab) => ({
+      label: tab.name,
+      icon: Package,
+      path: `/inventory/${tab.slug}${tab.sections?.[0]?.slug ? `?section=${tab.sections[0].slug}` : ""}`,
+    }));
+
+    return [
+      {
+        label: "Dashboard",
+        icon: Home,
+        path: "/",
+      },
+      {
+        label: "Manage",
+        icon: Users,
+        path: "/employees",
+        children: [
+          {
+            label: "User Accounts",
+            icon: Users,
+            path: "/manage/accounts",
+          },
+          {
+            label: "Inventory Manager",
+            icon: Boxes,
+            path: "/manage/inventory",
+          },
+          //{
+          //  label: "Inventory Table Test",
+          //  icon: FlaskConical,
+          //  path: "/manage/inventory-table-test",
+          //},
+        ],
+      },
+      {
+        label: "Inventory",
+        icon: Boxes,
+        path: "/manage/inventory",
+        children: inventoryChildren,
+      },
+      {
+        label: "Borrowing",
+        icon: ClipboardList,
+        path: "/borrowing",
+      },
+    ];
+  }, [inventoryTabs]);
+
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
+  }, [collapsed]);
+
   const handleLogout = async () => {
+    await supabase.auth.signOut();
+
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(SESSION_KEY);
       window.dispatchEvent(new Event(SESSION_EVENT));
@@ -206,7 +262,7 @@ export default function HRISLayout() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-100 overflow-hidden font-sans">
+    <div className="flex h-screen overflow-hidden font-sans bg-[linear-gradient(130deg,#f8fafc_0%,#eef2ff_35%,#ecfeff_100%)]">
       {/* Mobile Overlay */}
       {mobileOpen && (
         <div
@@ -218,26 +274,26 @@ export default function HRISLayout() {
       {/* Sidebar Sidebar */}
       <aside
         className={cn(
-          "fixed lg:static z-50 h-full bg-[#170000] transition-all duration-300 flex flex-col shadow-xl",
+          "fixed lg:static z-50 h-full bg-[#2b0707]/95 backdrop-blur-xl border-r border-white/15 transition-all duration-300 flex flex-col shadow-xl overflow-visible",
           collapsed ? "w-20" : "w-64",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
         {/* Sidebar Header */}
         <div className={cn(
-          "flex items-center p-4 border-b border-white/10 transition-all duration-300",
+          "relative flex items-center p-4 border-b border-white/10 bg-white/5 backdrop-blur-sm transition-all duration-300",
           collapsed ? "justify-center" : "justify-between"
         )}>
           {!collapsed && (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <img
                 src={arkLogo}
                 alt="Ark Logo"
                 className="w-9 h-9 bg-white rounded p-1 object-contain shrink-0"
               />
               <div className="overflow-hidden">
-                <p className="text-white font-bold text-sm leading-tight truncate">Sta. Teresa de Avila</p>
-                <p className="text-white/70 text-[10px] uppercase tracking-wider mt-0.5">Management</p>
+                <p className="text-white font-bold text-sm leading-tight truncate">CSTA</p>
+                
               </div>
             </div>
           )}
@@ -250,7 +306,7 @@ export default function HRISLayout() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1 scrollbar-hide">
+        <nav className="relative flex-1 overflow-y-auto overflow-x-visible p-3 space-y-1.5 scrollbar-hide">
           {navItems.map((item) => (
             <NavItem 
                 key={item.label} 
@@ -262,12 +318,12 @@ export default function HRISLayout() {
         </nav>
 
         {/* Sidebar Footer */}
-        <div className="p-3 border-t border-white/10">
+        <div className="relative p-3 border-t border-white/10 bg-gradient-to-t from-white/[0.04] to-transparent">
           <button
             onClick={() => setShowLogoutConfirm(true)}
             className={cn(
-              "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-              "text-white/80 hover:bg-red-500/20 hover:text-red-200"
+              "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ring-1 ring-white/15",
+              "text-white/85 bg-white/[0.06] hover:bg-red-500/20 hover:text-red-200"
             )}
           >
             <LogOut className="w-5 h-5 shrink-0" />
@@ -278,15 +334,21 @@ export default function HRISLayout() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-30">
-          <button
-            onClick={() => setMobileOpen(true)}
-            className="lg:hidden text-slate-600 hover:bg-slate-100 p-2 rounded-lg"
-          >
-            <Menu className="w-6 h-6" />
-          </button>
+        <header className="bg-white/85 supports-[backdrop-filter]:bg-white/70 backdrop-blur-md border-b border-slate-200/80 px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-30">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="lg:hidden text-slate-600 hover:bg-slate-100 p-2 rounded-lg"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <div className="hidden md:block min-w-0">
+              <p className="text-sm md:text-base font-semibold text-slate-900 truncate">{sectionTitle}</p>
+              <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500">ST Teresa MIS</p>
+            </div>
+          </div>
 
-          <div className="flex items-center gap-4 ml-auto">
+          <div className="flex items-center gap-4">
             {/* Clock Section */}
             <div className="hidden md:flex flex-col items-end leading-tight border-r border-slate-200 pr-4 mr-1">
               <p className="text-sm font-semibold text-slate-900">
@@ -310,7 +372,7 @@ export default function HRISLayout() {
 
             {/* User Profile */}
             <div className="flex items-center gap-3 pl-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2E6F40] text-sm font-bold text-white ring-2 ring-[#2E6F40]/10">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2E6F40] text-sm font-bold text-white ring-4 ring-emerald-100 shadow-sm">
                 {initials || "U"}
               </div>
               <div className="hidden sm:block leading-tight">
@@ -322,7 +384,7 @@ export default function HRISLayout() {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-hidden p-6 bg-slate-50/50">
+        <main className="flex-1 overflow-y-auto p-6 bg-[radial-gradient(circle_at_top_right,_rgba(148,163,184,0.16),_transparent_45%),linear-gradient(to_bottom,_#f8fafc,_#eef2f7)]">
           <Outlet />
         </main>
       </div>
