@@ -372,7 +372,7 @@ export default function Layout() {
 
             {/* User Profile */}
             <div className="flex items-center gap-3 pl-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2E6F40] text-sm font-bold text-white ring-4 ring-emerald-100 shadow-sm">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2b0707,#5a1717)] text-sm font-bold text-white ring-4 ring-[#2b0707]/15 shadow-sm">
                 {initials || "U"}
               </div>
               <div className="hidden sm:block leading-tight">
@@ -384,7 +384,7 @@ export default function Layout() {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-6 bg-[radial-gradient(circle_at_top_right,_rgba(148,163,184,0.16),_transparent_45%),linear-gradient(to_bottom,_#f8fafc,_#eef2f7)]">
+        <main className="flex-1 p-6 bg-[radial-gradient(circle_at_top_right,_rgba(148,163,184,0.16),_transparent_45%),linear-gradient(to_bottom,_#f8fafc,_#eef2f7)]">
           <Outlet />
         </main>
       </div>
