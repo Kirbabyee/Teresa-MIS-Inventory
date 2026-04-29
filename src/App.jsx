@@ -100,8 +100,13 @@ function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="manage/accounts" element={<UserAccounts />} />
+            <Route path="manage/inventory" element={<Inventory />} />
+            <Route path="manage/inventory-table-test" element={<InventoryTableTest />} />
             <Route path="laboratory/borrowing" element={<Borrowing />} />
-            <Route path="laboratory/inventory" element={<Inventory />} />
+            <Route path="inventory" element={<Navigate to="/manage/inventory" replace />} />
+            <Route path="inventory/manage" element={<Navigate to="/manage/inventory" replace />} />
+            <Route path="inventory/:sectionSlug" element={<InventorySection />} />
+            <Route path="laboratory/inventory" element={<Navigate to="/manage/inventory" replace />} />
             <Route path="laboratory/laboratory-1" element={<Laboratory1 />} />
             <Route path="laboratory/laboratory-2" element={<Laboratory2 />} />
             <Route path="laboratory/laboratory-3" element={<Laboratory3 />} />
