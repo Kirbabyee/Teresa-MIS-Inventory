@@ -185,7 +185,7 @@ export const fetchInventoryItems = async (sectionId, tableName = null) => {
     .order("sort_order", { ascending: true });
 
   if (error) throw error;
-  return data || [];
+    return data || [];
 };
 
 export const upsertInventoryTab = async ({ id, name, slug, description = "", sort_order = 0 }) => {
@@ -331,9 +331,10 @@ export const deleteInventorySection = async (id) => {
   if (error) throw error;
 };
 
-export const upsertInventoryItem = async ({ id, sectionId, computerNumber, type, brand, description, status, sort_order = 0, tableName = null, recordData = null }) => {
+export const upsertInventoryItem = async ({ id, sectionId, computerNumber, type, brand, description, status, sort_order, tableName = null, recordData = null }) => {
+  const sortOrderPayload = sort_order === undefined ? {} : { sort_order };
   const payload = recordData && typeof recordData === "object"
-    ? { section_id: sectionId, ...recordData }
+    ? { section_id: sectionId, ...sortOrderPayload, ...recordData }
     : {
       section_id: sectionId,
       computer_number: computerNumber,
@@ -341,7 +342,7 @@ export const upsertInventoryItem = async ({ id, sectionId, computerNumber, type,
       brand,
       description,
       status,
-      sort_order,
+      ...sortOrderPayload,
     };
   if (tableName) {
     if (id) {

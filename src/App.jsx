@@ -76,6 +76,23 @@ const subscribeToSessionChanges = (onStoreChange) => {
 
 const getServerSnapshot = () => null;
 
+const isAdminSession = (session) => {
+  const role = String(session?.role || session?.account_type || "").toLowerCase();
+  return role === "admin" || role === "superadmin";
+};
+
+function AdminRoute({ session, children }) {
+  if (!session) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!isAdminSession(session)) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
+
 function App() {
   const session = useSyncExternalStore(
     subscribeToSessionChanges,
@@ -99,9 +116,30 @@ function App() {
             }
           >
             <Route index element={<Dashboard />} />
-            <Route path="manage/accounts" element={<UserAccounts />} />
-            <Route path="manage/inventory" element={<Inventory />} />
-            <Route path="manage/inventory-table-test" element={<InventoryTableTest />} />
+            <Route
+              path="manage/accounts"
+              element={
+                <AdminRoute session={session}>
+                  <UserAccounts />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="manage/inventory"
+              element={
+                <AdminRoute session={session}>
+                  <Inventory />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="manage/inventory-table-test"
+              element={
+                <AdminRoute session={session}>
+                  <InventoryTableTest />
+                </AdminRoute>
+              }
+            />
             <Route path="laboratory/borrowing" element={<Borrowing />} />
             <Route path="inventory" element={<Navigate to="/manage/inventory" replace />} />
             <Route path="inventory/manage" element={<Navigate to="/manage/inventory" replace />} />

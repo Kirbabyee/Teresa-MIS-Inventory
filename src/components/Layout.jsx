@@ -32,6 +32,11 @@ const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
 const SIDEBAR_COLLAPSED_KEY = "layout_sidebar_collapsed";
 
+const isAdminSession = (session) => {
+  const role = String(session?.role || session?.account_type || "").toLowerCase();
+  return role === "admin" || role === "superadmin";
+};
+
 const readSession = () => {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(SESSION_KEY);
@@ -50,7 +55,10 @@ function NavItem({ item, collapsed, setMobileOpen }) {
 
   // Check if current path matches this item or any of its children
   const isDirectActive = item.path ? location.pathname === item.path : false;
-  const isChildActive = item.children?.some((child) => location.pathname === child.path);
+  const isChildActive = item.children?.some((child) => {
+    const childPathname = child.path.split("?")[0];
+    return location.pathname === childPathname;
+  });
   const isActive = isDirectActive || isChildActive;
 
   // Auto-expand if a child is active
@@ -132,7 +140,7 @@ function NavItem({ item, collapsed, setMobileOpen }) {
         >
           {item.children.map((child) => {
             const ChildIcon = child.icon;
-            const isSubActive = location.pathname === child.path;
+            const isSubActive = location.pathname === child.path.split("?")[0];
 
             return (
               <Link
@@ -199,13 +207,27 @@ export default function Layout() {
       path: `/inventory/${tab.slug}${tab.sections?.[0]?.slug ? `?section=${tab.sections[0].slug}` : ""}`,
     }));
 
-    return [
+    const items = [
       {
         label: "Dashboard",
         icon: Home,
         path: "/",
       },
       {
+        label: "Inventory",
+        icon: Boxes,
+        path: "/manage/inventory",
+        children: inventoryChildren,
+      },
+      {
+        label: "Borrowing",
+        icon: ClipboardList,
+        path: "/borrowing",
+      },
+    ];
+
+    if (isAdminSession(session)) {
+      items.splice(1, 0, {
         label: "Manage",
         icon: Users,
         path: "/employees",
@@ -226,20 +248,11 @@ export default function Layout() {
           //  path: "/manage/inventory-table-test",
           //},
         ],
-      },
-      {
-        label: "Inventory",
-        icon: Boxes,
-        path: "/manage/inventory",
-        children: inventoryChildren,
-      },
-      {
-        label: "Borrowing",
-        icon: ClipboardList,
-        path: "/borrowing",
-      },
-    ];
-  }, [inventoryTabs]);
+      });
+    }
+
+    return items;
+  }, [inventoryTabs, session]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
