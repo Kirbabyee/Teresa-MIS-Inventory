@@ -384,7 +384,7 @@ export default function Layout() {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-6 bg-[radial-gradient(circle_at_top_right,_rgba(148,163,184,0.16),_transparent_45%),linear-gradient(to_bottom,_#f8fafc,_#eef2f7)]">
+        <main className="flex-1 p-6 bg-[radial-gradient(circle_at_top_right,_rgba(148,163,184,0.16),_transparent_45%),linear-gradient(to_bottom,_#f8fafc,_#eef2f7)] overflow-y-auto scrollbar-hide">
           <Outlet />
         </main>
       </div>

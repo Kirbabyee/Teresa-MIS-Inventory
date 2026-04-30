@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Edit, Plus, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import {
   deleteInventoryItem,
   fetchInventoryItems,
   getTabTableConfig,
+  isCurrentUserAdmin,
   upsertInventoryItem,
   useInventoryCatalog,
 } from "@/lib/inventoryApi";
@@ -16,7 +17,7 @@ const normalizeSubColumns = (subColumns = [], parentKey = "") => {
   if (!Array.isArray(subColumns)) {
     return [];
   }
-  
+
   return subColumns
     .filter((subColumn) => subColumn && subColumn.key)
     .map((subColumn) => {
@@ -87,6 +88,9 @@ const modalCloseButtonClass =
 // Item Modal Component
 function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns }) {
   const useTemplate = Array.isArray(templateColumns) && templateColumns.length > 0;
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const initialSnapshotRef = useRef("");
   const [legacyForm, setLegacyForm] = useState(() => ({
     computerNumber: item?.computer_number ?? "",
     type: item?.type || "",
@@ -95,6 +99,34 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
     status: item?.status || "",
   }));
   const [dynamicForm, setDynamicForm] = useState({});
+
+  const buildLegacySnapshot = (form) =>
+    JSON.stringify({
+      computerNumber: String(form.computerNumber ?? ""),
+      type: String(form.type ?? ""),
+      brand: String(form.brand ?? ""),
+      description: String(form.description ?? ""),
+      status: String(form.status ?? ""),
+    });
+
+  const buildTemplateSnapshot = (form) =>
+    JSON.stringify(
+      templateColumns.reduce((accumulator, column) => {
+        if (column.subColumns && column.subColumns.length > 0) {
+          for (const subColumn of column.subColumns) {
+            accumulator[subColumn.physicalKey] = String(form[subColumn.physicalKey] ?? "");
+          }
+        } else {
+          accumulator[column.key] = String(form[column.key] ?? "");
+        }
+        return accumulator;
+      }, {})
+    );
+
+  const currentSnapshot = useTemplate
+    ? buildTemplateSnapshot(dynamicForm)
+    : buildLegacySnapshot(legacyForm);
+  const hasUnsavedChanges = initialSnapshotRef.current !== currentSnapshot;
 
   useEffect(() => {
     if (useTemplate) {
@@ -109,17 +141,67 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
         }
       }
       setDynamicForm(nextForm);
+      initialSnapshotRef.current = buildTemplateSnapshot(nextForm);
+      setShowDiscardConfirm(false);
+      setShowSaveConfirm(false);
       return;
     }
 
-    setLegacyForm({
+    const nextLegacyForm = {
       computerNumber: item?.computer_number ?? "",
       type: item?.type || "",
       brand: item?.brand || "",
       description: item?.description || "",
       status: item?.status || "",
-    });
+    };
+
+    setLegacyForm(nextLegacyForm);
+    initialSnapshotRef.current = buildLegacySnapshot(nextLegacyForm);
+    setShowDiscardConfirm(false);
+    setShowSaveConfirm(false);
   }, [item, templateColumns, useTemplate]);
+
+  useEffect(() => {
+    if (!showDiscardConfirm && !showSaveConfirm) {
+      return;
+    }
+  }, [showDiscardConfirm, showSaveConfirm]);
+
+  const requestClose = () => {
+    if (hasUnsavedChanges) {
+      setShowDiscardConfirm(true);
+      return;
+    }
+
+    onClose();
+  };
+
+  const confirmDiscard = () => {
+    setShowDiscardConfirm(false);
+    onClose();
+  };
+
+  const cancelDiscard = () => {
+    setShowDiscardConfirm(false);
+  };
+
+  const requestSave = () => {
+    if (hasUnsavedChanges) {
+      setShowSaveConfirm(true);
+      return;
+    }
+
+    save();
+  };
+
+  const confirmSave = async () => {
+    setShowSaveConfirm(false);
+    await save();
+  };
+
+  const cancelSave = () => {
+    setShowSaveConfirm(false);
+  };
 
   const save = async () => {
     if (useTemplate) {
@@ -180,7 +262,7 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className={modalCloseButtonClass}
             title="Close"
           >
@@ -366,20 +448,58 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
         <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4">
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             Cancel
           </button>
           <button
             type="button"
-            onClick={save}
+            onClick={requestSave}
             className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700"
           >
             Save Component
           </button>
         </div>
       </div>
+
+      {showDiscardConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+            <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              You have unsaved changes. If you close now, those changes will be lost.
+            </p>
+            <div className="mt-4 flex justify-end gap-3">
+              <button type="button" onClick={cancelDiscard} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+                Keep editing
+              </button>
+              <button type="button" onClick={confirmDiscard} className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700">
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSaveConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+            <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Are you sure you want to save these changes?
+            </p>
+            <div className="mt-4 flex justify-end gap-3">
+              <button type="button" onClick={cancelSave} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmSave} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -403,13 +523,53 @@ export default function InventorySection() {
   const [viewMode, setViewMode] = useState("table");
   const [gridEditMode, setGridEditMode] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 10;
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const handleDelete = async (itemId) => {
-    if (!window.confirm("Delete this item?")) return;
-    setDeletingId(itemId);
-    await deleteInventoryItem(itemId, tabTableName || null);
+    setPendingDeleteId(itemId);
+    setShowDeleteConfirm(true);
+  };
+
+  useEffect(() => {
+    setPage(1);
+  }, [selectedSectionSlug, refreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkAdmin = async () => {
+      try {
+        const admin = await isCurrentUserAdmin();
+        if (!cancelled) setIsAdmin(admin);
+      } catch (checkError) {
+        if (!cancelled) setIsAdmin(false);
+      }
+    };
+
+    checkAdmin();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteId) return;
+    setShowDeleteConfirm(false);
+    setDeletingId(pendingDeleteId);
+    await deleteInventoryItem(pendingDeleteId, tabTableName || null);
     setDeletingId(null);
+    setPendingDeleteId(null);
     setRefreshKey((current) => current + 1);
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteConfirm(false);
+    setPendingDeleteId(null);
   };
 
   const tab = useMemo(
@@ -425,6 +585,16 @@ export default function InventorySection() {
   const sections = tab?.sections || [];
   const usesTemplateColumns = templateColumns.length > 0;
   const tableColSpan = templateColumns.length + 1;
+  const totalPages = Math.ceil(items.length / itemsPerPage);
+  const pageStartIndex = (page - 1) * itemsPerPage;
+  const pageEndIndex = pageStartIndex + itemsPerPage;
+  const paginatedItems = useMemo(
+    () =>
+      items.filter(
+        (_, index) => index >= pageStartIndex && index < pageEndIndex
+      ),
+    [items, pageStartIndex, pageEndIndex]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -541,6 +711,17 @@ export default function InventorySection() {
     };
   }, [selectedSection?.id, tabTableName, refreshKey]);
 
+  useEffect(() => {
+    if (page < 1) {
+      setPage(1);
+      return;
+    }
+
+    if (page > totalPages && totalPages > 0) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
   const openCreateModal = () => {
     setEditingItem(null);
     setShowModal(true);
@@ -587,10 +768,10 @@ export default function InventorySection() {
 
   return (
     <div className="min-h-screen bg-slate-100 p-6 sm:p-10">
-      <div className="mx-auto max-w-7xl space-y-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+      <div className="mx-auto w-full max-w-7xl overflow-hidden space-y-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-sm font-medium uppercase tracking-[0.2em] text-emerald-700">
+            <p className="text-sm font-medium uppercase tracking-[0.2em] text-[#4a1111]-700">
               Inventory
             </p>
              {/*<h1 className="mt-2 text-3xl font-bold text-slate-900">
@@ -630,7 +811,7 @@ export default function InventorySection() {
                       { replace: true }
                     );
                   }}
-                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                  className={`rounded-md px-4 py-2 text-sm font-medium transition ${
                     section.slug === selectedSectionSlug
                       ? "bg-[#4a1111] text-white"
                       : "bg-white text-slate-700 hover:bg-slate-100"
@@ -681,7 +862,7 @@ export default function InventorySection() {
             </div>
           </div>
 
-          <div className="p-5">
+          <div className="p-0">
             {!selectedSection ? (
               <div className="rounded-xl border border-dashed border-slate-300 py-20 text-center">
                 <p className="text-slate-500 font-medium">
@@ -706,8 +887,8 @@ export default function InventorySection() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <table className="min-w-full divide-y divide-slate-200">
+              <div className="w-full overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full min-w-full divide-y divide-slate-200">
                   <thead className="bg-slate-50">
                     <tr>
                       {usesTemplateColumns &&
@@ -727,7 +908,7 @@ export default function InventorySection() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 bg-white">
-                    {items.map((item, itemIndex) => (
+                    {paginatedItems.map((item) => (
                       <tr key={item.id}>
                     
                         {usesTemplateColumns &&
@@ -778,15 +959,17 @@ mt-1 font-medium text-slate-900
                               >
                                 <Edit className="h-4 w-4" />
                               </button>
-                              <button
-                                type="button"
-                                disabled={deletingId === item.id}
-                                onClick={() => handleDelete(item.id)}
-                                className="rounded-md p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-                                title="Delete item"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  disabled={deletingId === item.id}
+                                  onClick={() => handleDelete(item.id)}
+                                  className="rounded-md p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                                  title="Delete item"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         )}
@@ -796,7 +979,49 @@ mt-1 font-medium text-slate-900
                 </table>
               </div>
             )}
+
           </div>
+
+          {items.length > 0 && (
+            <div className="flex items-center justify-between gap-4 border-t border-slate-200 px-5 py-4">
+              <div className="text-sm text-slate-600">
+                Showing {Math.min(pageStartIndex + 1, items.length)}–{Math.min(
+                  pageEndIndex,
+                  items.length
+                )} of {items.length}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="rounded-md px-2 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                >
+                  Prev
+                </button>
+                {Array.from({ length: totalPages }).map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setPage(i + 1)}
+                    className={`rounded-md px-2 py-1 text-sm ${
+                      page === i + 1 ? "bg-[#4a1111] text-white" : "text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages || totalPages === 0}
+                  className="rounded-md px-2 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -810,6 +1035,34 @@ mt-1 font-medium text-slate-900
           onSaved={handleSaved}
         />
       )}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+            <h3 className="text-lg font-semibold text-slate-900">Confirm delete</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Are you sure you want to delete this item? This action cannot be undone.
+            </p>
+            <div className="mt-4 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={cancelDelete}
+                className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={!!deletingId}
+                className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

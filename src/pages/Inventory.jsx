@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Edit, FolderOpen, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,9 @@ const hasNestedFields = (column) => Array.isArray(column?.subColumns) && column.
 function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
   const labelToKey = (l) => l.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
 
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const initialSnapshotRef = useRef("");
   const [form, setForm] = useState({
     key: column?.key || "",
     label: column?.label || "",
@@ -73,8 +76,26 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
     newSubColLabel: "",
   });
 
+  const buildColumnSnapshot = (currentForm) =>
+    JSON.stringify({
+      key: String(currentForm.key || ""),
+      label: String(currentForm.label || ""),
+      data_type: String(currentForm.data_type || "text"),
+      visible: currentForm.visible !== false,
+      hasSubColumns: Boolean(currentForm.hasSubColumns),
+      subColumns: Array.isArray(currentForm.subColumns)
+        ? currentForm.subColumns.map((subColumn) => ({
+            key: String(subColumn?.key || ""),
+            label: String(subColumn?.label || ""),
+          }))
+        : [],
+      newSubColLabel: String(currentForm.newSubColLabel || ""),
+    });
+
+  const hasUnsavedChanges = initialSnapshotRef.current !== buildColumnSnapshot(form);
+
   useEffect(() => {
-    setForm({
+    const nextForm = {
       key: column?.key || "",
       label: column?.label || "",
       data_type: "text", // Data type is always text, not shown in frontend
@@ -82,8 +103,53 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
       hasSubColumns: column?.subColumns && column.subColumns.length > 0,
       subColumns: column?.subColumns || [],
       newSubColLabel: "",
-    });
+    };
+
+    setForm(nextForm);
+    initialSnapshotRef.current = buildColumnSnapshot(nextForm);
+    setShowDiscardConfirm(false);
+    setShowSaveConfirm(false);
   }, [column]);
+
+  const requestClose = () => {
+    if (hasUnsavedChanges) {
+      setShowDiscardConfirm(true);
+      return;
+    }
+
+    onClose();
+  };
+
+  const confirmDiscard = () => {
+    setShowDiscardConfirm(false);
+    onClose();
+  };
+
+  const cancelDiscard = () => {
+    setShowDiscardConfirm(false);
+  };
+
+  const saveColumn = async () => {
+    await onSave(form);
+  };
+
+  const requestSave = () => {
+    if (hasUnsavedChanges) {
+      setShowSaveConfirm(true);
+      return;
+    }
+
+    saveColumn();
+  };
+
+  const confirmSave = async () => {
+    setShowSaveConfirm(false);
+    await saveColumn();
+  };
+
+  const cancelSave = () => {
+    setShowSaveConfirm(false);
+  };
 
   const addSubColumn = (existingField) => {
     if (existingField) {
@@ -138,7 +204,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
             <h3 className="text-lg font-semibold text-slate-900">{column ? "Edit column" : "Add column"}</h3>
             <p className="text-sm text-slate-500">Define a custom column for this tab.</p>
           </div>
-          <button type="button" onClick={onClose} className={iconButtonClass} title="Close">
+          <button type="button" onClick={requestClose} className={iconButtonClass} title="Close">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -228,30 +294,124 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={requestClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
             Cancel
           </button>
-          <button type="button" onClick={() => onSave(form)} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
+          <button type="button" onClick={requestSave} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
             Save Column
           </button>
         </div>
       </div>
+
+      {showDiscardConfirm && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+            <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              You have unsaved changes. If you close now, those changes will be lost.
+            </p>
+            <div className="mt-4 flex justify-end gap-3">
+              <button type="button" onClick={cancelDiscard} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+                Keep editing
+              </button>
+              <button type="button" onClick={confirmDiscard} className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700">
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSaveConfirm && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+            <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Are you sure you want to save these changes?
+            </p>
+            <div className="mt-4 flex justify-end gap-3">
+              <button type="button" onClick={cancelSave} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmSave} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function SectionModal({ section, onClose, onSave }) {
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const initialSnapshotRef = useRef("");
   const [form, setForm] = useState({
     name: section?.name || "",
     description: section?.description || "",
   });
 
+  const buildSectionSnapshot = (currentForm) =>
+    JSON.stringify({
+      name: String(currentForm.name || ""),
+      description: String(currentForm.description || ""),
+    });
+
+  const hasUnsavedChanges = initialSnapshotRef.current !== buildSectionSnapshot(form);
+
   useEffect(() => {
-    setForm({
+    const nextForm = {
       name: section?.name || "",
       description: section?.description || "",
-    });
+    };
+
+    setForm(nextForm);
+    initialSnapshotRef.current = buildSectionSnapshot(nextForm);
+    setShowDiscardConfirm(false);
+    setShowSaveConfirm(false);
   }, [section]);
+
+  const requestClose = () => {
+    if (hasUnsavedChanges) {
+      setShowDiscardConfirm(true);
+      return;
+    }
+
+    onClose();
+  };
+
+  const confirmDiscard = () => {
+    setShowDiscardConfirm(false);
+    onClose();
+  };
+
+  const cancelDiscard = () => {
+    setShowDiscardConfirm(false);
+  };
+
+  const saveSection = async () => {
+    await onSave(form);
+  };
+
+  const requestSave = () => {
+    if (hasUnsavedChanges) {
+      setShowSaveConfirm(true);
+      return;
+    }
+
+    saveSection();
+  };
+
+  const confirmSave = async () => {
+    setShowSaveConfirm(false);
+    await saveSection();
+  };
+
+  const cancelSave = () => {
+    setShowSaveConfirm(false);
+  };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
@@ -261,7 +421,7 @@ function SectionModal({ section, onClose, onSave }) {
             <h3 className="text-lg font-semibold text-slate-900">{section ? "Edit section" : "Add section"}</h3>
             <p className="text-sm text-slate-500">Sections belong to a tab and hold the inventory items.</p>
           </div>
-          <button type="button" onClick={onClose} className={iconButtonClass} title="Close">
+          <button type="button" onClick={requestClose} className={iconButtonClass} title="Close">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -288,19 +448,60 @@ function SectionModal({ section, onClose, onSave }) {
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={requestClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
             Cancel
           </button>
-          <button type="button" onClick={() => onSave(form)} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
+          <button type="button" onClick={requestSave} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
             Save Section
           </button>
         </div>
       </div>
+
+      {showDiscardConfirm && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+            <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              You have unsaved changes. If you close now, those changes will be lost.
+            </p>
+            <div className="mt-4 flex justify-end gap-3">
+              <button type="button" onClick={cancelDiscard} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+                Keep editing
+              </button>
+              <button type="button" onClick={confirmDiscard} className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700">
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSaveConfirm && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+            <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Are you sure you want to save these changes?
+            </p>
+            <div className="mt-4 flex justify-end gap-3">
+              <button type="button" onClick={cancelSave} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmSave} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function TabModal({ tab, onClose, onSave }) {
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const initialSnapshotRef = useRef("");
   const [tabForm, setTabForm] = useState({
     name: tab?.name || "",
     slug: tab?.slug || "",
@@ -315,20 +516,58 @@ function TabModal({ tab, onClose, onSave }) {
   const [sectionToEdit, setSectionToEdit] = useState(null);
   const [columnToEdit, setColumnToEdit] = useState(null);
 
+  const buildTabSnapshot = (currentTabForm, currentSections, currentColumns) =>
+    JSON.stringify({
+      tabForm: {
+        name: String(currentTabForm.name || ""),
+        slug: String(currentTabForm.slug || ""),
+        description: String(currentTabForm.description || ""),
+      },
+      sections: (currentSections || []).map((section) => ({
+        id: section?.id || null,
+        name: String(section?.name || ""),
+        slug: String(section?.slug || ""),
+        description: String(section?.description || ""),
+      })),
+      columns: (currentColumns || []).map((column) => {
+        const normalized = normalizeColumnConfig(column);
+        return {
+          key: normalized.key,
+          label: normalized.label,
+          data_type: normalized.data_type,
+          visible: normalized.visible,
+          subColumns: (normalized.subColumns || []).map((subColumn) => ({
+            key: String(subColumn?.key || ""),
+            label: String(subColumn?.label || ""),
+          })),
+        };
+      }),
+    });
+
+  const hasUnsavedChanges =
+    initialSnapshotRef.current !== buildTabSnapshot(tabForm, sections, columns);
+
   useEffect(() => {
-    setTabForm({
+    const nextTabForm = {
       name: tab?.name || "",
       slug: tab?.slug || "",
       description: tab?.description || "",
-    });
-    setSections(tab?.sections || []);
-    setColumns(tab?.id ? [] : tab?.columns || []);
+    };
+    const nextSections = tab?.sections || [];
+    const nextColumns = tab?.id ? [] : tab?.columns || [];
+
+    setTabForm(nextTabForm);
+    setSections(nextSections);
+    setColumns(nextColumns);
     setEditingSectionIndex(null);
     setEditingColumnIndex(null);
     setSectionToEdit(null);
     setColumnToEdit(null);
     setShowSectionModal(false);
     setShowColumnModal(false);
+    setShowDiscardConfirm(false);
+    setShowSaveConfirm(false);
+    initialSnapshotRef.current = buildTabSnapshot(nextTabForm, nextSections, nextColumns);
   }, [tab]);
 
   useEffect(() => {
@@ -384,6 +623,42 @@ function TabModal({ tab, onClose, onSave }) {
     onSave({ ...tabForm, sections, columns });
   };
 
+  const requestClose = () => {
+    if (hasUnsavedChanges) {
+      setShowDiscardConfirm(true);
+      return;
+    }
+
+    onClose();
+  };
+
+  const confirmDiscard = () => {
+    setShowDiscardConfirm(false);
+    onClose();
+  };
+
+  const cancelDiscard = () => {
+    setShowDiscardConfirm(false);
+  };
+
+  const requestSave = () => {
+    if (hasUnsavedChanges) {
+      setShowSaveConfirm(true);
+      return;
+    }
+
+    handleSaveTab();
+  };
+
+  const confirmSave = async () => {
+    setShowSaveConfirm(false);
+    await handleSaveTab();
+  };
+
+  const cancelSave = () => {
+    setShowSaveConfirm(false);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
@@ -391,7 +666,7 @@ function TabModal({ tab, onClose, onSave }) {
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{tab ? "Edit inventory tab" : "Add inventory tab"}</h3>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+          <button type="button" onClick={requestClose} className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -534,14 +809,52 @@ function TabModal({ tab, onClose, onSave }) {
         </div>
 
         <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4">
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={requestClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
             Cancel
           </button>
-          <button type="button" onClick={handleSaveTab} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
+          <button type="button" onClick={requestSave} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
             Save Tab
           </button>
         </div>
       </div>
+
+      {showDiscardConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+            <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              You have unsaved changes. If you close now, those changes will be lost.
+            </p>
+            <div className="mt-4 flex justify-end gap-3">
+              <button type="button" onClick={cancelDiscard} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+                Keep editing
+              </button>
+              <button type="button" onClick={confirmDiscard} className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700">
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSaveConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+            <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Are you sure you want to save these changes?
+            </p>
+            <div className="mt-4 flex justify-end gap-3">
+              <button type="button" onClick={cancelSave} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmSave} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showSectionModal && (
         <SectionModal
@@ -622,6 +935,8 @@ export default function Inventory() {
   const [showModal, setShowModal] = useState(false);
   const [editingSlug, setEditingSlug] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [pendingDeleteTab, setPendingDeleteTab] = useState(null);
 
   const editingTab = useMemo(() => tabs.find((tab) => tab.slug === editingSlug) || null, [tabs, editingSlug]);
   const ddlEndpoint = getInventoryCreateTableEndpoint();
@@ -753,10 +1068,22 @@ export default function Inventory() {
     refetch();
   };
 
-  const handleDelete = async (tab) => {
-    if (!window.confirm(`Delete ${tab.name}?`)) return;
-    await deleteInventoryTab(tab.id);
+  const handleDelete = (tab) => {
+    setPendingDeleteTab(tab);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteTab?.id) return;
+    setShowDeleteConfirm(false);
+    await deleteInventoryTab(pendingDeleteTab.id);
+    setPendingDeleteTab(null);
     refetch();
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteConfirm(false);
+    setPendingDeleteTab(null);
   };
 
   useEffect(() => {
@@ -866,6 +1193,33 @@ export default function Inventory() {
           onClose={() => setShowModal(false)}
           onSave={handleSave}
         />
+      )}
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+            <h3 className="text-lg font-semibold text-slate-900">Confirm delete</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Are you sure you want to delete {pendingDeleteTab?.name || "this tab"}? This action cannot be undone.
+            </p>
+            <div className="mt-4 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={cancelDelete}
+                className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
     </>
