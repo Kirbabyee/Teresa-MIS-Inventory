@@ -109,7 +109,7 @@ export default function InventoryTableTest() {
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Inventory Table Creation Test</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Use this page to test the Edge Function that creates physical database tables.
+             
             </p>
           </div>
           <FlaskConical className="h-6 w-6 text-emerald-600" />

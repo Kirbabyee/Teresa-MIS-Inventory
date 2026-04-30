@@ -28,12 +28,16 @@ const normalizeColumnConfig = (column) => ({
   label: String(column?.label || column?.key || "").trim(),
   data_type: String(column?.data_type || column?.type || "text").toLowerCase(),
   visible: column?.visible !== false,
+  fieldType: String(column?.fieldType || "text").toLowerCase(),
+  options: Array.isArray(column?.options) ? column.options.map((o) => String(o).trim()).filter((o) => o) : [],
   subColumns: Array.isArray(column?.subColumns)
     ? column.subColumns
         .filter((subColumn) => subColumn && subColumn.key)
         .map((subColumn) => ({
           key: String(subColumn.key).trim(),
           label: String(subColumn.label || subColumn.key).trim(),
+          fieldType: String(subColumn?.fieldType || "text").toLowerCase(),
+          options: Array.isArray(subColumn?.options) ? subColumn.options.map((o) => String(o).trim()).filter((o) => o) : [],
         }))
     : [],
 });
@@ -71,6 +75,9 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
     label: column?.label || "",
     data_type: "text", // Data type is always text, not shown in frontend
     visible: column?.visible ?? true,
+    fieldType: column?.fieldType || "text",
+    options: column?.options || [],
+    newOption: "",
     hasSubColumns: column?.subColumns && column.subColumns.length > 0,
     subColumns: column?.subColumns || [],
     newSubColLabel: "",
@@ -82,11 +89,16 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
       label: String(currentForm.label || ""),
       data_type: String(currentForm.data_type || "text"),
       visible: currentForm.visible !== false,
+      fieldType: String(currentForm.fieldType || "text"),
+      options: Array.isArray(currentForm.options) ? currentForm.options : [],
+      newOption: String(currentForm.newOption || ""),
       hasSubColumns: Boolean(currentForm.hasSubColumns),
       subColumns: Array.isArray(currentForm.subColumns)
         ? currentForm.subColumns.map((subColumn) => ({
             key: String(subColumn?.key || ""),
             label: String(subColumn?.label || ""),
+            fieldType: String(subColumn?.fieldType || "text"),
+            options: Array.isArray(subColumn?.options) ? subColumn.options : [],
           }))
         : [],
       newSubColLabel: String(currentForm.newSubColLabel || ""),
@@ -100,6 +112,9 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
       label: column?.label || "",
       data_type: "text", // Data type is always text, not shown in frontend
       visible: column?.visible ?? true,
+      fieldType: column?.fieldType || "text",
+      options: column?.options || [],
+      newOption: "",
       hasSubColumns: column?.subColumns && column.subColumns.length > 0,
       subColumns: column?.subColumns || [],
       newSubColLabel: "",
@@ -170,7 +185,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
         ...c,
         subColumns: [
           ...c.subColumns,
-          { key, label },
+          { key, label, fieldType: "text", options: [] },
         ],
         newSubColLabel: "",
       }));
@@ -219,6 +234,69 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
               placeholder="e.g., Keyboard, Mouse, Monitor, etc"
             />
           </div>
+
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Field Type</label>
+            <select
+              className="mt-2 w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              value={form.fieldType}
+              onChange={(e) => setForm((c) => ({ ...c, fieldType: e.target.value }))}
+            >
+              <option value="text">Text Input</option>
+              <option value="dropdown">Dropdown</option>
+            </select>
+          </div>
+
+          {form.fieldType === "dropdown" && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Dropdown Options</label>
+              <div className="mt-2 flex gap-2">
+                <Input
+                  placeholder="Enter option (e.g., Active, Inactive)"
+                  value={form.newOption}
+                  onChange={(e) => setForm((c) => ({ ...c, newOption: e.target.value }))}
+                  className="flex-1"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const trimmed = form.newOption.trim();
+                    if (trimmed && !form.options.includes(trimmed)) {
+                      setForm((c) => ({
+                        ...c,
+                        options: [...c.options, trimmed],
+                        newOption: "",
+                      }));
+                    }
+                  }}
+                  className="rounded-md bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-700"
+                >
+                  Add
+                </button>
+              </div>
+              {form.options.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {form.options.map((option) => (
+                    <div key={option} className="flex items-center justify-between rounded bg-white px-2 py-1">
+                      <span className="text-sm text-slate-700">{option}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((c) => ({
+                            ...c,
+                            options: c.options.filter((o) => o !== option),
+                          }))
+                        }
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="border-t border-slate-200 pt-4">
             <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
@@ -272,17 +350,94 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
                 {form.subColumns.length > 0 && (
                   <div>
                     <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Nested fields</label>
-                    <div className="mt-2 space-y-1">
+                    <div className="mt-2 space-y-2">
                       {form.subColumns.map((subCol) => (
-                        <div key={subCol.key} className="flex items-center justify-between rounded bg-white px-2 py-1">
-                          <span className="text-sm text-slate-700">{subCol.label}</span>
-                          <button
-                            type="button"
-                            onClick={() => removeSubColumn(subCol.key)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
+                        <div key={subCol.key} className="rounded bg-white p-2 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-slate-700">{subCol.label}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeSubColumn(subCol.key)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="space-y-2 pl-2 border-l-2 border-slate-200">
+                            <div>
+                              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Field Type</label>
+                              <select
+                                className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1 text-xs focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                value={subCol.fieldType || "text"}
+                                onChange={(e) =>
+                                  setForm((c) => ({
+                                    ...c,
+                                    subColumns: c.subColumns.map((sc) =>
+                                      sc.key === subCol.key ? { ...sc, fieldType: e.target.value, options: e.target.value === "dropdown" ? sc.options || [] : [] } : sc
+                                    ),
+                                  }))
+                                }
+                              >
+                                <option value="text">Text Input</option>
+                                <option value="dropdown">Dropdown</option>
+                              </select>
+                            </div>
+                            {(subCol.fieldType === "dropdown" || (subCol.fieldType === undefined && subCol.options?.length > 0)) && (
+                              <div>
+                                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Dropdown Options</label>
+                                <div className="mt-1 flex gap-1">
+                                  <input
+                                    type="text"
+                                    placeholder="Option"
+                                    className="flex-1 rounded-md border border-slate-200 px-2 py-1 text-xs focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                    id={`subcol-option-${subCol.key}`}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const input = document.getElementById(`subcol-option-${subCol.key}`);
+                                      const trimmed = (input?.value || "").trim();
+                                      if (trimmed && !(subCol.options || []).includes(trimmed)) {
+                                        setForm((c) => ({
+                                          ...c,
+                                          subColumns: c.subColumns.map((sc) =>
+                                            sc.key === subCol.key ? { ...sc, options: [...(sc.options || []), trimmed] } : sc
+                                          ),
+                                        }));
+                                        if (input) input.value = "";
+                                      }
+                                    }}
+                                    className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700"
+                                  >
+                                    Add
+                                  </button>
+                                </div>
+                                {(subCol.options || []).length > 0 && (
+                                  <div className="mt-1 space-y-0.5">
+                                    {(subCol.options || []).map((opt) => (
+                                      <div key={opt} className="flex items-center justify-between rounded bg-slate-50 px-1 py-0.5">
+                                        <span className="text-xs text-slate-600">{opt}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setForm((c) => ({
+                                              ...c,
+                                              subColumns: c.subColumns.map((sc) =>
+                                                sc.key === subCol.key ? { ...sc, options: (sc.options || []).filter((o) => o !== opt) } : sc
+                                              ),
+                                            }))
+                                          }
+                                          className="text-red-500 hover:text-red-600"
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>

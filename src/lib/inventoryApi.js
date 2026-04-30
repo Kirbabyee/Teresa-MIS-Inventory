@@ -417,19 +417,30 @@ export const getTabTableName = async (tabId) => {
 // Helper to call an admin Edge Function that executes DDL to create a table
 export const callCreateInventoryTable = async (edgeFunctionUrl, tableName, columns = []) => {
   if (!edgeFunctionUrl) throw new Error("Edge function URL is required to create tables.");
-  const { data: sessionData } = await supabase.auth.getSession();
-  const accessToken = sessionData?.session?.access_token;
   const headers = { "Content-Type": "application/json" };
-  if (accessToken) {
-    headers.Authorization = `Bearer ${accessToken}`;
+
+  // Try to get Supabase access token first
+  let hasValidAuth = false;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+      hasValidAuth = true;
+    }
+  } catch (e) {
+    // If getting session fails, fall back to app_session
   }
 
+  // Always include app_session when available so the edge function can resolve role from the browser session too.
   if (typeof window !== "undefined") {
     try {
       const sessionRaw = window.localStorage.getItem("app_session");
-      if (sessionRaw) headers["X-App-Session"] = sessionRaw;
+      if (sessionRaw) {
+        headers["X-App-Session"] = sessionRaw;
+      }
     } catch (e) {
-      // ignore
+      // ignore storage errors
     }
   }
 
@@ -448,19 +459,30 @@ export const callCreateInventoryTable = async (edgeFunctionUrl, tableName, colum
 // Helper to add or remove columns from an existing table
 export const callModifyInventoryTable = async (edgeFunctionUrl, tableName, action = "add", columnsOrKeys = []) => {
   if (!edgeFunctionUrl) throw new Error("Edge function URL is required to modify tables.");
-  const { data: sessionData } = await supabase.auth.getSession();
-  const accessToken = sessionData?.session?.access_token;
   const headers = { "Content-Type": "application/json" };
-  if (accessToken) {
-    headers.Authorization = `Bearer ${accessToken}`;
+
+  // Try to get Supabase access token first
+  let hasValidAuth = false;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+      hasValidAuth = true;
+    }
+  } catch (e) {
+    // If getting session fails, fall back to app_session
   }
 
+  // Always include app_session when available so the edge function can resolve role from the browser session too.
   if (typeof window !== "undefined") {
     try {
       const sessionRaw = window.localStorage.getItem("app_session");
-      if (sessionRaw) headers["X-App-Session"] = sessionRaw;
+      if (sessionRaw) {
+        headers["X-App-Session"] = sessionRaw;
+      }
     } catch (e) {
-      // ignore
+      // ignore storage errors
     }
   }
 
@@ -490,13 +512,22 @@ export const callModifyInventoryTable = async (edgeFunctionUrl, tableName, actio
 // Drop an entire inventory table from the database
 export const callDropInventoryTable = async (edgeFunctionUrl, tableName) => {
   if (!edgeFunctionUrl) throw new Error("Edge function URL is required to drop tables.");
-  const { data: sessionData } = await supabase.auth.getSession();
-  const accessToken = sessionData?.session?.access_token;
   const headers = { "Content-Type": "application/json" };
-  if (accessToken) {
-    headers.Authorization = `Bearer ${accessToken}`;
+
+  // Try to get Supabase access token first
+  let hasValidAuth = false;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+      hasValidAuth = true;
+    }
+  } catch (e) {
+    // If getting session fails, fall back to app_session
   }
 
+  // Always include app_session when available so the edge function can resolve role from the browser session too.
   if (typeof window !== "undefined") {
     try {
       const sessionRaw = window.localStorage.getItem("app_session");

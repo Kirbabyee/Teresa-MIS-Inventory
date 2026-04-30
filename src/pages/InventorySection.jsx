@@ -87,79 +87,44 @@
 
     // Item Modal Component
     function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns }) {
-    const useTemplate = Array.isArray(templateColumns) && templateColumns.length > 0;
     const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
     const [showSaveConfirm, setShowSaveConfirm] = useState(false);
-    const initialSnapshotRef = useRef("");
-    const [legacyForm, setLegacyForm] = useState(() => ({
-        computerNumber: item?.computer_number ?? "",
-        type: item?.type || "",
-        brand: item?.brand || "",
-        description: item?.description || "",
-        status: item?.status || "",
-    }));
     const [dynamicForm, setDynamicForm] = useState({});
-
-    const buildLegacySnapshot = (form) =>
-        JSON.stringify({
-        computerNumber: String(form.computerNumber ?? ""),
-        type: String(form.type ?? ""),
-        brand: String(form.brand ?? ""),
-        description: String(form.description ?? ""),
-        status: String(form.status ?? ""),
-        });
+    const initialSnapshotRef = useRef("");
 
     const buildTemplateSnapshot = (form) =>
-        JSON.stringify(
+      JSON.stringify(
         templateColumns.reduce((accumulator, column) => {
-            if (column.subColumns && column.subColumns.length > 0) {
+          if (column.subColumns && column.subColumns.length > 0) {
             for (const subColumn of column.subColumns) {
-                accumulator[subColumn.physicalKey] = String(form[subColumn.physicalKey] ?? "");
+              accumulator[subColumn.physicalKey] = String(form[subColumn.physicalKey] ?? "");
             }
-            } else {
+          } else {
             accumulator[column.key] = String(form[column.key] ?? "");
-            }
-            return accumulator;
+          }
+          return accumulator;
         }, {})
-        );
+      );
 
-    const currentSnapshot = useTemplate
-        ? buildTemplateSnapshot(dynamicForm)
-        : buildLegacySnapshot(legacyForm);
+    const currentSnapshot = buildTemplateSnapshot(dynamicForm);
     const hasUnsavedChanges = initialSnapshotRef.current !== currentSnapshot;
 
     useEffect(() => {
-        if (useTemplate) {
-        const nextForm = {};
-        for (const column of templateColumns) {
-            if (column.subColumns && column.subColumns.length > 0) {
-            for (const subColumn of column.subColumns) {
-                nextForm[subColumn.physicalKey] = item?.[subColumn.physicalKey] ?? "";
-            }
-            } else {
-            nextForm[column.key] = item?.[column.key] ?? "";
-            }
+      const nextForm = {};
+      for (const column of templateColumns) {
+        if (column.subColumns && column.subColumns.length > 0) {
+          for (const subColumn of column.subColumns) {
+            nextForm[subColumn.physicalKey] = item?.[subColumn.physicalKey] ?? "";
+          }
+        } else {
+          nextForm[column.key] = item?.[column.key] ?? "";
         }
-        setDynamicForm(nextForm);
-        initialSnapshotRef.current = buildTemplateSnapshot(nextForm);
-        setShowDiscardConfirm(false);
-        setShowSaveConfirm(false);
-        return;
-        }
-
-        const nextLegacyForm = {
-        computerNumber: item?.computer_number ?? "",
-        type: item?.type || "",
-        brand: item?.brand || "",
-        description: item?.description || "",
-        status: item?.status || "",
-        };
-
-        setLegacyForm(nextLegacyForm);
-        initialSnapshotRef.current = buildLegacySnapshot(nextLegacyForm);
-        setShowDiscardConfirm(false);
-        setShowSaveConfirm(false);
-    }, [item, templateColumns, useTemplate]);
+      }
+      setDynamicForm(nextForm);
+      initialSnapshotRef.current = buildTemplateSnapshot(nextForm);
+      setShowDiscardConfirm(false);
+      setShowSaveConfirm(false);
+    }, [item, templateColumns]);
 
     useEffect(() => {
         if (!showDiscardConfirm && !showSaveConfirm) {
@@ -204,46 +169,31 @@
     };
 
     const save = async () => {
-        if (useTemplate) {
-        if (!tableName) {
-            throw new Error("Physical table is not ready yet. Please wait for the table mapping to load.");
-        }
+      if (!tableName) {
+        throw new Error("Physical table is not ready yet. Please wait for the table mapping to load.");
+      }
 
-        const recordData = {};
-        for (const column of templateColumns) {
-            if (column.subColumns && column.subColumns.length > 0) {
-            for (const subColumn of column.subColumns) {
-                recordData[subColumn.physicalKey] = castValueByType(
-                dynamicForm[subColumn.physicalKey],
-                subColumn.data_type
-                );
-            }
-            } else {
-            recordData[column.key] = castValueByType(dynamicForm[column.key], column.data_type);
-            }
+      const recordData = {};
+      for (const column of templateColumns) {
+        if (column.subColumns && column.subColumns.length > 0) {
+          for (const subColumn of column.subColumns) {
+            recordData[subColumn.physicalKey] = castValueByType(
+              dynamicForm[subColumn.physicalKey],
+              subColumn.data_type
+            );
+          }
+        } else {
+          recordData[column.key] = castValueByType(dynamicForm[column.key], column.data_type);
         }
+      }
 
-        await upsertInventoryItem({
-            id: item?.id,
-            sectionId: section.id,
-            tableName,
-            recordData,
-        });
-        onSaved();
-        return;
-        }
-
-        await upsertInventoryItem({
+      await upsertInventoryItem({
         id: item?.id,
         sectionId: section.id,
-        computerNumber: Number(legacyForm.computerNumber || 0),
-        type: legacyForm.type,
-        brand: legacyForm.brand.trim(),
-        description: legacyForm.description.trim(),
-        status: legacyForm.status.trim(),
         tableName,
-        });
-        onSaved();
+        recordData,
+      });
+      onSaved();
     };
 
     return (
@@ -255,9 +205,7 @@
                 {item ? "Edit item" : "Add item"}
                 </h3>
                 <p className="text-sm text-slate-500">
-                {useTemplate
-                    ? "This form follows the tab template columns."
-                    : "This matches the legacy laboratory component flow."}
+                This form follows the tab template columns.
                 </p>
             </div>
             <button
@@ -271,178 +219,135 @@
             </div>
 
             <div className="grid gap-4 px-5 py-5 md:grid-cols-2">
-            {useTemplate ? (
-                templateColumns.map((column) =>
-                column.subColumns && column.subColumns.length > 0 ? (
-                    <div
+            {templateColumns.map((column) => {
+              if (column.subColumns && column.subColumns.length > 0) {
+                return (
+                  <div
                     key={column.key}
                     className="md:col-span-2 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4"
-                    >
+                  >
                     <h4 className="text-sm font-semibold text-slate-700">
-                        {column.label}
+                      {column.label}
                     </h4>
                     <div className="grid gap-4 md:grid-cols-3">
-                        {column.subColumns.map((subColumn) => (
+                      {column.subColumns.map((subColumn) => (
                         <div key={subColumn.physicalKey}>
-                            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                             {subColumn.label}
-                            </label>
-                            <Input
-                            className="mt-2"
-                            type={
-                                subColumn.data_type === "date"
-                                ? "date"
-                                : ["int", "integer", "float", "number", "numeric"].includes(
-                                    subColumn.data_type
-                                    )
-                                ? "number"
-                                : "text"
-                            }
-                            value={dynamicForm[subColumn.physicalKey] ?? ""}
-                            onChange={(event) =>
+                          </label>
+                          {subColumn.fieldType === "dropdown" ? (
+                            <select
+                              className="mt-2 w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                              value={dynamicForm[subColumn.physicalKey] ?? ""}
+                              onChange={(event) =>
                                 setDynamicForm((current) => ({
-                                ...current,
-                                [subColumn.physicalKey]: event.target.value,
+                                  ...current,
+                                  [subColumn.physicalKey]: event.target.value,
                                 }))
-                            }
+                              }
+                            >
+                              <option value="">-- Select --</option>
+                              {Array.isArray(subColumn.options) &&
+                                subColumn.options.map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                            </select>
+                          ) : (
+                            <Input
+                              className="mt-2"
+                              type={
+                                subColumn.data_type === "date"
+                                  ? "date"
+                                  : ["int", "integer", "float", "number", "numeric"].includes(
+                                      subColumn.data_type
+                                    )
+                                  ? "number"
+                                  : "text"
+                              }
+                              value={dynamicForm[subColumn.physicalKey] ?? ""}
+                              onChange={(event) =>
+                                setDynamicForm((current) => ({
+                                  ...current,
+                                  [subColumn.physicalKey]: event.target.value,
+                                }))
+                              }
                             />
+                          )}
                         </div>
-                        ))}
+                      ))}
                     </div>
-                    </div>
-                ) : (
-                    <div
-                    key={column.key}
-                    className={column.data_type === "text" ? "md:col-span-2" : ""}
+                  </div>
+                );
+              }
+              return (
+                <div
+                  key={column.key}
+                  className={column.data_type === "text" ? "md:col-span-2" : ""}
+                >
+                  <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    {column.label}
+                  </label>
+                  {column.fieldType === "dropdown" ? (
+                    <select
+                      className="mt-2 w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      value={dynamicForm[column.key] ?? ""}
+                      onChange={(event) =>
+                        setDynamicForm((current) => ({
+                          ...current,
+                          [column.key]: event.target.value,
+                        }))
+                      }
                     >
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                        {column.label}
-                    </label>
-                    {column.data_type === "boolean" || column.data_type === "bool" ? (
-                        <div className="mt-2 flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            checked={Boolean(dynamicForm[column.key])}
-                            onChange={(event) =>
-                            setDynamicForm((current) => ({
-                                ...current,
-                                [column.key]: event.target.checked,
-                            }))
-                            }
-                        />
-                        <span className="text-sm text-slate-600">
-                            {dynamicForm[column.key] ? "True" : "False"}
-                        </span>
-                        </div>
-                    ) : (
-                        <Input
-                        className="mt-2"
-                        type={
-                            column.data_type === "date"
-                            ? "date"
-                            : ["int", "integer", "float", "number", "numeric"].includes(
-                                column.data_type
-                                )
-                            ? "number"
-                            : "text"
-                        }
-                        value={dynamicForm[column.key] ?? ""}
+                      <option value="">-- Select --</option>
+                      {Array.isArray(column.options) &&
+                        column.options.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                    </select>
+                  ) : column.data_type === "boolean" || column.data_type === "bool" ? (
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(dynamicForm[column.key])}
                         onChange={(event) =>
-                            setDynamicForm((current) => ({
+                          setDynamicForm((current) => ({
                             ...current,
-                            [column.key]: event.target.value,
-                            }))
+                            [column.key]: event.target.checked,
+                          }))
                         }
-                        />
-                    )}
+                      />
+                      <span className="text-sm text-slate-600">
+                        {dynamicForm[column.key] ? "True" : "False"}
+                      </span>
                     </div>
-                )
-                )
-            ) : (
-                <>
-                <div>
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Computer #
-                    </label>
+                  ) : (
                     <Input
-                    className="mt-2"
-                    type="number"
-                    min="1"
-                    value={legacyForm.computerNumber}
-                    onChange={(event) =>
-                        setLegacyForm((current) => ({
-                        ...current,
-                        computerNumber: event.target.value,
+                      className="mt-2"
+                      type={
+                        column.data_type === "date"
+                          ? "date"
+                          : ["int", "integer", "float", "number", "numeric"].includes(
+                              column.data_type
+                            )
+                          ? "number"
+                          : "text"
+                      }
+                      value={dynamicForm[column.key] ?? ""}
+                      onChange={(event) =>
+                        setDynamicForm((current) => ({
+                          ...current,
+                          [column.key]: event.target.value,
                         }))
-                    }
+                      }
                     />
+                  )}
                 </div>
-
-                <div>
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Type
-                    </label>
-                    <Input
-                    className="mt-2"
-                    value={legacyForm.type}
-                    onChange={(event) =>
-                        setLegacyForm((current) => ({
-                        ...current,
-                        type: event.target.value,
-                        }))
-                    }
-                    />
-                </div>
-
-                <div>
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Brand
-                    </label>
-                    <Input
-                    className="mt-2"
-                    value={legacyForm.brand}
-                    onChange={(event) =>
-                        setLegacyForm((current) => ({
-                        ...current,
-                        brand: event.target.value,
-                        }))
-                    }
-                    />
-                </div>
-
-                <div>
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Status
-                    </label>
-                    <Input
-                    className="mt-2"
-                    value={legacyForm.status}
-                    onChange={(event) =>
-                        setLegacyForm((current) => ({
-                        ...current,
-                        status: event.target.value,
-                        }))
-                    }
-                    />
-                </div>
-
-                <div className="md:col-span-2">
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Description
-                    </label>
-                    <Textarea
-                    className="mt-2 min-h-[120px]"
-                    value={legacyForm.description}
-                    onChange={(event) =>
-                        setLegacyForm((current) => ({
-                        ...current,
-                        description: event.target.value,
-                        }))
-                    }
-                    />
-                </div>
-                </>
-            )}
+              );
+            })}
             </div>
 
             <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4">
@@ -528,6 +433,7 @@
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [pendingDeleteId, setPendingDeleteId] = useState(null);
     const [isAdmin, setIsAdmin] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
     const hasInitializedSectionRef = useRef(false);
 
     const handleDelete = async (itemId) => {
@@ -593,15 +499,37 @@
     const sections = tab?.sections || [];
     const usesTemplateColumns = templateColumns.length > 0;
     const tableColSpan = templateColumns.length + 1;
-    const totalPages = Math.ceil(items.length / itemsPerPage);
+    
+    // Filter items based on search query
+    const filteredItems = useMemo(() => {
+        if (!searchQuery.trim()) return items;
+        
+        const query = searchQuery.toLowerCase();
+        return items.filter((item) => {
+            for (const column of templateColumns) {
+                if (column.subColumns && column.subColumns.length > 0) {
+                    for (const subColumn of column.subColumns) {
+                        const value = String(item[subColumn.physicalKey] || "").toLowerCase();
+                        if (value.includes(query)) return true;
+                    }
+                } else {
+                    const value = String(item[column.key] || "").toLowerCase();
+                    if (value.includes(query)) return true;
+                }
+            }
+            return false;
+        });
+    }, [items, searchQuery, templateColumns]);
+    
+    const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
     const pageStartIndex = (page - 1) * itemsPerPage;
     const pageEndIndex = pageStartIndex + itemsPerPage;
     const paginatedItems = useMemo(
         () =>
-        items.filter(
+        filteredItems.filter(
             (_, index) => index >= pageStartIndex && index < pageEndIndex
         ),
-        [items, pageStartIndex, pageEndIndex]
+        [filteredItems, pageStartIndex, pageEndIndex]
     );
 
     useEffect(() => {
@@ -642,8 +570,19 @@
 
             const config = await getTabTableConfig(tab.id);
             if (!cancelled) {
-            setTabTableName(config?.tableName || "");
-            setTemplateColumns(normalizeTemplateColumns(config?.columns || []));
+            const normalizedColumns = normalizeTemplateColumns(config?.columns || []);
+            setTemplateColumns(normalizedColumns);
+            
+            // If columns exist but tableName is missing, generate a fallback
+            let resolvedTableName = config?.tableName || "";
+            if (!resolvedTableName && normalizedColumns.length > 0) {
+                resolvedTableName = `inventory_${String(tab.name || "tab")
+                .toLowerCase()
+                .trim()
+                .replace(/[^a-z0-9_]+/g, "_")
+                .replace(/^_+|_+$/g, "")}`;
+            }
+            setTabTableName(resolvedTableName);
             }
 
             if (!nextSection && tab.sections?.length === 0) {
@@ -728,6 +667,11 @@
         cancelled = true;
         };
     }, [selectedSection?.id, tabTableName, refreshKey]);
+
+    // Reset page to 1 when search query changes
+    useEffect(() => {
+        setPage(1);
+    }, [searchQuery]);
 
     useEffect(() => {
         if (page < 1) {
@@ -862,10 +806,10 @@
                 </h2>
                 <p className="text-sm text-slate-500">
                     {selectedSection?.description ||
-                    "This section stores the inventory items."}
+                    ""}
                 </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center flex-wrap">
                 { /*<button
                     type="button"
                     onClick={() => setGridEditMode(!gridEditMode)}
@@ -877,6 +821,14 @@
                 >
                     {gridEditMode ? "Edit Mode ON" : "Edit Mode OFF"}
                 </button> */}
+                
+                <input
+                    type="text"
+                    placeholder="Search items..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm placeholder-slate-400 focus:border-[#4a1111] focus:outline-none focus:ring-1 focus:ring-[#4a1111] w-full sm:w-auto min-w-[300px]"
+                />
 
                 <button
                     type="button"
@@ -910,10 +862,10 @@
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center text-sm text-rose-700">
                     {itemsError}
                 </div>
-                ) : items.length === 0 ? (
+                ) : filteredItems.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-300 py-20 text-center">
                     <p className="text-slate-500 font-medium">
-                    No records found for this section.
+                    {searchQuery ? "No items match your search." : "No records found for this section."}
                     </p>
                 </div>
                 ) : (
@@ -958,16 +910,72 @@
                                         <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
                                             {subColumn.label}
                                         </div>
-                                        <div className="
-    mt-1 font-medium text-slate-900
-    ">
+                                        {subColumn.fieldType === "dropdown" ? (
+                                          <select
+                                            className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                            value={item?.[subColumn.physicalKey] ?? ""}
+                                            onChange={async (e) => {
+                                              const newValue = e.target.value;
+                                              const recordData = { [subColumn.physicalKey]: newValue };
+                                              try {
+                                                await upsertInventoryItem({
+                                                  id: item.id,
+                                                  sectionId: selectedSection.id,
+                                                  tableName,
+                                                  recordData,
+                                                });
+                                                setRefreshKey((current) => current + 1);
+                                              } catch (err) {
+                                                console.error("Failed to update item:", err);
+                                              }
+                                            }}
+                                          >
+                                            <option value="">-- Select --</option>
+                                            {Array.isArray(subColumn.options) &&
+                                              subColumn.options.map((option) => (
+                                                <option key={option} value={option}>
+                                                  {option}
+                                                </option>
+                                              ))}
+                                          </select>
+                                        ) : (
+                                          <div className="mt-1 font-medium text-slate-900">
                                             {formatCellValue(
                                             item?.[subColumn.physicalKey]
                                             )}
-                                        </div>
+                                          </div>
+                                        )}
                                         </div>
                                     ))}
                                     </div>
+                                ) : column.fieldType === "dropdown" ? (
+                                    <select
+                                      className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                      value={item?.[column.key] ?? ""}
+                                      onChange={async (e) => {
+                                        const newValue = e.target.value;
+                                        const recordData = { [column.key]: newValue };
+                                        try {
+                                          await upsertInventoryItem({
+                                            id: item.id,
+                                            sectionId: selectedSection.id,
+                                            tableName,
+                                            recordData,
+                                          });
+                                          setRefreshKey((current) => current + 1);
+                                        } catch (err) {
+                                          console.error("Failed to update item:", err);
+                                        }
+                                      }}
+                                    >
+                                      <option value="">-- Select --</option>
+                                      {Array.isArray(column.options) &&
+                                        column.options.map((option) => (
+                                          <option key={option} value={option}>
+                                            {option}
+                                          </option>
+                                        ))}
+                                    </select>
                                 ) : (
                                     <span>
                                     {formatCellValue(item?.[column.key])}
