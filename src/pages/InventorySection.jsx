@@ -1,17 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Edit, Plus, Trash2, X } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import ExcelJS from "exceljs";
-import { saveAs } from "file-saver";
-import {
-  deleteInventoryItem,
-  fetchInventoryItems,
-  getTabTableConfig,
-  upsertInventoryItem,
-  useInventoryCatalog,
-} from "@/lib/inventoryApi";
+    import { useEffect, useMemo, useRef, useState } from "react";
+    import { Link, useParams, useSearchParams } from "react-router-dom";
+    import { Edit, Plus, Trash2, X } from "lucide-react";
+    import { Input } from "@/components/ui/input";
+    import { Textarea } from "@/components/ui/textarea";
+    import {
+    deleteInventoryItem,
+    fetchInventoryItems,
+    getTabTableConfig,
+    isCurrentUserAdmin,
+    upsertInventoryItem,
+    useInventoryCatalog,
+    } from "@/lib/inventoryApi";
 
     // Utility functions
     const normalizeSubColumns = (subColumns = [], parentKey = "") => {
@@ -86,250 +85,29 @@ import {
     const modalCloseButtonClass =
     "inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700";
 
-const legacyTableColumns = [
-  { key: "computer_number", label: "Computer #" },
-  { key: "type", label: "Type" },
-  { key: "brand", label: "Brand" },
-  { key: "description", label: "Description" },
-  { key: "status", label: "Status" },
-];
+    // Item Modal Component
+    function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns }) {
+    const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+    const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+    const [dynamicForm, setDynamicForm] = useState({});
+    const initialSnapshotRef = useRef("");
 
-const componentRowPriority = ["brand", "description", "remarks", "status"];
-
-const normalizeForMatch = (value = "") =>
-  String(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
-
-const numbersOnly = (value = "") => String(value).replace(/\D/g, "");
-
-const isComputerIdentifierColumn = (column) => {
-  const text = normalizeForMatch(`${column.key} ${column.label}`);
-  return (
-    !column.subColumns?.length &&
-    /(computerno|computernumber|pcno|pcnumber|assetno|assetnumber)/.test(text)
-  );
-};
-
-const isComputerNumberField = (field) => {
-  const text = normalizeForMatch(`${field?.key || ""} ${field?.label || ""}`);
-  return /(computerno|computernumber|pcno|pcnumber)/.test(text);
-};
-
-const getRowSortIndex = (field) => {
-  const text = normalizeForMatch(`${field.key} ${field.label}`);
-  const priorityIndex = componentRowPriority.findIndex((key) => text.includes(key));
-  return priorityIndex === -1 ? componentRowPriority.length : priorityIndex;
-};
-
-// Item Modal Component
-function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns, existingItems = [] }) {
-  const useTemplate = Array.isArray(templateColumns) && templateColumns.length > 0;
-  const [legacyForm, setLegacyForm] = useState(() => ({
-    computerNumber: item?.computer_number ?? "",
-    type: item?.type || "",
-    brand: item?.brand || "",
-    description: item?.description || "",
-    status: item?.status || "",
-  }));
-  const [dynamicForm, setDynamicForm] = useState({});
-  const [errors, setErrors] = useState({});
-  const [step, setStep] = useState(1);
-  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const totalPages = 3;
-
-  const templatePages = useMemo(() => {
-    if (!useTemplate) return [];
-
-    const totalInputs = templateColumns.reduce(
-      (count, column) => count + (column.subColumns?.length || 1),
-      0
-    );
-    const maxPerPage = Math.max(1, Math.ceil(totalInputs / totalPages));
-    const pages = [];
-    let current = [];
-    let currentCount = 0;
-
-    for (const column of templateColumns) {
-      const columnInputs = column.subColumns?.length || 1;
-      if (
-        current.length > 0 &&
-        currentCount + columnInputs > maxPerPage &&
-        pages.length < totalPages - 1
-      ) {
-        pages.push(current);
-        current = [];
-        currentCount = 0;
-      }
-      current.push(column);
-      currentCount += columnInputs;
-    }
-
-    pages.push(current);
-    while (pages.length < totalPages) {
-      pages.push([]);
-    }
-
-    return pages;
-  }, [templateColumns, totalPages, useTemplate]);
-
-  const currentTemplateColumns = useMemo(
-    () => templatePages[step - 1] || templatePages[0] || [],
-    [templatePages, step]
-  );
-
-  const legacyFormFields = [
-    { key: "computerNumber", label: "Computer #", type: "number" },
-    { key: "type", label: "Type", type: "text" },
-    { key: "brand", label: "Brand", type: "text" },
-    { key: "status", label: "Status", type: "text" },
-    { key: "description", label: "Description", type: "textarea" },
-  ];
-
-  const legacyPages = [
-    ["computerNumber", "type"],
-    ["brand", "status"],
-    ["description"],
-  ];
-
-  const currentLegacyFields = legacyFormFields.filter((field) =>
-    legacyPages[step - 1]?.includes(field.key)
-  );
-
-  const isNumberType = (type) =>
-    ["int", "integer", "float", "number", "numeric"].includes(type);
-
-  const getTemplateComputerColumn = (columns = templateColumns) =>
-    columns.find((column) => isComputerNumberField(column)) || null;
-
-  const hasDuplicateComputerNumber = (value, key) => {
-    const cleanedValue = numbersOnly(value);
-    if (!cleanedValue) return false;
-
-    return existingItems.some((existingItem) => {
-      if (!existingItem || existingItem.id === item?.id) return false;
-      const existingValue = key
-        ? existingItem?.[key]
-        : existingItem?.computer_number ?? existingItem?.computerNumber;
-      return numbersOnly(existingValue) === cleanedValue;
-    });
-  };
-
-  const validateTemplateColumns = (columnsToValidate = templateColumns) => {
-    const nextErrors = {};
-
-    for (const column of columnsToValidate) {
-      if (column.subColumns && column.subColumns.length > 0) {
-        for (const subColumn of column.subColumns) {
-          const value = dynamicForm[subColumn.physicalKey];
-          const label = subColumn.label || subColumn.key;
-
-          if (subColumn.data_type === "boolean" || subColumn.data_type === "bool") {
-            continue;
+    const buildTemplateSnapshot = (form) =>
+      JSON.stringify(
+        templateColumns.reduce((accumulator, column) => {
+          if (column.subColumns && column.subColumns.length > 0) {
+            for (const subColumn of column.subColumns) {
+              accumulator[subColumn.physicalKey] = String(form[subColumn.physicalKey] ?? "");
+            }
+          } else {
+            accumulator[column.key] = String(form[column.key] ?? "");
           }
-
-          if (value === undefined || value === null || String(value).trim() === "") {
-            nextErrors[subColumn.physicalKey] = `${label} is required.`;
-            continue;
-          }
-
-          if (isComputerNumberField(subColumn) && !/^\d+$/.test(String(value))) {
-            nextErrors[subColumn.physicalKey] = `${label} must contain numbers only.`;
-            continue;
-          }
-
-          if (isNumberType(subColumn.data_type) && Number.isNaN(Number(value))) {
-            nextErrors[subColumn.physicalKey] = `${label} must be a valid number.`;
-          }
-        }
-      } else {
-        const value = dynamicForm[column.key];
-        const label = column.label || column.key;
-
-        if (column.data_type === "boolean" || column.data_type === "bool") {
-          continue;
-        }
-
-        if (value === undefined || value === null || String(value).trim() === "") {
-          nextErrors[column.key] = `${label} is required.`;
-          continue;
-        }
-
-        if (isComputerNumberField(column) && !/^\d+$/.test(String(value))) {
-          nextErrors[column.key] = `${label} must contain numbers only.`;
-          continue;
-        }
-
-        if (isNumberType(column.data_type) && Number.isNaN(Number(value))) {
-          nextErrors[column.key] = `${label} must be a valid number.`;
-        }
-      }
-    }
-
-    return nextErrors;
-  };
-
- 
-
-  const validateLegacyFields = (fieldsToValidate = legacyFormFields) => {
-    const nextErrors = {};
-
-    for (const field of fieldsToValidate) {
-      const value = legacyForm[field.key];
-      if (field.key === "description") {
-        if (!value || !String(value).trim()) {
-          nextErrors.description = "Description is required.";
-        }
-        continue;
-      }
-
-      if (!value || String(value).trim() === "") {
-        nextErrors[field.key] = `${field.label} is required.`;
-        continue;
-      }
-
-      if (field.key === "computerNumber" && !/^\d+$/.test(String(value))) {
-        nextErrors[field.key] = `${field.label} must contain numbers only.`;
-      }
-    }
-
-    return nextErrors;
-  };
-
-  const validateStep = (validateAll = false) => {
-    const nextErrors = useTemplate
-      ? validateTemplateColumns(validateAll ? templateColumns : currentTemplateColumns)
-      : validateLegacyFields(validateAll ? legacyFormFields : currentLegacyFields);
-
-    if (useTemplate) {
-      const computerColumn = getTemplateComputerColumn(
-        validateAll ? templateColumns : currentTemplateColumns
+          return accumulator;
+        }, {})
       );
-      if (computerColumn) {
-        const value = dynamicForm[computerColumn.key];
-        if (
-          value !== undefined &&
-          value !== null &&
-          String(value).trim() !== "" &&
-          hasDuplicateComputerNumber(value, computerColumn.key)
-        ) {
-          nextErrors[computerColumn.key] = `${computerColumn.label} already exists in this section.`;
-        }
-      }
-    } else {
-      const shouldValidateComputerNumber =
-        validateAll || currentLegacyFields.some((field) => field.key === "computerNumber");
-      if (
-        shouldValidateComputerNumber &&
-        legacyForm.computerNumber &&
-        hasDuplicateComputerNumber(legacyForm.computerNumber)
-      ) {
-        nextErrors.computerNumber = "Computer # already exists in this section.";
-      }
-    }
 
-    setErrors(nextErrors);
-    return nextErrors;
-  };
+    const currentSnapshot = buildTemplateSnapshot(dynamicForm);
+    const hasUnsavedChanges = initialSnapshotRef.current !== currentSnapshot;
 
     useEffect(() => {
       const nextForm = {};
@@ -825,187 +603,10 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
 
         loadTabState();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [tab, searchParams]);
-
-  const exportToExcel = async () => {
-  if (!items.length) return;
-
-  try {
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Inventory");
-
-    // ===== TITLE =====
-    const headerColor = { argb: "FF4A1111" }; // maroon color (same as UI)
-
-    worksheet.mergeCells("A1:N1");
-    const titleCell1 = worksheet.getCell("A1");
-    titleCell1.value = "COLEGIO DE STA. TERESA DE AVILA, INC.";
-    titleCell1.alignment = { horizontal: "center", vertical: "middle" };
-    titleCell1.font = {
-      bold: true,
-      size: 16,
-      color: headerColor,
-      name: "Arial",
-    };
-
-    worksheet.mergeCells("A2:N2");
-    const subtitleCell2 = worksheet.getCell("A2");
-    subtitleCell2.value = "1177 Quirino Highway, Brgy. Kaligayahan, Novaliches";
-    subtitleCell2.alignment = { horizontal: "center" };
-    subtitleCell2.font = {
-      bold: true,
-      size: 12,
-      color: headerColor,
-      name: "Arial",
-    };
-
-    worksheet.mergeCells("A3:N3");
-    const subtitleCell3 = worksheet.getCell("A3");
-    subtitleCell3.value = "Quezon City 1124 Philippines";
-    subtitleCell3.alignment = { horizontal: "center" };
-    subtitleCell3.font = {
-      bold: true,
-      size: 8,
-      color: headerColor,
-      name: "Arial",
-    };
-
-    worksheet.mergeCells("A4:N4");
-    const subtitleCell4 = worksheet.getCell("A4");
-    subtitleCell4.value = "Tel. No. (02) 8-275-3916";
-    subtitleCell4.alignment = { horizontal: "center" };
-    subtitleCell4.font = {
-      bold: true,
-      size: 8,
-      color: headerColor,
-      name: "Arial",
-    };
-
-    worksheet.mergeCells("A5:N5");
-    const subtitleCell5 = worksheet.getCell("A5");
-    subtitleCell5.value = "Email: officialcstaregistrar@gmail.com";
-    subtitleCell5.alignment = { horizontal: "center" };
-    subtitleCell5.font = {
-      bold: true,
-      size: 8,
-      color: headerColor,
-      name: "Arial",
-    };
-
-    worksheet.mergeCells("A6:N6");
-    const subtitleCell6 = worksheet.getCell("A6");
-    subtitleCell6.value = `INVENTORY OF ${tab?.name?.toUpperCase() || "INVENTORY"}`;
-    subtitleCell6.alignment = { horizontal: "center" };
-    subtitleCell6.font = {
-      bold: true,
-      size: 11,
-      color: headerColor,
-      name: "Arial",
-    };
-
-    worksheet.mergeCells("A7:N7");
-    const dateCell7 = worksheet.getCell("A7");
-    dateCell7.value = "AS OF " + new Date().toLocaleDateString();
-    dateCell7.alignment = { horizontal: "center" };
-    dateCell7.font = {
-      bold: true,
-      size: 11,
-      color: headerColor,
-      name: "Arial",
-    };
-
-    worksheet.addRow([]);
-
-    // ===== HEADER =====
-    const headers = [
-      "COMPUTER NO.",
-      "COMPONENT",
-      ...componentMatrix.componentColumns.map((c) => c.label.toUpperCase()),
-    ];
-
-    const headerRow = worksheet.addRow(headers);
-
-    headerRow.eachCell((cell) => {
-      cell.font = { bold: true };
-      cell.alignment = { horizontal: "center", vertical: "middle" };
-      cell.border = {
-        top: { style: "thin" },
-        bottom: { style: "thin" },
-        left: { style: "thin" },
-        right: { style: "thin" },
-      };
-    });
-
-    // ===== DATA =====
-    let currentRowIndex = worksheet.lastRow.number + 1;
-
-    items.forEach((item, index) => {
-      const computerNo =
-        item?.[componentMatrix.computerColumn?.key] ||
-        item?.computer_number ||
-        index + 1;
-
-      const startRow = currentRowIndex;
-
-      componentMatrix.rowFields.forEach((rowField) => {
-        const rowData = ["", rowField.label];
-
-        componentMatrix.componentColumns.forEach((col) => {
-          const sub = col.subColumns.find((s) => s.key === rowField.key);
-          rowData.push(item?.[sub?.physicalKey] || "");
-        });
-
-        const row = worksheet.addRow(rowData);
-
-        row.eachCell((cell) => {
-          cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-          cell.border = {
-            top: { style: "thin" },
-            bottom: { style: "thin" },
-            left: { style: "thin" },
-            right: { style: "thin" },
-          };
-        });
-
-        currentRowIndex++;
-      });
-
-      const endRow = currentRowIndex - 1;
-
-      // 🔥 Merge Computer No. vertically
-      worksheet.mergeCells(`A${startRow}:A${endRow}`);
-      const cell = worksheet.getCell(`A${startRow}`);
-      cell.value = computerNo;
-      cell.alignment = { horizontal: "center", vertical: "middle" };
-      cell.font = { bold: true };
-    });
-
-    // ===== COLUMN WIDTH =====
-    worksheet.columns = [
-      { width: 15 },
-      { width: 15 },
-      ...componentMatrix.componentColumns.map(() => ({ width: 20 })),
-    ];
-
-    // ===== DOWNLOAD =====
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
-      type:
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-
-    saveAs(blob, "Inventory_Report.xlsx");
-
-    // ===== SUCCESS MODAL =====
-    setSuccessMessage("Excel report exported successfully!");
-  } catch (error) {
-    console.error("Export failed:", error);
-    setSuccessMessage("Export failed. Please try again.");
-  }
-};
+        return () => {
+        cancelled = true;
+        };
+    }, [tab, searchParams]);
 
     useEffect(() => {
         if (!tab) return;
@@ -1197,36 +798,37 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
             </div>
             </div>
 
-        <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">
-                {selectedSection?.name || "Select a section"}
-              </h2>
-              <p className="text-sm text-slate-500">
-                {selectedSection?.description ||
-                  "This section stores the inventory items."}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              { /*<button
-                type="button"
-                onClick={() => setGridEditMode(!gridEditMode)}
-                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200 ring-1 shadow-sm ${
-                  gridEditMode
-                    ? "bg-blue-600 text-white ring-blue-500 hover:bg-blue-700"
-                    : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-              >
-                {gridEditMode ? "Edit Mode ON" : "Edit Mode OFF"}
-              </button> */}
-
-              <button
-                onClick={exportToExcel}
-                className="rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700"
-              >
-                Export Excel
-              </button>
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                <h2 className="text-lg font-semibold text-slate-900">
+                    {selectedSection?.name || "Select a section"}
+                </h2>
+                <p className="text-sm text-slate-500">
+                    {selectedSection?.description ||
+                    ""}
+                </p>
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center flex-wrap">
+                { /*<button
+                    type="button"
+                    onClick={() => setGridEditMode(!gridEditMode)}
+                    className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200 ring-1 shadow-sm ${
+                    gridEditMode
+                        ? "bg-blue-600 text-white ring-blue-500 hover:bg-blue-700"
+                        : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50 hover:text-slate-900"
+                    }`}
+                >
+                    {gridEditMode ? "Edit Mode ON" : "Edit Mode OFF"}
+                </button> */}
+                
+                <input
+                    type="text"
+                    placeholder="Search items..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm placeholder-slate-400 focus:border-[#4a1111] focus:outline-none focus:ring-1 focus:ring-[#4a1111] w-full sm:w-auto min-w-[300px]"
+                />
 
                 <button
                     type="button"
