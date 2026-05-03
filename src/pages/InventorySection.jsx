@@ -3,6 +3,8 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Edit, Plus, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 import {
   deleteInventoryItem,
   fetchInventoryItems,
@@ -265,6 +267,8 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
 
     return nextErrors;
   };
+
+ 
 
   const validateLegacyFields = (fieldsToValidate = legacyFormFields) => {
     const nextErrors = {};
@@ -876,6 +880,183 @@ export default function InventorySection() {
     };
   }, [tab, searchParams]);
 
+  const exportToExcel = async () => {
+  if (!items.length) return;
+
+  try {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Inventory");
+
+    // ===== TITLE =====
+    const headerColor = { argb: "FF4A1111" }; // maroon color (same as UI)
+
+    worksheet.mergeCells("A1:N1");
+    const titleCell1 = worksheet.getCell("A1");
+    titleCell1.value = "COLEGIO DE STA. TERESA DE AVILA, INC.";
+    titleCell1.alignment = { horizontal: "center", vertical: "middle" };
+    titleCell1.font = {
+      bold: true,
+      size: 16,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.mergeCells("A2:N2");
+    const subtitleCell2 = worksheet.getCell("A2");
+    subtitleCell2.value = "1177 Quirino Highway, Brgy. Kaligayahan, Novaliches";
+    subtitleCell2.alignment = { horizontal: "center" };
+    subtitleCell2.font = {
+      bold: true,
+      size: 12,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.mergeCells("A3:N3");
+    const subtitleCell3 = worksheet.getCell("A3");
+    subtitleCell3.value = "Quezon City 1124 Philippines";
+    subtitleCell3.alignment = { horizontal: "center" };
+    subtitleCell3.font = {
+      bold: true,
+      size: 8,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.mergeCells("A4:N4");
+    const subtitleCell4 = worksheet.getCell("A4");
+    subtitleCell4.value = "Tel. No. (02) 8-275-3916";
+    subtitleCell4.alignment = { horizontal: "center" };
+    subtitleCell4.font = {
+      bold: true,
+      size: 8,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.mergeCells("A5:N5");
+    const subtitleCell5 = worksheet.getCell("A5");
+    subtitleCell5.value = "Email: officialcstaregistrar@gmail.com";
+    subtitleCell5.alignment = { horizontal: "center" };
+    subtitleCell5.font = {
+      bold: true,
+      size: 8,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.mergeCells("A6:N6");
+    const subtitleCell6 = worksheet.getCell("A6");
+    subtitleCell6.value = `INVENTORY OF ${tab?.name?.toUpperCase() || "INVENTORY"}`;
+    subtitleCell6.alignment = { horizontal: "center" };
+    subtitleCell6.font = {
+      bold: true,
+      size: 11,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.mergeCells("A7:N7");
+    const dateCell7 = worksheet.getCell("A7");
+    dateCell7.value = "AS OF " + new Date().toLocaleDateString();
+    dateCell7.alignment = { horizontal: "center" };
+    dateCell7.font = {
+      bold: true,
+      size: 11,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.addRow([]);
+
+    // ===== HEADER =====
+    const headers = [
+      "COMPUTER NO.",
+      "COMPONENT",
+      ...componentMatrix.componentColumns.map((c) => c.label.toUpperCase()),
+    ];
+
+    const headerRow = worksheet.addRow(headers);
+
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = {
+        top: { style: "thin" },
+        bottom: { style: "thin" },
+        left: { style: "thin" },
+        right: { style: "thin" },
+      };
+    });
+
+    // ===== DATA =====
+    let currentRowIndex = worksheet.lastRow.number + 1;
+
+    items.forEach((item, index) => {
+      const computerNo =
+        item?.[componentMatrix.computerColumn?.key] ||
+        item?.computer_number ||
+        index + 1;
+
+      const startRow = currentRowIndex;
+
+      componentMatrix.rowFields.forEach((rowField) => {
+        const rowData = ["", rowField.label];
+
+        componentMatrix.componentColumns.forEach((col) => {
+          const sub = col.subColumns.find((s) => s.key === rowField.key);
+          rowData.push(item?.[sub?.physicalKey] || "");
+        });
+
+        const row = worksheet.addRow(rowData);
+
+        row.eachCell((cell) => {
+          cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+          cell.border = {
+            top: { style: "thin" },
+            bottom: { style: "thin" },
+            left: { style: "thin" },
+            right: { style: "thin" },
+          };
+        });
+
+        currentRowIndex++;
+      });
+
+      const endRow = currentRowIndex - 1;
+
+      // 🔥 Merge Computer No. vertically
+      worksheet.mergeCells(`A${startRow}:A${endRow}`);
+      const cell = worksheet.getCell(`A${startRow}`);
+      cell.value = computerNo;
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.font = { bold: true };
+    });
+
+    // ===== COLUMN WIDTH =====
+    worksheet.columns = [
+      { width: 15 },
+      { width: 15 },
+      ...componentMatrix.componentColumns.map(() => ({ width: 20 })),
+    ];
+
+    // ===== DOWNLOAD =====
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    saveAs(blob, "Inventory_Report.xlsx");
+
+    // ===== SUCCESS MODAL =====
+    setSuccessMessage("Excel report exported successfully!");
+  } catch (error) {
+    console.error("Export failed:", error);
+    setSuccessMessage("Export failed. Please try again.");
+  }
+};
+
   useEffect(() => {
     if (!tab) return;
     const sectionQuery = searchParams.get("section");
@@ -1070,6 +1251,13 @@ export default function InventorySection() {
               >
                 {gridEditMode ? "Edit Mode ON" : "Edit Mode OFF"}
               </button> */}
+
+              <button
+                onClick={exportToExcel}
+                className="rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700"
+              >
+                Export Excel
+              </button>
 
               <button
                 type="button"
