@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/api/supabaseClient";
+import { createEmployeeInviteAndSendEmail } from "@/lib/employeeInvites";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +21,7 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
   const [middleName, setMiddleName] = useState("");
   const [suffix, setSuffix] = useState("");
   const [email, setEmail] = useState("");
-  const [accountType, setAccountType] = useState("user");
+  const [accountType, setAccountType] = useState("staff");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
@@ -32,24 +33,26 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
       setMiddleName(account.middle_name || "");
       setSuffix(account.suffix || "");
       setEmail(account.email || "");
-      setAccountType(account.account_type || "user");
+      setAccountType(account.account_type || "staff");
     } else {
       setFirstName("");
       setLastName("");
       setMiddleName("");
       setSuffix("");
       setEmail("");
-      setAccountType("user");
+      setAccountType("staff");
     }
     setError("");
-  }, [account, showConfirm]);
+  }, [account]);
 
   const isValid = () => {
     return firstName.trim() && lastName.trim() && email.trim();
   };
 
   const handleSave = async () => {
+    console.log("handleSave called");
     if (!isValid()) {
+      console.log("Validation failed");
       setError("First name, last name, and email are required.");
       return;
     }
@@ -57,6 +60,7 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
     try {
       setSaving(true);
       setError("");
+        console.log("Starting save with:", { firstName, lastName, email, accountType });
 
       const payload = {
         first_name: firstName.trim(),
@@ -68,16 +72,39 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
       };
 
       if (account?.id) {
+          console.log("Updating account:", account.id);
         const { error } = await supabase
           .from("user_accounts")
           .update(payload)
           .eq("id", account.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase
+          console.log("Creating new account");
+        const { data: insertedAccount, error: insertError } = await supabase
           .from("user_accounts")
-          .insert([payload]);
-        if (error) throw error;
+          .insert([payload])
+          .select("id")
+          .single();
+          console.log("Insert response - error:", insertError, "data:", insertedAccount);
+        if (insertError) throw insertError;
+
+        try {
+          console.log("Sending activation invite email");
+          await createEmployeeInviteAndSendEmail({
+            employeeId: insertedAccount.id,
+            email: payload.email,
+            toName: `${payload.first_name || ""} ${payload.last_name || ""}`.trim() || "User",
+            role: payload.account_type,
+          });
+          console.log("Account email sent");
+        } catch (emailError) {
+          console.error("Account email failed:", emailError);
+          await supabase.from("user_accounts").delete().eq("id", insertedAccount.id);
+          setError(
+            `Account created, but email failed: ${emailError.message || "Unknown email error"}`,
+          );
+          return;
+        }
       }
 
       onSaved();
@@ -188,9 +215,7 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
                 onChange={(e) => setAccountType(e.target.value)}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
               >
-                <option value="viewer">Viewer</option>
-                <option value="user">User</option>
-                <option value="manager">Manager</option>
+                <option value="staff">Staff</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
@@ -231,7 +256,10 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleSave}
+                onClick={() => {
+                 console.log("Confirm button clicked");
+                 handleSave();
+                }}
               disabled={saving}
             >
               {saving ? "Saving..." : "Confirm"}

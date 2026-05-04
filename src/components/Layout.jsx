@@ -230,7 +230,7 @@ export default function Layout() {
       items.splice(1, 0, {
         label: "Manage",
         icon: Users,
-        path: "/employees",
+        path: "/manage/accounts",
         children: [
           {
             label: "User Accounts",

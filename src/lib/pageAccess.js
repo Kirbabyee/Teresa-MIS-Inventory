@@ -8,7 +8,7 @@ export const ALL_PAGES = [
   { path: "/", label: "Dashboard", section: "Core" },
 
   // Manage
-  { path: "/employees", label: "Employee Masterlist", section: "Manage" },
+  { path: "/manage/accounts", label: "User Accounts", section: "Manage" },
   { path: "/project-sites", label: "Project Sites", section: "Manage" },
   { path: "/departments", label: "Departments", section: "Manage" },
   { path: "/positions", label: "Positions", section: "Manage" },
@@ -59,7 +59,7 @@ export const DEFAULT_EMPLOYEE_PAGES = ["/"];
  * Pages only superadmins can access
  */
 export const ADMIN_ONLY_PAGES = [
-  "/employees",
+  "/manage/accounts",
   "/project-sites",
   "/departments",
   "/positions",

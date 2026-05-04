@@ -1,5 +1,5 @@
 import emailjs from "@emailjs/browser";
-import { supabase } from "@/api/backendClient";
+import { supabase } from "@/api/supabaseClient";
 
 const INVITE_VALIDITY_DAYS = 7;
 
@@ -116,7 +116,9 @@ export async function createEmployeeInviteAndSendEmail({
   const inviteTokenHash = await hashInviteToken(inviteToken);
   const expiresAt = new Date(Date.now() + INVITE_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  const { error: inviteError } = await supabase.from("employee_auth_invites").insert([
+  console.log("[Invite] Creating invite with:", { employeeId, email: normalizedEmail, expiresAt });
+
+  const { error: inviteError, data: inviteData } = await supabase.from("user_auth_invites").insert([
     {
       employee_id: employeeId,
       email: normalizedEmail,
@@ -124,6 +126,8 @@ export async function createEmployeeInviteAndSendEmail({
       expires_at: expiresAt,
     },
   ]);
+
+  console.log("[Invite] Insert response - error:", inviteError, "data:", inviteData);
 
   if (inviteError) {
     throw new Error(`Failed to create invite token: ${inviteError.message}`);
@@ -150,8 +154,9 @@ export async function createEmployeeInviteAndSendEmail({
       ? `Assigned details: ${assignmentItems.join(" | ")}.`
       : "",
     invite_link: inviteLink,
-    company_name: "Ark Industries",
-    support_email: import.meta.env.VITE_SUPPORT_EMAIL || "support@arkindustries.com",
+    activation_link: inviteLink,
+    company_name: "Colegio de Sta. Teresa de Avila",
+    support_email: import.meta.env.VITE_SUPPORT_EMAIL || "st.teresa.invitation@gmail.com",
     expires_in_days: String(INVITE_VALIDITY_DAYS),
   };
 
@@ -166,7 +171,7 @@ export async function createEmployeeInviteAndSendEmail({
     );
   } catch (error) {
     await supabase
-      .from("employee_auth_invites")
+      .from("user_auth_invites")
       .delete()
       .eq("invite_token_hash", inviteTokenHash)
       .is("used_at", null);

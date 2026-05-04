@@ -22,6 +22,7 @@ import Laboratory3 from "./pages/Laboratory3";
 import Laboratory4 from "./pages/Laboratory4";
 import Laboratory5 from "./pages/Laboratory5";
 import UserAccounts from "./pages/UserAccounts";
+import ActivateAccount from "./pages/ActivateAccount";
 
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
@@ -105,6 +106,10 @@ function App() {
     <QueryClientProvider client={queryClientInstance}>
       <Router>
         <Routes>
+          <Route
+            path="/activate-account"
+            element={<ActivateAccount />}
+          />
           <Route
             path="/login"
             element={authenticated ? <Navigate to="/" replace /> : <Login />}
