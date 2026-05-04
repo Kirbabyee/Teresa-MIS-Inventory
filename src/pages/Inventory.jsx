@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Edit, FolderOpen, Plus, Trash2, X } from "lucide-react";
+import { CheckCircle, Edit, FolderOpen, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,6 +8,7 @@ import {
   deleteInventorySection,
   deleteInventoryTab,
   makeUniqueSlug,
+  slugify,
   upsertInventorySection,
   upsertInventoryTab,
   useInventoryCatalog,
@@ -17,11 +18,15 @@ import {
   getInventoryCreateTableEndpoint,
   getInventoryModifyTableEndpoint,
   getTabTableConfig,
+  notifyInventoryCatalogChanged,
 } from "@/lib/inventoryApi";
 import { isCurrentUserAdmin } from "@/lib/inventoryApi";
 
 const iconButtonClass =
   "inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700";
+
+const sanitizeNameInput = (value = "") => String(value).replace(/[^a-zA-Z0-9]/g, "");
+const hasOnlyLettersNumbers = (value = "") => /^[a-zA-Z0-9]+$/.test(String(value).trim());
 
 const normalizeColumnConfig = (column) => ({
   key: String(column?.key || "").trim(),
@@ -230,8 +235,11 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
             <Input
               className="mt-2"
               value={form.label}
-              onChange={(e) => setForm((c) => ({ ...c, label: e.target.value, key: labelToKey(e.target.value) }))}
-              placeholder="e.g., Keyboard, Mouse, Monitor, etc"
+              onChange={(e) => {
+                const nextLabel = sanitizeNameInput(e.target.value);
+                setForm((c) => ({ ...c, label: nextLabel, key: labelToKey(nextLabel) }));
+              }}
+              placeholder="e.g., Keyboard"
             />
           </div>
 
@@ -316,7 +324,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
                     <Input
                       placeholder="Field Name (e.g., Brand)"
                       value={form.newSubColLabel}
-                      onChange={(e) => setForm((c) => ({ ...c, newSubColLabel: e.target.value }))}
+                      onChange={(e) => setForm((c) => ({ ...c, newSubColLabel: sanitizeNameInput(e.target.value) }))}
                       className="flex-1"
                     />
                     <button
@@ -587,8 +595,8 @@ function SectionModal({ section, onClose, onSave }) {
             <Input
               className="mt-2"
               value={form.name}
-              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-              placeholder="Laboratory 1"
+              onChange={(event) => setForm((current) => ({ ...current, name: sanitizeNameInput(event.target.value) }))}
+              placeholder="Laboratory1"
             />
           </div>
           <div>
@@ -653,9 +661,11 @@ function SectionModal({ section, onClose, onSave }) {
   );
 }
 
-function TabModal({ tab, onClose, onSave }) {
+function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState({});
   const initialSnapshotRef = useRef("");
   const [tabForm, setTabForm] = useState({
     name: tab?.name || "",
@@ -722,6 +732,8 @@ function TabModal({ tab, onClose, onSave }) {
     setShowColumnModal(false);
     setShowDiscardConfirm(false);
     setShowSaveConfirm(false);
+    setSaving(false);
+    setErrors({});
     initialSnapshotRef.current = buildTabSnapshot(nextTabForm, nextSections, nextColumns);
   }, [tab]);
 
@@ -758,6 +770,7 @@ function TabModal({ tab, onClose, onSave }) {
 
   const deleteSection = (index) => {
     setSections((currentSections) => currentSections.filter((_, currentIndex) => currentIndex !== index));
+    setErrors((current) => ({ ...current, sections: "" }));
     if (editingSectionIndex === index) setEditingSectionIndex(null);
   };
 
@@ -771,14 +784,82 @@ function TabModal({ tab, onClose, onSave }) {
 
   const deleteColumn = (index) => {
     setColumns((currentColumns) => currentColumns.filter((_, currentIndex) => currentIndex !== index));
+    setErrors((current) => ({ ...current, columns: "" }));
     if (editingColumnIndex === index) setEditingColumnIndex(null);
   };
 
-  const handleSaveTab = () => {
-    onSave({ ...tabForm, sections, columns });
+  const validateTabForm = () => {
+    const nextErrors = {};
+    const name = tabForm.name.trim();
+    const normalizedSlug = slugify(tabForm.slug || name);
+    const duplicateTab = existingTabs.some(
+      (currentTab) =>
+        currentTab?.id !== tab?.id &&
+        (String(currentTab?.name || "").trim().toLowerCase() === name.toLowerCase() ||
+          currentTab?.slug === normalizedSlug)
+    );
+    const sectionNames = sections.map((section) => String(section?.name || "").trim().toLowerCase()).filter(Boolean);
+    const hasInvalidSectionName = sections.some(
+      (section) => section?.name && !hasOnlyLettersNumbers(section.name)
+    );
+    const columnKeys = columns.map((column) => normalizeColumnConfig(column).key).filter(Boolean);
+    const hasInvalidColumnName = columns.some(
+      (column) => column?.label && !hasOnlyLettersNumbers(column.label)
+    );
+
+    if (!name) {
+      nextErrors.name = "Tab name is required.";
+    } else if (!hasOnlyLettersNumbers(name)) {
+      nextErrors.name = "Use letters and numbers only.";
+    } else if (name.length > 80) {
+      nextErrors.name = "Tab name must be 80 characters or fewer.";
+    } else if (duplicateTab) {
+      nextErrors.name = "A tab with this name already exists.";
+    }
+
+    if (tabForm.description.trim().length > 500) {
+      nextErrors.description = "Description must be 500 characters or fewer.";
+    }
+
+    if (sections.length === 0) {
+      nextErrors.sections = "Add at least one section.";
+    } else if (sectionNames.length !== sections.length) {
+      nextErrors.sections = "Every section needs a name.";
+    } else if (hasInvalidSectionName) {
+      nextErrors.sections = "Section names can use letters and numbers only.";
+    } else if (new Set(sectionNames).size !== sectionNames.length) {
+      nextErrors.sections = "Section names must be unique.";
+    }
+
+    if (columns.length === 0) {
+      nextErrors.columns = "Add at least one column.";
+    } else if (columnKeys.length !== columns.length) {
+      nextErrors.columns = "Every column needs a name.";
+    } else if (hasInvalidColumnName) {
+      nextErrors.columns = "Column names can use letters and numbers only.";
+    } else if (new Set(columnKeys).size !== columnKeys.length) {
+      nextErrors.columns = "Column names must be unique.";
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleSaveTab = async () => {
+    if (saving) return;
+    if (!validateTabForm()) return;
+
+    setSaving(true);
+    try {
+      await onSave({ ...tabForm, sections, columns });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const requestClose = () => {
+    if (saving) return;
+
     if (hasUnsavedChanges) {
       setShowDiscardConfirm(true);
       return;
@@ -796,27 +877,35 @@ function TabModal({ tab, onClose, onSave }) {
     setShowDiscardConfirm(false);
   };
 
-  const requestSave = () => {
+  const requestSave = async () => {
+    if (saving) return;
+    if (!validateTabForm()) return;
+
     if (hasUnsavedChanges) {
       setShowSaveConfirm(true);
       return;
     }
 
-    handleSaveTab();
+    await handleSaveTab();
   };
 
   const confirmSave = async () => {
+    if (saving) return;
+    if (!validateTabForm()) return;
+
     setShowSaveConfirm(false);
     await handleSaveTab();
   };
 
   const cancelSave = () => {
+    if (saving) return;
+
     setShowSaveConfirm(false);
   };
 
  return (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
-    <div className="flex h-full w-full max-w-2xl max-h-[85vh] flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl ring-1 ring-slate-200">
+    <div className="flex h-full w-full max-w-2xl max-h-[85vh] flex-col overflow-hidden rounded-[8px] bg-white shadow-2xl ring-1 ring-slate-200">
 
       {/* Header */}
       <div className="flex items-center justify-between rounded-t-[28px] border-b border-slate-100 bg-slate-50 px-6 py-5">
@@ -828,7 +917,8 @@ function TabModal({ tab, onClose, onSave }) {
         </div>
         <button
           onClick={requestClose}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-100 hover:text-slate-700"
+          disabled={saving}
+          className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <X className="h-5 w-5" />
         </button>
@@ -844,12 +934,15 @@ function TabModal({ tab, onClose, onSave }) {
               Tab Name
             </label>
             <Input
-              className="mt-2"
+              className={`mt-2 ${errors.name ? "border-rose-300 focus-visible:ring-rose-500" : ""}`}
               value={tabForm.name}
-              onChange={(e) =>
-                setTabForm((c) => ({ ...c, name: e.target.value }))
-              }
+              onChange={(e) => {
+                setTabForm((c) => ({ ...c, name: sanitizeNameInput(e.target.value) }));
+                setErrors((current) => ({ ...current, name: "" }));
+              }}
+              aria-invalid={Boolean(errors.name)}
             />
+            {errors.name && <p className="mt-1 text-xs text-rose-600">{errors.name}</p>}
           </div>
 
           <div>
@@ -857,19 +950,25 @@ function TabModal({ tab, onClose, onSave }) {
               Description (Optional)
             </label>
             <Textarea
-              className="mt-2 min-h-[100px]"
+              className={`mt-2 min-h-[100px] ${errors.description ? "border-rose-300 focus-visible:ring-rose-500" : ""}`}
               value={tabForm.description}
-              onChange={(e) =>
-                setTabForm((c) => ({ ...c, description: e.target.value }))
-              }
+              onChange={(e) => {
+                setTabForm((c) => ({ ...c, description: e.target.value }));
+                setErrors((current) => ({ ...current, description: "" }));
+              }}
+              aria-invalid={Boolean(errors.description)}
             />
+            {errors.description && <p className="mt-1 text-xs text-rose-600">{errors.description}</p>}
           </div>
         </div>
 
         {/* Sections */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-semibold text-slate-900">Sections</h4>
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">Sections</h4>
+              {errors.sections && <p className="mt-1 text-sm text-rose-600">{errors.sections}</p>}
+            </div>
             <button
                 type="button"
                 onClick={() => {
@@ -937,7 +1036,10 @@ function TabModal({ tab, onClose, onSave }) {
         {/* Columns */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
+              {errors.columns && <p className="mt-1 text-sm text-rose-600">{errors.columns}</p>}
+            </div>
             <button
                 type="button"
                 onClick={() => {
@@ -1001,15 +1103,18 @@ function TabModal({ tab, onClose, onSave }) {
       <div className="flex justify-end gap-3 rounded-b-[28px] border-t border-slate-100 bg-slate-50 px-6 py-4">
         <button
           onClick={requestClose}
-          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+          disabled={saving}
+          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Cancel
         </button>
         <button
           onClick={requestSave}
-          className="rounded-full bg-[#4a1111] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#3f0f0f]"
+          disabled={saving}
+          className="inline-flex items-center gap-2 rounded-full bg-[#4a1111] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#3f0f0f] disabled:cursor-wait disabled:bg-[#7a4b4b]"
         >
-          Save Tab
+          {saving && <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />}
+          {saving ? (tab ? "Saving..." : "Adding...") : "Save Tab"}
         </button>
       </div>
     </div>
@@ -1024,6 +1129,8 @@ export default function Inventory() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pendingDeleteTab, setPendingDeleteTab] = useState(null);
+  const [deletingTabId, setDeletingTabId] = useState(null);
+  const [successMessage, setSuccessMessage] = useState("");
 
   const editingTab = useMemo(() => tabs.find((tab) => tab.slug === editingSlug) || null, [tabs, editingSlug]);
   const ddlEndpoint = getInventoryCreateTableEndpoint();
@@ -1100,9 +1207,6 @@ export default function Inventory() {
       }
     }
 
-    setShowModal(false);
-    setEditingSlug("");
-    refetch();
     // If creating a new tab, create the physical table and persist tab->table mapping
     if (!currentTab) {
       try {
@@ -1153,22 +1257,36 @@ export default function Inventory() {
     setShowModal(false);
     setEditingSlug("");
     refetch();
+    notifyInventoryCatalogChanged();
+    setSuccessMessage(currentTab ? "Inventory tab updated successfully." : "Inventory tab added successfully.");
   };
 
   const handleDelete = (tab) => {
+    if (deletingTabId) return;
+
     setPendingDeleteTab(tab);
     setShowDeleteConfirm(true);
   };
 
   const confirmDelete = async () => {
-    if (!pendingDeleteTab?.id) return;
-    setShowDeleteConfirm(false);
-    await deleteInventoryTab(pendingDeleteTab.id);
-    setPendingDeleteTab(null);
-    refetch();
+    if (!pendingDeleteTab?.id || deletingTabId) return;
+
+    setDeletingTabId(pendingDeleteTab.id);
+    try {
+      await deleteInventoryTab(pendingDeleteTab.id);
+      setShowDeleteConfirm(false);
+      setSuccessMessage(`${pendingDeleteTab.name || "Inventory tab"} deleted successfully.`);
+      setPendingDeleteTab(null);
+      refetch();
+      notifyInventoryCatalogChanged();
+    } finally {
+      setDeletingTabId(null);
+    }
   };
 
   const cancelDelete = () => {
+    if (deletingTabId) return;
+
     setShowDeleteConfirm(false);
     setPendingDeleteTab(null);
   };
@@ -1199,7 +1317,7 @@ export default function Inventory() {
 
   return (
     <>
-    <div className="p-6 space-y-5">
+    <div className="p-6">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Inventory Manager</h1>
@@ -1259,10 +1377,15 @@ export default function Inventory() {
                         <button
                           type="button"
                           onClick={() => handleDelete(tab)}
+                          disabled={Boolean(deletingTabId)}
                           className={iconButtonClass}
                           title="Delete Tab"
                         >
-                          <Trash2 className="h-4 w-4 text-rose-500" />
+                          {deletingTabId === tab.id ? (
+                            <span className="h-4 w-4 rounded-full border-2 border-rose-200 border-t-rose-600 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4 text-rose-500" />
+                          )}
                         </button>
                       </div>
                     </td>
@@ -1277,6 +1400,7 @@ export default function Inventory() {
       {showModal && (
         <TabModal
           tab={editingTab}
+          existingTabs={tabs}
           onClose={() => setShowModal(false)}
           onSave={handleSave}
         />
@@ -1293,16 +1417,42 @@ export default function Inventory() {
               <button
                 type="button"
                 onClick={cancelDelete}
-                className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                disabled={Boolean(deletingTabId)}
+                className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={confirmDelete}
-                className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700"
+                disabled={Boolean(deletingTabId)}
+                className="inline-flex items-center gap-2 rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-wait disabled:bg-rose-400"
               >
-                Delete
+                {deletingTabId && <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />}
+                {deletingTabId ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+            <div className="px-5 py-5 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                <CheckCircle className="h-7 w-7" />
+              </div>
+              <h3 className="mt-4 text-lg font-semibold text-slate-900">Success</h3>
+              <p className="mt-2 text-sm text-slate-500">{successMessage}</p>
+            </div>
+            <div className="border-t border-slate-200 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setSuccessMessage("")}
+                className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700"
+              >
+                OK
               </button>
             </div>
           </div>

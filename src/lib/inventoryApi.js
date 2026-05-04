@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/api/supabaseClient";
 
+export const INVENTORY_CATALOG_CHANGED_EVENT = "inventory-catalog-changed";
+
 const DEFAULT_CREATE_TABLE_ENDPOINT = "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/create-inventory-table";
 const DEFAULT_MODIFY_TABLE_ENDPOINT = "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/modify-inventory-table";
 const DEFAULT_DROP_TABLE_ENDPOINT = "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/drop-inventory-table";
@@ -97,6 +99,11 @@ export const fetchInventoryCatalog = async () => {
   return normalizeCatalog(tabsResult.data || [], sectionsResult.data || []);
 };
 
+export const notifyInventoryCatalogChanged = () => {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(INVENTORY_CATALOG_CHANGED_EVENT));
+};
+
 export const useInventoryCatalog = () => {
   const [tabs, setTabs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -133,6 +140,19 @@ export const useInventoryCatalog = () => {
       cancelled = true;
     };
   }, [refreshIndex]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const handleCatalogChanged = () => {
+      setRefreshIndex((current) => current + 1);
+    };
+
+    window.addEventListener(INVENTORY_CATALOG_CHANGED_EVENT, handleCatalogChanged);
+    return () => {
+      window.removeEventListener(INVENTORY_CATALOG_CHANGED_EVENT, handleCatalogChanged);
+    };
+  }, []);
 
   const refetch = () => setRefreshIndex((current) => current + 1);
 
