@@ -112,7 +112,7 @@ export default function UserAccounts() {
             setEditAccount(null);
             setShowModal(true);
           }}
-          className="gap-2"
+          className="gap-2 bg-[#4a1111] hover:bg-[#3f0f0f] text-white"
         >
           <Plus className="w-4 h-4" /> Add Account
         </Button>

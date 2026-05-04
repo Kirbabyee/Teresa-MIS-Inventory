@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/api/supabaseClient";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -91,18 +92,27 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-black/50"
+        className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm"
         onClick={onClose}
       />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-          <div className="px-6 py-4 border-b border-slate-200">
-            <h2 className="text-lg font-semibold text-slate-900">
-              {account ? "Edit User Account" : "Add User Account"}
-            </h2>
+        <div className="flex h-full w-full max-w-2xl max-h-[85vh] flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl ring-1 ring-slate-200">
+        <div className="flex items-center justify-between rounded-t-[28px] border-b border-slate-100 bg-slate-50 px-6 py-5">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">User account</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-900">
+                {account ? "Edit User Account" : "Add User Account"}
+              </h2>
+            </div>
+            <button
+              onClick={onClose}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
 
-          <div className="px-6 py-4 space-y-4 max-h-96 overflow-y-auto">
+          <div className="flex-1 min-h-0 px-6 py-6 space-y-4 overflow-y-auto">
             {error && (
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {error}
@@ -186,20 +196,22 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
             </div>
           </div>
 
-          <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
+          <div className="flex justify-end gap-3 rounded-b-[28px] border-t border-slate-100 bg-slate-50 px-6 py-4">
             <Button
               variant="outline"
               onClick={onClose}
               disabled={saving}
+              className="rounded-full border-slate-200 text-slate-700 hover:bg-slate-100"
             >
               Cancel
             </Button>
-            <Button
+            <button
               onClick={() => setShowConfirm(true)}
               disabled={saving || !isValid()}
+              className="rounded-full bg-[#4a1111] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#3f0f0f] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {saving ? "Saving..." : account ? "Update Account" : "Create Account"}
-            </Button>
+            </button>
           </div>
         </div>
       </div>

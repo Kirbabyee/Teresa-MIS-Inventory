@@ -814,87 +814,115 @@ function TabModal({ tab, onClose, onSave }) {
     setShowSaveConfirm(false);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 p-5">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900">{tab ? "Edit inventory tab" : "Add inventory tab"}</h3>
-          </div>
-          <button type="button" onClick={requestClose} className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+ return (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+    <div className="flex h-full w-full max-w-2xl max-h-[85vh] flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl ring-1 ring-slate-200">
 
-        <div className="grid gap-4 px-5 py-5 md:grid-cols-2">
-          <div className="md:col-span-2">
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Tab name</label>
+      {/* Header */}
+      <div className="flex items-center justify-between rounded-t-[28px] border-b border-slate-100 bg-slate-50 px-6 py-5">
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Inventory tab</p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-900">
+            {tab ? "Edit Inventory Tab" : "New Inventory Tab"}
+          </h3>
+        </div>
+        <button
+          onClick={requestClose}
+          className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-100 hover:text-slate-700"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 min-h-0 space-y-8 px-6 py-6 overflow-y-auto">
+
+        {/* Form */}
+        <div className="space-y-5">
+          <div>
+            <label className="block text-xs font-medium text-slate-600">
+              Tab Name
+            </label>
             <Input
               className="mt-2"
               value={tabForm.name}
-              onChange={(event) => setTabForm((current) => ({ ...current, name: event.target.value }))}
-              placeholder=""
+              onChange={(e) =>
+                setTabForm((c) => ({ ...c, name: e.target.value }))
+              }
             />
           </div>
-          <div className="md:col-span-2">
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Description (Optional)</label>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600">
+              Description (Optional)
+            </label>
             <Textarea
-              className="mt-2 min-h-[96px]"
+              className="mt-2 min-h-[100px]"
               value={tabForm.description}
-              onChange={(event) => setTabForm((current) => ({ ...current, description: event.target.value }))}
-              placeholder=""
+              onChange={(e) =>
+                setTabForm((c) => ({ ...c, description: e.target.value }))
+              }
             />
           </div>
         </div>
 
-        <div className="border-t border-slate-200 px-5 py-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h4 className="text-sm font-semibold text-slate-900">Sections</h4>
-              <p className="text-sm text-slate-500"></p>
-            </div>
+        {/* Sections */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-slate-900">Sections</h4>
             <button
-              type="button"
-              onClick={() => {
-                setSectionToEdit(null);
-                setEditingSectionIndex(null);
-                setShowSectionModal(true);
-              }}
-              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              <Plus className="h-4 w-4" />
-              Add Section
+                type="button"
+                onClick={() => {
+                  setSectionToEdit(null);
+                  setEditingSectionIndex(null);
+                  setShowSectionModal(true);
+                }}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <Plus className="h-4 w-4 text-slate-500" />
+                Add Section
             </button>
           </div>
 
-          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+          <div className="overflow-hidden rounded-lg border border-slate-200">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
                 <tr>
-                  <th className="px-4 py-3">Section Name</th>
-                  <th className="px-4 py-3">Description</th>
+                  <th className="px-4 py-3 text-left">Section</th>
+                  <th className="px-4 py-3 text-left">Description</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+
+              <tbody className="divide-y divide-slate-100">
                 {sections.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-8 text-center text-slate-500" colSpan={3}>
-                      Add atleast one or more sections.
+                    <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
+                      No sections added.
                     </td>
                   </tr>
                 ) : (
-                  sections.map((currentSection, index) => (
-                    <tr key={currentSection.id || currentSection.slug || index} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 font-medium text-slate-900">{currentSection.name}</td>
-                      <td className="px-4 py-3 text-slate-600">{currentSection.description || "—"}</td>
+                  sections.map((s, i) => (
+                    <tr key={s.id || s.slug || i} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-medium text-slate-900">
+                        {s.name}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {s.description || "—"}
+                      </td>
                       <td className="px-4 py-3">
-                        <div className="flex justify-end gap-2">
-                          <button type="button" onClick={() => editSection(index)} className={iconButtonClass} title="Edit Section">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => editSection(i)}
+                            className="p-2 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          >
                             <Edit className="h-4 w-4" />
                           </button>
-                          <button type="button" onClick={() => deleteSection(index)} className={iconButtonClass} title="Delete Section">
-                            <Trash2 className="h-4 w-4 text-rose-500" />
+                          <button
+                            onClick={() => deleteSection(i)}
+                            className="p-2 rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       </td>
@@ -906,52 +934,57 @@ function TabModal({ tab, onClose, onSave }) {
           </div>
         </div>
 
-        <div className="border-t border-slate-200 px-5 py-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
-            </div>
+        {/* Columns */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
             <button
-              type="button"
-              onClick={() => {
-                setColumnToEdit(null);
-                setEditingColumnIndex(null);
-                setShowColumnModal(true);
-              }}
-              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              <Plus className="h-4 w-4" />
-              Add Column
+                type="button"
+                onClick={() => {
+                  setColumnToEdit(null);
+                  setEditingColumnIndex(null);
+                  setShowColumnModal(true);
+                }}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <Plus className="h-4 w-4 text-slate-500" />
+                Add Column
             </button>
           </div>
 
-          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+          <div className="overflow-hidden rounded-lg border border-slate-200">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
                 <tr>
-                 
-                  <th className="px-4 py-3">Name</th>
+                  <th className="px-4 py-3 text-left">Name</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+
+              <tbody className="divide-y divide-slate-100">
                 {columns.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
-                       Add at least one column.
+                    <td colSpan={2} className="px-4 py-8 text-center text-slate-500">
+                      No columns added.
                     </td>
                   </tr>
                 ) : (
-                  columns.map((currentColumn, index) => (
-                    <tr key={currentColumn.id || currentColumn.key || index} className="hover:bg-slate-50">          
-                      <td className="px-4 py-3 text-slate-600">{currentColumn.label}</td>
+                  columns.map((c, i) => (
+                    <tr key={c.id || c.key || i} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-slate-700">{c.label}</td>
                       <td className="px-4 py-3">
-                        <div className="flex justify-end gap-2">
-                          <button type="button" onClick={() => editColumn(index)} className={iconButtonClass} title="Edit Column">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => editColumn(i)}
+                            className="p-2 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          >
                             <Edit className="h-4 w-4" />
                           </button>
-                          <button type="button" onClick={() => deleteColumn(index)} className={iconButtonClass} title="Delete Column">
-                            <Trash2 className="h-4 w-4 text-rose-500" />
+                          <button
+                            onClick={() => deleteColumn(i)}
+                            className="p-2 rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       </td>
@@ -961,128 +994,27 @@ function TabModal({ tab, onClose, onSave }) {
               </tbody>
             </table>
           </div>
-        </div>
-
-        <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4">
-          <button type="button" onClick={requestClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
-            Cancel
-          </button>
-          <button type="button" onClick={requestSave} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
-            Save Tab
-          </button>
         </div>
       </div>
 
-      {showDiscardConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
-            <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              You have unsaved changes. If you close now, those changes will be lost.
-            </p>
-            <div className="mt-4 flex justify-end gap-3">
-              <button type="button" onClick={cancelDiscard} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
-                Keep editing
-              </button>
-              <button type="button" onClick={confirmDiscard} className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700">
-                Discard
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showSaveConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
-            <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Are you sure you want to save these changes?
-            </p>
-            <div className="mt-4 flex justify-end gap-3">
-              <button type="button" onClick={cancelSave} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
-                Cancel
-              </button>
-              <button type="button" onClick={confirmSave} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showSectionModal && (
-        <SectionModal
-          section={sectionToEdit}
-          onClose={() => {
-            setShowSectionModal(false);
-            setSectionToEdit(null);
-            setEditingSectionIndex(null);
-          }}
-          onSave={(form) => {
-            const name = form.name.trim();
-            if (!name) return;
-
-            setSections((currentSections) => {
-              const currentSection = editingSectionIndex !== null ? currentSections[editingSectionIndex] : null;
-              const nextSlug = makeUniqueSlug(
-                name,
-                currentSections.map((section) => section.slug),
-                currentSection?.slug || "",
-              );
-
-              const nextSection = currentSection
-                ? { ...currentSection, name, slug: nextSlug, description: form.description.trim() }
-                : { name, slug: nextSlug, description: form.description.trim() };
-
-              const nextSections = [...currentSections];
-              if (editingSectionIndex !== null && nextSections[editingSectionIndex]) {
-                nextSections[editingSectionIndex] = nextSection;
-              } else {
-                nextSections.push(nextSection);
-              }
-
-              return nextSections;
-            });
-
-            setShowSectionModal(false);
-            setSectionToEdit(null);
-            setEditingSectionIndex(null);
-          }}
-        />
-      )}
-      {showColumnModal && (
-        <ColumnRowModal
-          column={columnToEdit}
-          existingColumns={columns}
-          onClose={() => {
-            setShowColumnModal(false);
-            setColumnToEdit(null);
-            setEditingColumnIndex(null);
-          }}
-          onSave={(colForm) => {
-            const key = (colForm.key || "").trim();
-            if (!key) return;
-
-            const nextColumn = normalizeColumnConfig({ ...colForm, key });
-            setColumns((currentColumns) => {
-              const next = [...currentColumns];
-              if (editingColumnIndex !== null && next[editingColumnIndex]) {
-                next[editingColumnIndex] = nextColumn;
-              } else {
-                next.push(nextColumn);
-              }
-              return next;
-            });
-
-            setShowColumnModal(false);
-            setColumnToEdit(null);
-            setEditingColumnIndex(null);
-          }}
-        />
-      )}
+      {/* Footer */}
+      <div className="flex justify-end gap-3 rounded-b-[28px] border-t border-slate-100 bg-slate-50 px-6 py-4">
+        <button
+          onClick={requestClose}
+          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={requestSave}
+          className="rounded-full bg-[#4a1111] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#3f0f0f]"
+        >
+          Save Tab
+        </button>
+      </div>
     </div>
-  );
+  </div>
+);
 }
 
 export default function Inventory() {
@@ -1273,7 +1205,7 @@ export default function Inventory() {
           <h1 className="text-2xl font-bold text-slate-900">Inventory Manager</h1>
           <p className="text-slate-500 text-sm">{tabs.length} total tabs</p>
         </div>
-        <Button onClick={() => setShowModal(true)} className="gap-2">
+        <Button onClick={() => setShowModal(true)} className="gap-2 bg-[#4a1111] hover:bg-[#3f0f0f] text-white">
           <Plus className="w-4 h-4" /> Add Tab
         </Button>
       </div>
