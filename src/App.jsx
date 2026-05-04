@@ -145,7 +145,7 @@ function App() {
                 </AdminRoute>
               }
             />
-            <Route path="laboratory/borrowing" element={<Borrowing />} />
+            <Route path="borrowing" element={<Borrowing />} />
             <Route path="inventory" element={<Navigate to="/manage/inventory" replace />} />
             <Route path="inventory/manage" element={<Navigate to="/manage/inventory" replace />} />
             <Route path="inventory/:sectionSlug" element={<InventorySection />} />
