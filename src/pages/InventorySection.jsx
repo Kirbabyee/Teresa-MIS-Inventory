@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Edit, Plus, Trash2, X } from "lucide-react";
+import { Edit, Plus, Trash2, X, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import ExcelJS from "exceljs";
@@ -93,6 +93,8 @@ const legacyTableColumns = [
   { key: "description", label: "Description" },
   { key: "status", label: "Status" },
 ];
+
+const semesterOptions = ["First Semester", "Second Semester"];
 
 const componentRowPriority = ["brand", "description", "remarks", "status"];
 
@@ -745,6 +747,42 @@ export default function InventorySection() {
   const [gridEditMode, setGridEditMode] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [selectedSectionsForExport, setSelectedSectionsForExport] = useState([]);
+  const [selectedExportSemester, setSelectedExportSemester] = useState(semesterOptions[0]);
+  const [exportingMultiple, setExportingMultiple] = useState(false);
+  const [exportableItems, setExportableItems] = useState({});
+  const [checkingExportItems, setCheckingExportItems] = useState(false);
+
+  const checkAllSectionsForItems = async () => {
+    if (!sections.length) {
+      setExportableItems({});
+      return;
+    }
+
+    setCheckingExportItems(true);
+    try {
+      const itemsMap = {};
+      for (const section of sections) {
+        const sectionItems = await fetchInventoryItems(
+          section.id,
+          tabTableName || null
+        );
+        itemsMap[section.slug] = sectionItems && sectionItems.length > 0;
+      }
+      setExportableItems(itemsMap);
+    } catch (err) {
+      console.error("Error checking export items:", err);
+      setExportableItems({});
+    } finally {
+      setCheckingExportItems(false);
+    }
+  };
+
+  const hasAnyExportableItems = useMemo(
+    () => Object.values(exportableItems).some((hasItems) => hasItems),
+    [exportableItems]
+  );
 
   const requestDelete = (itemId) => {
     setPendingDeleteId(itemId);
@@ -880,6 +918,181 @@ export default function InventorySection() {
     };
   }, [tab, searchParams]);
 
+const createInventorySheet = async (
+  workbook,
+  sheetName,
+  sectionName,
+  sectionTableName,
+  sectionItems,
+  columns,
+  semester
+) => {
+    const worksheet = workbook.addWorksheet(sheetName);
+    
+    const headerColor = { argb: "FF4A1111" }; // maroon color (same as UI)
+
+    worksheet.mergeCells("A1:N1");
+    const titleCell1 = worksheet.getCell("A1");
+    titleCell1.value = "COLEGIO DE STA. TERESA DE AVILA, INC.";
+    titleCell1.alignment = { horizontal: "center", vertical: "middle" };
+    titleCell1.font = {
+      bold: true,
+      size: 16,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.mergeCells("A2:N2");
+    const subtitleCell2 = worksheet.getCell("A2");
+    subtitleCell2.value = "1177 Quirino Highway, Brgy. Kaligayahan, Novaliches";
+    subtitleCell2.alignment = { horizontal: "center" };
+    subtitleCell2.font = {
+      bold: true,
+      size: 12,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.mergeCells("A3:N3");
+    const subtitleCell3 = worksheet.getCell("A3");
+    subtitleCell3.value = "Quezon City 1124 Philippines";
+    subtitleCell3.alignment = { horizontal: "center" };
+    subtitleCell3.font = {
+      bold: true,
+      size: 8,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.mergeCells("A4:N4");
+    const subtitleCell4 = worksheet.getCell("A4");
+    subtitleCell4.value = "Tel. No. (02) 8-275-3916";
+    subtitleCell4.alignment = { horizontal: "center" };
+    subtitleCell4.font = {
+      bold: true,
+      size: 8,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.mergeCells("A5:N5");
+    const subtitleCell5 = worksheet.getCell("A5");
+    subtitleCell5.value = "Email: officialcstaregistrar@gmail.com";
+    subtitleCell5.alignment = { horizontal: "center" };
+    subtitleCell5.font = {
+      bold: true,
+      size: 8,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.mergeCells("A6:N6");
+    const subtitleCell6 = worksheet.getCell("A6");
+    subtitleCell6.value = `INVENTORY OF ${sectionName?.toUpperCase() || "INVENTORY"}`;
+    subtitleCell6.alignment = { horizontal: "center" };
+    subtitleCell6.font = {
+      bold: true,
+      size: 11,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.mergeCells("A7:N7");
+    const semesterCell7 = worksheet.getCell("A7");
+    semesterCell7.value = semester?.toUpperCase() || "FIRST SEMESTER";
+    semesterCell7.alignment = { horizontal: "center" };
+    semesterCell7.font = {
+      bold: true,
+      size: 11,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.mergeCells("A8:N8");
+    const dateCell8 = worksheet.getCell("A8");
+    dateCell8.value = "AS OF " + new Date().toLocaleDateString();
+    dateCell8.alignment = { horizontal: "center" };
+    dateCell8.font = {
+      bold: true,
+      size: 11,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.addRow([]);
+
+    // ===== HEADER =====
+    const headers = [
+      "COMPUTER NO.",
+      "COMPONENT",
+      ...columns.componentColumns.map((c) => c.label.toUpperCase()),
+    ];
+
+    const headerRow = worksheet.addRow(headers);
+
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = {
+        top: { style: "thin" },
+        bottom: { style: "thin" },
+        left: { style: "thin" },
+        right: { style: "thin" },
+      };
+    });
+
+    // ===== DATA =====
+    let currentRowIndex = worksheet.lastRow.number + 1;
+
+    sectionItems.forEach((item, index) => {
+      const computerNo =
+        item?.[columns.computerColumn?.key] ||
+        item?.computer_number ||
+        index + 1;
+
+      const startRow = currentRowIndex;
+
+      columns.rowFields.forEach((rowField) => {
+        const rowData = ["", rowField.label];
+
+        columns.componentColumns.forEach((col) => {
+          const sub = col.subColumns.find((s) => s.key === rowField.key);
+          rowData.push(item?.[sub?.physicalKey] || "");
+        });
+
+        const row = worksheet.addRow(rowData);
+
+        row.eachCell((cell) => {
+          cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+          cell.border = {
+            top: { style: "thin" },
+            bottom: { style: "thin" },
+            left: { style: "thin" },
+            right: { style: "thin" },
+          };
+        });
+
+        currentRowIndex++;
+      });
+
+      const endRow = currentRowIndex - 1;
+
+      // 🔥 Merge Computer No. vertically
+      worksheet.mergeCells(`A${startRow}:A${endRow}`);
+      const cell = worksheet.getCell(`A${startRow}`);
+      cell.value = computerNo;
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.font = { bold: true };
+    });
+
+    // ===== COLUMN WIDTH =====
+    worksheet.columns = [
+      { width: 15 },
+      { width: 15 },
+      ...columns.componentColumns.map(() => ({ width: 20 })),
+    ];
+  };
+
   const exportToExcel = async () => {
   if (!items.length) return;
 
@@ -957,10 +1170,21 @@ export default function InventorySection() {
     };
 
     worksheet.mergeCells("A7:N7");
-    const dateCell7 = worksheet.getCell("A7");
-    dateCell7.value = "AS OF " + new Date().toLocaleDateString();
-    dateCell7.alignment = { horizontal: "center" };
-    dateCell7.font = {
+    const semesterCell7 = worksheet.getCell("A7");
+    semesterCell7.value = selectedExportSemester.toUpperCase();
+    semesterCell7.alignment = { horizontal: "center" };
+    semesterCell7.font = {
+      bold: true,
+      size: 11,
+      color: headerColor,
+      name: "Arial",
+    };
+
+    worksheet.mergeCells("A8:N8");
+    const dateCell8 = worksheet.getCell("A8");
+    dateCell8.value = "AS OF " + new Date().toLocaleDateString();
+    dateCell8.alignment = { horizontal: "center" };
+    dateCell8.font = {
       bold: true,
       size: 11,
       color: headerColor,
@@ -1055,7 +1279,110 @@ export default function InventorySection() {
     console.error("Export failed:", error);
     setSuccessMessage("Export failed. Please try again.");
   }
-};
+  };
+
+  const exportMultipleSections = async () => {
+    if (selectedSectionsForExport.length === 0) {
+      setSuccessMessage("Please select at least one section to export.");
+      return;
+    }
+
+    setExportingMultiple(true);
+    try {
+      const workbook = new ExcelJS.Workbook();
+
+      for (const sectionSlug of selectedSectionsForExport) {
+        const section = sections.find((s) => s.slug === sectionSlug);
+        if (!section) continue;
+
+        // Fetch items for this section
+        const sectionItems = await fetchInventoryItems(
+          section.id,
+          tabTableName || null
+        );
+
+        if (!sectionItems || sectionItems.length === 0) continue;
+
+        // Create component matrix for this section
+        const sectionComponentMatrix = usesTemplateColumns
+          ? (() => {
+              const computerCol = visibleTemplateColumns.find((col) =>
+                isComputerIdentifierColumn(col)
+              );
+              const componentCols = visibleTemplateColumns.filter(
+                (col) => col.subColumns && col.subColumns.length > 0
+              );
+              const detailCols = visibleTemplateColumns.filter(
+                (col) => !col.subColumns || col.subColumns.length === 0
+              );
+
+              const rowFieldsSet = new Set();
+              componentCols.forEach((col) => {
+                col.subColumns.forEach((sub) => {
+                  rowFieldsSet.add(
+                    JSON.stringify({
+                      key: sub.key,
+                      label: sub.label,
+                    })
+                  );
+                });
+              });
+
+              const rowFields = Array.from(rowFieldsSet)
+                .map((f) => JSON.parse(f))
+                .sort((a, b) => getRowSortIndex(a) - getRowSortIndex(b));
+
+              return {
+                computerColumn: computerCol || null,
+                componentColumns: componentCols,
+                detailColumns: detailCols,
+                rowFields: rowFields,
+              };
+            })()
+          : null;
+
+        if (sectionComponentMatrix && sectionComponentMatrix.componentColumns.length > 0) {
+          // Create sheet with sheet name sanitized
+          const sheetName = section.name.replace(/[\\/:*?"<>|]/g, "").substring(0, 31);
+          await createInventorySheet(
+            workbook,
+            sheetName,
+            section.name,
+            tabTableName,
+            sectionItems,
+            sectionComponentMatrix,
+            selectedExportSemester
+          );
+        }
+      }
+
+      // ===== DOWNLOAD =====
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+
+      const filename = `${tab?.name || "Inventory"}_Report_${new Date().toLocaleDateString().replace(/\//g, "-")}.xlsx`;
+      saveAs(blob, filename);
+
+      setSuccessMessage(
+        `Excel report with ${selectedSectionsForExport.length} section(s) exported successfully!`
+      );
+      setShowExportModal(false);
+      setSelectedSectionsForExport([]);
+    } catch (error) {
+      console.error("Multi-section export failed:", error);
+      setSuccessMessage("Export failed. Please try again.");
+    } finally {
+      setExportingMultiple(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showExportModal) {
+      checkAllSectionsForItems();
+    }
+  }, [showExportModal]);
 
   useEffect(() => {
     if (!tab) return;
@@ -1253,10 +1580,14 @@ export default function InventorySection() {
               </button> */}
 
               <button
-                onClick={exportToExcel}
-                className="rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700"
+                onClick={() => {
+                  setSelectedSectionsForExport([selectedSectionSlug]);
+                  setShowExportModal(true);
+                }}
+                className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700"
               >
-                Export Excel
+                <Download className="h-4 w-4" />
+                Export
               </button>
 
               <button
@@ -1610,6 +1941,124 @@ export default function InventorySection() {
                 className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700"
               >
                 OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showExportModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Export Sections
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  Select which sections to export as separate sheets
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowExportModal(false);
+                  setSelectedSectionsForExport([]);
+                }}
+                className={modalCloseButtonClass}
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="max-h-96 overflow-y-auto px-5 py-4 space-y-2">
+              <div className="pb-3">
+                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Semester
+                </label>
+                <select
+                  value={selectedExportSemester}
+                  onChange={(event) => setSelectedExportSemester(event.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                >
+                  {semesterOptions.map((semester) => (
+                    <option key={semester} value={semester}>
+                      {semester}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {sections.length === 0 ? (
+                <p className="text-sm text-slate-500 py-6 text-center">
+                  No sections available
+                </p>
+              ) : !hasAnyExportableItems && !checkingExportItems ? (
+                <p className="text-sm text-slate-500 py-8 text-center font-medium">
+                  There is nothing to export
+                </p>
+              ) : checkingExportItems ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-3">
+                  <div className="h-8 w-8 rounded-full border-4 border-slate-200 border-t-slate-700 animate-spin" />
+                  <p className="text-sm text-slate-500">Checking sections...</p>
+                </div>
+              ) : (
+                sections.map((section) => (
+                  <label
+                    key={section.id}
+                    className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedSectionsForExport.includes(section.slug)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedSectionsForExport((prev) => [...prev, section.slug]);
+                        } else {
+                          setSelectedSectionsForExport((prev) =>
+                            prev.filter((s) => s !== section.slug)
+                          );
+                        }
+                      }}
+                      className="w-4 h-4 rounded border-slate-300 text-emerald-600 cursor-pointer"
+                      disabled={!exportableItems[section.slug]}
+                    />
+                    <div className="flex-1">
+                      <p className={`text-sm font-medium ${exportableItems[section.slug] ? "text-slate-900" : "text-slate-400"}`}>
+                        {section.name}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {exportableItems[section.slug] ? section.description || "Has items" : "No items to export"}
+                      </p>
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-3 justify-end border-t border-slate-200 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowExportModal(false);
+                  setSelectedSectionsForExport([]);
+                }}
+                className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                disabled={exportingMultiple}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={exportMultipleSections}
+                disabled={selectedSectionsForExport.length === 0 || exportingMultiple || !hasAnyExportableItems}
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-400 disabled:opacity-60"
+              >
+                <Download className="h-4 w-4" />
+                {exportingMultiple
+                  ? `Exporting ${selectedSectionsForExport.length} section(s)...`
+                  : `Export ${selectedSectionsForExport.length} Section${selectedSectionsForExport.length !== 1 ? "s" : ""}`}
               </button>
             </div>
           </div>
