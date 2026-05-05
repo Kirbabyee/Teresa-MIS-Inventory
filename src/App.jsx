@@ -16,6 +16,7 @@ import Borrowing from "./pages/Borrowing";
 import Inventory from "./pages/Inventory";
 import InventorySection from "./pages/InventorySection";
 import InventoryTableTest from "./pages/InventoryTableTest";
+import ComputerLaboratoryInventory from "./pages/ComputerLaboratoryInventory";
 import Laboratory1 from "./pages/Laboratory1";
 import Laboratory2 from "./pages/Laboratory2";
 import Laboratory3 from "./pages/Laboratory3";
@@ -153,8 +154,11 @@ function App() {
             <Route path="borrowing" element={<Borrowing />} />
             <Route path="inventory" element={<Navigate to="/manage/inventory" replace />} />
             <Route path="inventory/manage" element={<Navigate to="/manage/inventory" replace />} />
+            <Route path="inventory/laboratory" element={<ComputerLaboratoryInventory />} />
             <Route path="inventory/:sectionSlug" element={<InventorySection />} />
-            <Route path="laboratory/inventory" element={<Navigate to="/manage/inventory" replace />} />
+            <Route path="laboratory/inventory" element={<Navigate to="/inventory/laboratory" replace />} />
+            <Route path="laboratory/computer-laboratory-inventory" element={<Navigate to="/inventory/laboratory" replace />} />
+            <Route path="laboratory/comlab" element={<Navigate to="/inventory/laboratory" replace />} />
             <Route path="laboratory/laboratory-1" element={<Laboratory1 />} />
             <Route path="laboratory/laboratory-2" element={<Laboratory2 />} />
             <Route path="laboratory/laboratory-3" element={<Laboratory3 />} />

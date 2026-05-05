@@ -107,13 +107,23 @@ insert into public.inventory_tabs (name, slug, description, sort_order)
 values ('Laboratory', 'laboratory', 'Laboratory inventory tabs and sections.', 1)
 on conflict (slug) do nothing;
 
+insert into public.inventory_tabs (name, slug, description, sort_order)
+values ('Comlab', 'comlab', 'Comlab inventory tab.', 2)
+on conflict (slug) do nothing;
+
 do $$
 declare
   laboratory_tab_id uuid;
+  computer_lab_tab_id uuid;
 begin
   select id into laboratory_tab_id
   from public.inventory_tabs
   where slug = 'laboratory'
+  limit 1;
+
+  select id into computer_lab_tab_id
+  from public.inventory_tabs
+  where slug = 'comlab'
   limit 1;
 
   if laboratory_tab_id is not null then
@@ -124,6 +134,13 @@ begin
       (laboratory_tab_id, 'Laboratory 3', 'laboratory-3', '', 3),
       (laboratory_tab_id, 'Laboratory 4', 'laboratory-4', '', 4),
       (laboratory_tab_id, 'Laboratory 5', 'laboratory-5', '', 5)
+    on conflict (tab_id, slug) do nothing;
+  end if;
+
+  if computer_lab_tab_id is not null then
+    insert into public.inventory_sections (tab_id, name, slug, description, sort_order)
+    values
+      (computer_lab_tab_id, 'Comlab', 'comlab', 'Inventory for Comlab.', 1)
     on conflict (tab_id, slug) do nothing;
   end if;
 end $$;

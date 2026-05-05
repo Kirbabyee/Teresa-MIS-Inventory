@@ -50,7 +50,7 @@ const readSession = () => {
 
 function NavItem({ item, collapsed, setMobileOpen }) {
   const location = useLocation();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(() => item.label === "Inventory");
   const Icon = item.icon;
 
   // Check if current path matches this item or any of its children
@@ -192,6 +192,7 @@ export default function Layout() {
 
   const sectionTitle = useMemo(() => {
     if (location.pathname === "/") return "Dashboard";
+    if (location.pathname === "/inventory/laboratory") return "Computer Laboratory";
     const lastSegment = location.pathname.split("/").filter(Boolean).pop();
     if (!lastSegment) return "Workspace";
 
@@ -206,6 +207,16 @@ export default function Layout() {
       icon: Package,
       path: `/inventory/${tab.slug}${tab.sections?.[0]?.slug ? `?section=${tab.sections[0].slug}` : ""}`,
     }));
+
+    const comlabChild = {
+      label: "Comlab",
+      icon: Package,
+      path: "/inventory/laboratory",
+    };
+
+    if (!inventoryChildren.some((child) => child.path === comlabChild.path)) {
+      inventoryChildren.unshift(comlabChild);
+    }
 
     const items = [
       {
