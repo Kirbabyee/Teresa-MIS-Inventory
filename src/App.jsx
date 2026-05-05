@@ -23,6 +23,7 @@ import Laboratory4 from "./pages/Laboratory4";
 import Laboratory5 from "./pages/Laboratory5";
 import UserAccounts from "./pages/UserAccounts";
 import ActivateAccount from "./pages/ActivateAccount";
+import ForgotPassword from "./pages/ForgotPassword";
 
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
@@ -113,6 +114,10 @@ function App() {
           <Route
             path="/login"
             element={authenticated ? <Navigate to="/" replace /> : <Login />}
+          />
+          <Route
+            path="/forgot-password"
+            element={authenticated ? <Navigate to="/" replace /> : <ForgotPassword />}
           />
           <Route
             path="/"

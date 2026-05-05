@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import arkLogo from "@/assets/imgs/ark-logo.png";
 import { Button } from "@/components/ui/button";
@@ -213,6 +213,14 @@ export default function Login() {
                     <Eye className="w-4 h-4" />
                   )}
                 </button>
+              </div>
+              <div className="flex justify-end">
+                <Link
+                  to="/forgot-password"
+                  className="text-xs font-medium text-[#450c0c] hover:text-[#170000]"
+                >
+                  Forgot password?
+                </Link>
               </div>
             </div>
 
