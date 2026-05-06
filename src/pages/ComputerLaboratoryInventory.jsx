@@ -311,19 +311,19 @@ export default function ComputerLaboratoryInventory() {
         setError("");
         try {
             const { data, error: updateError } = await supabase
-    .from("computers_components")
-    .update({ [columnMap[field]]: nextRaw })
-    .eq("lab_number_id", selectedLab)
-    .eq("computer_number", Number(computerNumber)) // force number
-    .eq("type", componentType.toUpperCase()) // force uppercase match
-    .select(); // IMPORTANT: returns updated rows
+                .from("computers_components")
+                .update({ [columnMap[field]]: nextRaw })
+                .eq("lab_number_id", selectedLab)
+                .eq("computer_number", Number(computerNumber)) // force number
+                .eq("type", componentType.toUpperCase()) // force uppercase match
+                .select(); // IMPORTANT: returns updated rows
 
-if (updateError) throw updateError;
+            if (updateError) throw updateError;
 
-// 🚨 THIS IS THE KEY FIX
-if (!data || data.length === 0) {
-    throw new Error("Update failed: No matching row found.");
-}
+            // 🚨 THIS IS THE KEY FIX
+            if (!data || data.length === 0) {
+                throw new Error("Update failed: No matching row found.");
+            }
 
             if (selectedLabOrder !== null) {
                 // Only perform fallback update if a fallback row actually exists
@@ -487,19 +487,19 @@ if (!data || data.length === 0) {
         }
     };
 
-        const _q = searchQuery.trim().toLowerCase();
-        const filteredRows = !_q
-            ? rows
-            : rows.filter((row) => {
-                  if (String(row["COMPUTER #"] || "").toLowerCase().includes(_q)) return true;
-                  const comps = row.components || {};
-                  for (const comp of Object.values(comps)) {
-                      for (const v of Object.values(comp || {})) {
-                          if (v && String(v).toLowerCase().includes(_q)) return true;
-                      }
-                  }
-                  return false;
-              });
+    const _q = searchQuery.trim().toLowerCase();
+    const filteredRows = !_q
+        ? rows
+        : rows.filter((row) => {
+            if (String(row["COMPUTER #"] || "").toLowerCase().includes(_q)) return true;
+            const comps = row.components || {};
+            for (const comp of Object.values(comps)) {
+                for (const v of Object.values(comp || {})) {
+                    if (v && String(v).toLowerCase().includes(_q)) return true;
+                }
+            }
+            return false;
+        });
 
     const handleDeleteLab = async (labId) => {
         setExporting(true);
@@ -1046,16 +1046,16 @@ if (!data || data.length === 0) {
                 });
             }
 
-                    const dataWorksheet = workbook.addWorksheet("DATA");
-                    createDataSheet(
-                        dataWorksheet,
-                        exportSummaries,
-                        logoBuffer,
-                        separatorBuffer,
-                        preparedByName,
-                        inspectedByName,
-                        { logoCol: 1.5 },
-                    );
+            const dataWorksheet = workbook.addWorksheet("DATA");
+            createDataSheet(
+                dataWorksheet,
+                exportSummaries,
+                logoBuffer,
+                separatorBuffer,
+                preparedByName,
+                inspectedByName,
+                { logoCol: 1.5 },
+            );
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -1330,42 +1330,42 @@ if (!data || data.length === 0) {
 
             <div className="flex flex-col items-center justify-between gap-3 sm:flex-row sm:gap-4">
                 <div className="flex flex-wrap items-center justify-center gap-1.5 sm:justify-start">
-                        {labOptions.map((lab) => (
-                            <div key={lab.value} className="relative">
-                                <button
-                                    type="button"
-                                    onClick={() => setSelectedLab(lab.value)}
-                                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${lab.value === selectedLab
-                                            ? "bg-[#4a1111] text-white"
-                                            : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                                        }`}
-                                >
-                                    {lab.label}
-                                </button>
-                                {isEditMode && isAdminUser && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setDeleteConfirmLab(lab.value)}
-                                        className="absolute -top-2 -right-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 transition"
-                                        title="Delete laboratory"
-                                        aria-label="Delete laboratory"
-                                    >
-                                        <Trash2 className="h-3 w-3" />
-                                    </button>
-                                )}
-                            </div>
-                        ))}
-                        {isEditMode && (
+                    {labOptions.map((lab) => (
+                        <div key={lab.value} className="relative">
                             <button
                                 type="button"
-                                onClick={openAddLabModal}
-                                className="inline-flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-                                title="Add laboratory"
-                                aria-label="Add laboratory"
+                                onClick={() => setSelectedLab(lab.value)}
+                                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${lab.value === selectedLab
+                                    ? "bg-[#4a1111] text-white"
+                                    : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                                    }`}
                             >
-                                <Plus className="h-4 w-4" />
+                                {lab.label}
                             </button>
-                        )}
+                            {isEditMode && isAdminUser && (
+                                <button
+                                    type="button"
+                                    onClick={() => setDeleteConfirmLab(lab.value)}
+                                    className="absolute -top-2 -right-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 transition"
+                                    title="Delete laboratory"
+                                    aria-label="Delete laboratory"
+                                >
+                                    <Trash2 className="h-3 w-3" />
+                                </button>
+                            )}
+                        </div>
+                    ))}
+                    {isEditMode && (
+                        <button
+                            type="button"
+                            onClick={openAddLabModal}
+                            className="inline-flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                            title="Add laboratory"
+                            aria-label="Add laboratory"
+                        >
+                            <Plus className="h-4 w-4" />
+                        </button>
+                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     {!isHistoryOpen && !isEditMode && (
@@ -1375,7 +1375,7 @@ if (!data || data.length === 0) {
                                 // default selection: current lab
                                 setSelectedExportLabs(selectedLab ? [selectedLab] : labOptions.map((l) => l.value));
                                 setSelectedExportColumns(COMPONENT_TYPES.slice());
-                                setExportDate(new Date().toISOString().slice(0,10));
+                                setExportDate(new Date().toISOString().slice(0, 10));
                                 setPreparedByName("");
                                 setInspectedByName("");
                                 setShowExportModal(true);
@@ -1470,136 +1470,136 @@ if (!data || data.length === 0) {
                 </div>
             </div>
 
-                {!isHistoryOpen && (
-                    <div className="mt-3 w-full sm:w-96">
-                        <div className="relative">
-                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                            <input
-                                type="text"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search computer #, component, brand, description..."
-                                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
-                            />
-                            {searchQuery && (
-                                <button
-                                    type="button"
-                                    onClick={() => setSearchQuery("")}
-                                    className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                                    aria-label="Clear search"
-                                    title="Clear search"
-                                >
-                                    <X className="h-4 w-4" />
-                                </button>
-                            )}
-                        </div>
+            {!isHistoryOpen && (
+                <div className="mt-3 w-full sm:w-96">
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search computer #, component, brand, description..."
+                            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+                        />
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                onClick={() => setSearchQuery("")}
+                                className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                                aria-label="Clear search"
+                                title="Clear search"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        )}
                     </div>
-                )}
+                </div>
+            )}
 
-                {showExportModal && (
-                    <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
-                        <DialogContent className="sm:max-w-lg">
-                            <DialogHeader>
-                                <DialogTitle>Export Laboratories</DialogTitle>
-                                <DialogDescription>Select labs and columns to include in export, and set date.</DialogDescription>
-                            </DialogHeader>
+            {showExportModal && (
+                <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
+                    <DialogContent className="sm:max-w-lg">
+                        <DialogHeader>
+                            <DialogTitle>Export Laboratories</DialogTitle>
+                            <DialogDescription>Select labs and columns to include in export, and set date.</DialogDescription>
+                        </DialogHeader>
 
-                            <div className="max-h-72 overflow-auto px-4 py-2 space-y-3">
-                                <div>
-                                    <label className="text-xs font-semibold text-slate-500">Date</label>
-                                    <input
-                                        type="date"
-                                        value={exportDate}
-                                        onChange={(e) => setExportDate(e.target.value)}
-                                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
-                                    />
-                                </div>
+                        <div className="max-h-72 overflow-auto px-4 py-2 space-y-3">
+                            <div>
+                                <label className="text-xs font-semibold text-slate-500">Date</label>
+                                <input
+                                    type="date"
+                                    value={exportDate}
+                                    onChange={(e) => setExportDate(e.target.value)}
+                                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                                />
+                            </div>
 
-                                <div>
-                                    <label className="text-xs font-semibold text-slate-500">Prepared and submitted by</label>
-                                    <input
-                                        type="text"
-                                        value={preparedByName}
-                                        onChange={(e) => setPreparedByName(e.target.value)}
-                                        placeholder="Enter name"
-                                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
-                                    />
-                                </div>
+                            <div>
+                                <label className="text-xs font-semibold text-slate-500">Prepared and submitted by</label>
+                                <input
+                                    type="text"
+                                    value={preparedByName}
+                                    onChange={(e) => setPreparedByName(e.target.value)}
+                                    placeholder="Enter name"
+                                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                                />
+                            </div>
 
-                                <div>
-                                    <label className="text-xs font-semibold text-slate-500">Inspected and verified by</label>
-                                    <input
-                                        type="text"
-                                        value={inspectedByName}
-                                        onChange={(e) => setInspectedByName(e.target.value)}
-                                        placeholder="Enter name"
-                                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
-                                    />
-                                </div>
+                            <div>
+                                <label className="text-xs font-semibold text-slate-500">Inspected and verified by</label>
+                                <input
+                                    type="text"
+                                    value={inspectedByName}
+                                    onChange={(e) => setInspectedByName(e.target.value)}
+                                    placeholder="Enter name"
+                                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                                />
+                            </div>
 
-                                <div>
-                                    <label className="text-xs font-semibold text-slate-500">Labs</label>
-                                    <div className="mt-2 grid gap-2">
-                                        {labOptions.map((lab) => (
-                                            <label key={lab.value} className="flex items-center gap-2">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedExportLabs.includes(lab.value)}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) setSelectedExportLabs((s) => [...s, lab.value]);
-                                                        else setSelectedExportLabs((s) => s.filter((v) => v !== lab.value));
-                                                    }}
-                                                    className="w-4 h-4"
-                                                />
-                                                <span className="text-sm">{lab.label}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="text-xs font-semibold text-slate-500">Columns</label>
-                                    <div className="mt-2 grid grid-cols-2 gap-2">
-                                        {COMPONENT_TYPES.map((col) => (
-                                            <label key={col} className="flex items-center gap-2">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedExportColumns.includes(col)}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) setSelectedExportColumns((s) => [...s, col]);
-                                                        else setSelectedExportColumns((s) => s.filter((v) => v !== col));
-                                                    }}
-                                                    className="w-4 h-4"
-                                                />
-                                                <span className="text-sm">{col}</span>
-                                            </label>
-                                        ))}
-                                    </div>
+                            <div>
+                                <label className="text-xs font-semibold text-slate-500">Labs</label>
+                                <div className="mt-2 grid gap-2">
+                                    {labOptions.map((lab) => (
+                                        <label key={lab.value} className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedExportLabs.includes(lab.value)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) setSelectedExportLabs((s) => [...s, lab.value]);
+                                                    else setSelectedExportLabs((s) => s.filter((v) => v !== lab.value));
+                                                }}
+                                                className="w-4 h-4"
+                                            />
+                                            <span className="text-sm">{lab.label}</span>
+                                        </label>
+                                    ))}
                                 </div>
                             </div>
 
-                            <DialogFooter>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setShowExportModal(false);
-                                    }}
-                                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={exportLab}
-                                    disabled={exporting || selectedExportLabs.length === 0}
-                                    className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
-                                >
-                                    {exporting ? 'Exporting...' : 'Export Selected'}
-                                </button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-                )}
+                            <div>
+                                <label className="text-xs font-semibold text-slate-500">Columns</label>
+                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                    {COMPONENT_TYPES.map((col) => (
+                                        <label key={col} className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedExportColumns.includes(col)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) setSelectedExportColumns((s) => [...s, col]);
+                                                    else setSelectedExportColumns((s) => s.filter((v) => v !== col));
+                                                }}
+                                                className="w-4 h-4"
+                                            />
+                                            <span className="text-sm">{col}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <DialogFooter>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowExportModal(false);
+                                }}
+                                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={exportLab}
+                                disabled={exporting || selectedExportLabs.length === 0}
+                                className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                            >
+                                {exporting ? 'Exporting...' : 'Export Selected'}
+                            </button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="min-w-0 overflow-hidden p-0">
                     {loading ? (
@@ -1732,11 +1732,10 @@ if (!data || data.length === 0) {
                                                                     )
                                                                 ) : (
                                                                     <div
-                                                                        className={`font-medium ${
-                                                                            isRemarksField && String(value).toUpperCase() === "DEFECTIVE"
+                                                                        className={`font-medium ${isRemarksField && String(value).toUpperCase() === "DEFECTIVE"
                                                                                 ? "text-red-600"
                                                                                 : "text-slate-900"
-                                                                        }`}
+                                                                            }`}
                                                                     >
                                                                         {value}
                                                                     </div>
