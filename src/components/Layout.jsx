@@ -192,14 +192,17 @@ export default function Layout() {
 
   const sectionTitle = useMemo(() => {
     if (location.pathname === "/") return "Dashboard";
-    if (location.pathname === "/inventory/laboratory") return "Computer Laboratory";
+    if (location.pathname === "/inventory/laboratory") {
+      const params = new URLSearchParams(location.search);
+      return params.get("view") === "logs" ? "Computer Lab Logs" : "Computer Lab Inventory";
+    }
     const lastSegment = location.pathname.split("/").filter(Boolean).pop();
     if (!lastSegment) return "Workspace";
 
     return lastSegment
       .replace(/[-_]/g, " ")
       .replace(/\b\w/g, (char) => char.toUpperCase());
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   const navItems = useMemo(() => {
     const inventoryChildren = inventoryTabs.map((tab) => ({
@@ -209,7 +212,7 @@ export default function Layout() {
     }));
 
     const comlabChild = {
-      label: "Comlab",
+      label: "Computer Laboratories",
       icon: Package,
       path: "/inventory/laboratory",
     };
@@ -388,11 +391,12 @@ export default function Layout() {
               </p>
             </div>
 
-            {/* Notification Button */}
+            {/* Notification Button 
             <button className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-full transition-colors">
               <Bell className="w-5 h-5" />
               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 border-2 border-white rounded-full"></span>
             </button>
+            */}
 
             {/* User Profile */}
             <div className="flex items-center gap-3 pl-2">

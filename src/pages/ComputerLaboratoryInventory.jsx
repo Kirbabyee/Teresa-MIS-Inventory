@@ -1,9 +1,12 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { Download, Plus, PencilLine, Trash2, Check } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { Download, Plus, PencilLine, Trash2, Check, FileText, ChevronLeft, ChevronDown, Search, X } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { supabase } from "@/api/supabaseClient";
 import arkLogoUrl from "@/assets/imgs/ark-logo.png";
+import InventoryHistoryView from "@/components/InventoryHistoryView";
+import { useAuth } from "@/lib/AuthContext";
 import { Input } from "@/components/ui/input";
 import {
     Dialog,
@@ -43,6 +46,12 @@ const TABLE_COLUMNS = ["COMPUTER #", "", ...TABLE_HEADING.slice(1)];
 const COMPONENT_TYPES = TABLE_HEADING.slice(1);
 const REMARK_OPTIONS = ["WORKING", "DEFECTIVE", "BUILT IN"];
 
+const createInitialComponentSections = () =>
+    COMPONENT_TYPES.reduce((acc, componentType, index) => {
+        acc[componentType] = index === 0;
+        return acc;
+    }, {});
+
 const formatValue = (value) => {
     if (value === null || value === undefined || value === "") return "-";
     return String(value);
@@ -78,7 +87,85 @@ const createHeaderSeparatorBase64 = () => {
     return canvas.toDataURL("image/png").split(",")[1];
 };
 
+const applyExportHeader = (worksheet, titleText, exportDate, headerColor, logoImage, separatorImage, options = {}) => {
+    for (let i = 1; i <= 5; i++) {
+        worksheet.getRow(i).height = 25;
+    }
+
+    if (logoImage) {
+        const image = worksheet.workbook.addImage({
+            buffer: logoImage,
+            extension: 'png',
+        });
+        const logoCol = typeof options.logoCol === 'number' ? options.logoCol : 3.5;
+        worksheet.addImage(image, {
+            tl: { col: logoCol, row: 0.35 },
+            ext: { width: 125, height: 125 },
+        });
+    }
+
+    if (separatorImage) {
+        const separator = worksheet.workbook.addImage({
+            base64: separatorImage,
+            extension: 'png',
+        });
+        worksheet.addImage(separator, {
+            tl: { col: 0.5, row: 5.35 },
+            br: { col: 13.5, row: 5.65 },
+        });
+    }
+
+    worksheet.mergeCells("B1:M1");
+    const titleCell = worksheet.getCell("B1");
+    titleCell.value = "COLEGIO DE STA. TERESA DE AVILA, INC.";
+    titleCell.alignment = { horizontal: "center", vertical: "middle" };
+    titleCell.font = { bold: true, size: 22, color: headerColor, name: "Corbel" };
+
+    worksheet.mergeCells("B2:M2");
+    const addr1 = worksheet.getCell("B2");
+    addr1.value = "1177 Quirino Highway, Brgy. Kaligayahan, Novaliches";
+    addr1.alignment = { horizontal: "center", vertical: "middle" };
+    addr1.font = { bold: false, size: 8, color: { argb: "FF663300" }, name: "Arial" };
+
+    worksheet.mergeCells("B3:M3");
+    const addr2 = worksheet.getCell("B3");
+    addr2.value = "Quezon City 1124 Philippines";
+    addr2.alignment = { horizontal: "center", vertical: "middle" };
+    addr2.font = { bold: false, size: 8, color: { argb: "FF663300" }, name: "Arial" };
+
+    worksheet.mergeCells("B4:M4");
+    const phone = worksheet.getCell("B4");
+    phone.value = "Tel. No. (02) 8-275-3916";
+    phone.alignment = { horizontal: "center", vertical: "middle" };
+    phone.font = { bold: false, size: 8, color: { argb: "FF663300" }, name: "Arial" };
+
+    worksheet.mergeCells("B5:M5");
+    const email = worksheet.getCell("B5");
+    email.value = "Email: officialcstaregistrar@gmail.com";
+    email.alignment = { horizontal: "center", vertical: "middle" };
+    email.font = { bold: false, size: 8, color: { argb: "FF663300" }, name: "Arial" };
+    worksheet.getRow(6).height = 15;
+
+    worksheet.mergeCells("B7:M7");
+    const title = worksheet.getCell("B7");
+    title.value = titleText;
+    title.alignment = { horizontal: "center", vertical: "middle" };
+    title.font = { bold: true, size: 11, color: headerColor, name: "Arial" };
+
+    worksheet.mergeCells("B8:M8");
+    const dateCell = worksheet.getCell("B8");
+    dateCell.value = "AS OF " + new Intl.DateTimeFormat("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+    }).format(new Date(exportDate)).replace(/^[A-Za-z]+/, (month) => month.toUpperCase());
+    dateCell.alignment = { horizontal: "center", vertical: "middle" };
+    dateCell.font = { bold: true, size: 11, color: headerColor, name: "Arial" };
+};
+
 export default function ComputerLaboratoryInventory() {
+    const { user } = useAuth();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [labOptions, setLabOptions] = useState(INITIAL_LAB_OPTIONS);
     const [selectedLab, setSelectedLab] = useState(null);
     const [isEditMode, setIsEditMode] = useState(false);
@@ -93,14 +180,18 @@ export default function ComputerLaboratoryInventory() {
     const [selectedExportLabs, setSelectedExportLabs] = useState([]);
     const [selectedExportColumns, setSelectedExportColumns] = useState(COMPONENT_TYPES.slice());
     const [exportDate, setExportDate] = useState(new Date().toISOString().slice(0, 10));
+    const [preparedByName, setPreparedByName] = useState("");
+    const [inspectedByName, setInspectedByName] = useState("");
     const [deleteConfirmLab, setDeleteConfirmLab] = useState(null);
     const [deleteConfirmComputer, setDeleteConfirmComputer] = useState(null);
     const [confirmExitEditMode, setConfirmExitEditMode] = useState(false);
+    const [pendingAction, setPendingAction] = useState(null); // 'exit' or 'switchHistory'
     const [isAddComponentOpen, setIsAddComponentOpen] = useState(false);
-    const [componentStep, setComponentStep] = useState(0);
+    const [isHistoryOpen, setIsHistoryOpen] = useState(() => searchParams.get("view") === "logs");
+    const [searchQuery, setSearchQuery] = useState("");
+    const [openComponentSections, setOpenComponentSections] = useState(() => createInitialComponentSections());
     const [cellDrafts, setCellDrafts] = useState({});
     const [savingCellKey, setSavingCellKey] = useState(null);
-    const [pendingCellConfirmation, setPendingCellConfirmation] = useState(null);
     const [newComponent, setNewComponent] = useState({
         computer_number: "",
         MOTHERBOARD_brand: "",
@@ -140,8 +231,6 @@ export default function ComputerLaboratoryInventory() {
         "OPERATING SYSTEM_description": "",
         "OPERATING SYSTEM_remarks": "",
     });
-    const activeComponentType = COMPONENT_TYPES[componentStep] || COMPONENT_TYPES[0];
-
     const selectedLabLabel = useMemo(
         () => labOptions.find((lab) => lab.value === selectedLab)?.label || "Laboratory",
         [labOptions, selectedLab]
@@ -150,6 +239,10 @@ export default function ComputerLaboratoryInventory() {
         () => labOptions.find((lab) => lab.value === selectedLab)?.order ?? null,
         [labOptions, selectedLab]
     );
+    const isAdminUser = useMemo(() => {
+        const role = String(user?.role || "").toLowerCase();
+        return role === "superadmin" || role === "admin";
+    }, [user?.role]);
 
     const getCellDraftKey = (computerNumber, componentType, field) =>
         `${computerNumber}__${componentType}__${field}`;
@@ -157,6 +250,26 @@ export default function ComputerLaboratoryInventory() {
     const normalizeCellValue = (value) => {
         if (value === null || value === undefined || value === "-") return "";
         return String(value);
+    };
+
+    const toggleComponentSection = (componentType) => {
+        setOpenComponentSections((current) => ({
+            ...current,
+            [componentType]: !current[componentType],
+        }));
+    };
+
+    const updateHistoryView = (nextOpen) => {
+        setIsHistoryOpen(nextOpen);
+        setSearchParams((current) => {
+            const params = new URLSearchParams(current);
+            if (nextOpen) {
+                params.set("view", "logs");
+            } else {
+                params.delete("view");
+            }
+            return params;
+        }, { replace: true });
     };
 
     const handleCellDraftChange = (computerNumber, componentType, field, value) => {
@@ -167,9 +280,7 @@ export default function ComputerLaboratoryInventory() {
         }));
     };
 
-    const handleInlineCellSave = (row, componentType, field) => {
-        if (pendingCellConfirmation) return;
-
+    const handleInlineCellSave = async (row, componentType, field) => {
         const computerNumber = row["COMPUTER #"];
         const key = getCellDraftKey(computerNumber, componentType, field);
         const currentRaw = normalizeCellValue(row.components?.[componentType]?.[field]);
@@ -185,25 +296,10 @@ export default function ComputerLaboratoryInventory() {
             return;
         }
 
-        setPendingCellConfirmation({
-            computerNumber,
-            componentType,
-            field,
-            key,
-            currentRaw: currentRaw.trim(),
-            nextRaw,
-        });
-    };
-
-    const confirmInlineCellSave = async () => {
-        if (!pendingCellConfirmation) return;
-
         if (!selectedLab) {
             setError("Lab is required.");
             return;
         }
-
-        const { computerNumber, componentType, field, key, nextRaw } = pendingCellConfirmation;
 
         const columnMap = {
             brand: "brand",
@@ -214,25 +310,45 @@ export default function ComputerLaboratoryInventory() {
         setSavingCellKey(key);
         setError("");
         try {
-            const { error: updateError } = await supabase
-                .from("computers_components")
-                .update({ [columnMap[field]]: nextRaw })
-                .eq("lab_number_id", selectedLab)
-                .eq("computer_number", computerNumber)
-                .eq("type", componentType);
+            const { data, error: updateError } = await supabase
+    .from("computers_components")
+    .update({ [columnMap[field]]: nextRaw })
+    .eq("lab_number_id", selectedLab)
+    .eq("computer_number", Number(computerNumber)) // force number
+    .eq("type", componentType.toUpperCase()) // force uppercase match
+    .select(); // IMPORTANT: returns updated rows
 
-            if (updateError) throw updateError;
+if (updateError) throw updateError;
+
+// 🚨 THIS IS THE KEY FIX
+if (!data || data.length === 0) {
+    throw new Error("Update failed: No matching row found.");
+}
 
             if (selectedLabOrder !== null) {
-                const { error: fallbackUpdateError } = await supabase
+                // Only perform fallback update if a fallback row actually exists
+                const { data: fallbackRow, error: fallbackFetchError } = await supabase
                     .from("computers_components")
-                    .update({ [columnMap[field]]: nextRaw })
+                    .select("id, brand, description, status, lab_number_id, lab_number")
                     .is("lab_number_id", null)
                     .eq("lab_number", selectedLabOrder)
                     .eq("computer_number", computerNumber)
-                    .eq("type", componentType);
+                    .eq("type", componentType)
+                    .maybeSingle();
 
-                if (fallbackUpdateError) throw fallbackUpdateError;
+                if (fallbackFetchError) throw fallbackFetchError;
+
+                if (fallbackRow) {
+                    const { error: fallbackUpdateError } = await supabase
+                        .from("computers_components")
+                        .update({ [columnMap[field]]: nextRaw })
+                        .is("lab_number_id", null)
+                        .eq("lab_number", selectedLabOrder)
+                        .eq("computer_number", computerNumber)
+                        .eq("type", componentType);
+
+                    if (fallbackUpdateError) throw fallbackUpdateError;
+                }
             }
 
             setRows((currentRows) =>
@@ -260,7 +376,6 @@ export default function ComputerLaboratoryInventory() {
                 return next;
             });
             setHasEditChanges(true);
-            setPendingCellConfirmation(null);
         } catch (updateError) {
             console.error("Failed to update cell:", updateError.message);
             setError(updateError.message || "Failed to update cell.");
@@ -372,6 +487,20 @@ export default function ComputerLaboratoryInventory() {
         }
     };
 
+        const _q = searchQuery.trim().toLowerCase();
+        const filteredRows = !_q
+            ? rows
+            : rows.filter((row) => {
+                  if (String(row["COMPUTER #"] || "").toLowerCase().includes(_q)) return true;
+                  const comps = row.components || {};
+                  for (const comp of Object.values(comps)) {
+                      for (const v of Object.values(comp || {})) {
+                          if (v && String(v).toLowerCase().includes(_q)) return true;
+                      }
+                  }
+                  return false;
+              });
+
     const handleDeleteLab = async (labId) => {
         setExporting(true);
         try {
@@ -450,7 +579,7 @@ export default function ComputerLaboratoryInventory() {
                 resetComponent[`${componentType}_remarks`] = "";
             });
             setNewComponent(resetComponent);
-            setComponentStep(0);
+            setOpenComponentSections(createInitialComponentSections());
             if (closeDialog) {
                 setIsAddComponentOpen(false);
             }
@@ -630,89 +759,46 @@ export default function ComputerLaboratoryInventory() {
         if (!isEditMode) {
             setCellDrafts({});
             setSavingCellKey(null);
-            setPendingCellConfirmation(null);
         }
     }, [isEditMode, selectedLab]);
 
-    const createLabSheet = (workbook, sheetName, labName, labData, selectedColumns, logoImage, separatorImage) => {
+    useEffect(() => {
+        const fromUrl = searchParams.get("view") === "logs";
+        setIsHistoryOpen((current) => (current === fromUrl ? current : fromUrl));
+    }, [searchParams]);
+
+    useEffect(() => {
+        // clear search when switching labs
+        setSearchQuery("");
+    }, [selectedLab]);
+
+    useEffect(() => {
+        if (isAddComponentOpen) {
+            setOpenComponentSections(createInitialComponentSections());
+        }
+    }, [isAddComponentOpen]);
+
+    const createLabSheet = (
+        workbook,
+        sheetName,
+        labName,
+        labData,
+        selectedColumns,
+        logoImage,
+        separatorImage,
+        preparedBy,
+        inspectedBy,
+    ) => {
         const worksheet = workbook.addWorksheet(sheetName);
         const headerColor = { argb: "FF4A1111" }; // maroon
-
-        // Set row heights for logo area
-        for (let i = 1; i <= 5; i++) {
-            worksheet.getRow(i).height = 25;
-        }
-
-        // Add logo if available
-        if (logoImage) {
-            const image = workbook.addImage({
-                buffer: logoImage,
-                extension: 'png',
-            });
-            worksheet.addImage(image, {
-                tl: { col: 3.5, row: 0.35 },
-                ext: { width: 125, height: 125 },
-            });
-        }
-
-        if (separatorImage) {
-            const separator = workbook.addImage({
-                base64: separatorImage,
-                extension: 'png',
-            });
-            worksheet.addImage(separator, {
-                tl: { col: 0.5, row: 5.35 },
-                br: { col: 13.5, row: 5.65 },
-            });
-        }
-
-        // Header section
-        worksheet.mergeCells("B1:M1");
-        const titleCell = worksheet.getCell("B1");
-        titleCell.value = "COLEGIO DE STA. TERESA DE AVILA, INC.";
-        titleCell.alignment = { horizontal: "center", vertical: "middle" };
-        titleCell.font = { bold: true, size: 22, color: headerColor, name: "Corbel" };
-
-        worksheet.mergeCells("B2:M2");
-        const addr1 = worksheet.getCell("B2");
-        addr1.value = "1177 Quirino Highway, Brgy. Kaligayahan, Novaliches";
-        addr1.alignment = { horizontal: "center", vertical: "middle" };
-        addr1.font = { bold: false, size: 8, color: { argb: "FF663300" }, name: "Arial" };
-
-        worksheet.mergeCells("B3:M3");
-        const addr2 = worksheet.getCell("B3");
-        addr2.value = "Quezon City 1124 Philippines";
-        addr2.alignment = { horizontal: "center", vertical: "middle" };
-        addr2.font = { bold: false, size: 8, color: { argb: "FF663300" }, name: "Arial" };
-
-        worksheet.mergeCells("B4:M4");
-        const phone = worksheet.getCell("B4");
-        phone.value = "Tel. No. (02) 8-275-3916";
-        phone.alignment = { horizontal: "center", vertical: "middle" };
-        phone.font = { bold: false, size: 8, color: { argb: "FF663300" }, name: "Arial" };
-
-        worksheet.mergeCells("B5:M5");
-        const email = worksheet.getCell("B5");
-        email.value = "Email: officialcstaregistrar@gmail.com";
-        email.alignment = { horizontal: "center", vertical: "middle" };
-        email.font = { bold: false, size: 8, color: { argb: "FF663300" }, name: "Arial" };
-        worksheet.getRow(6).height = 15;
-
-        worksheet.mergeCells("B7:M7");
-        const title = worksheet.getCell("B7");
-        title.value = `COMPUTER LABORATORY INVENTORY - ${labName?.toUpperCase() || "LABORATORY"}`;
-        title.alignment = { horizontal: "center", vertical: "middle" };
-        title.font = { bold: true, size: 11, color: headerColor, name: "Arial" };
-
-        worksheet.mergeCells("B8:M8");
-        const dateCell = worksheet.getCell("B8");
-        dateCell.value = "AS OF " + new Intl.DateTimeFormat("en-US", {
-            month: "long",
-            day: "numeric",
-            year: "numeric",
-        }).format(new Date(exportDate)).replace(/^[A-Za-z]+/, (month) => month.toUpperCase());
-        dateCell.alignment = { horizontal: "center", vertical: "middle" };
-        dateCell.font = { bold: true, size: 11, color: headerColor, name: "Arial" };
+        applyExportHeader(
+            worksheet,
+            `COMPUTER LABORATORY INVENTORY - ${labName?.toUpperCase() || "LABORATORY"}`,
+            exportDate,
+            headerColor,
+            logoImage,
+            separatorImage,
+        );
 
         worksheet.addRow([]);
 
@@ -781,6 +867,112 @@ export default function ComputerLaboratoryInventory() {
         worksheet.columns.forEach((column) => {
             column.width = 15;
         });
+
+        // Signatories block below table
+        const preparedLabelRow = worksheet.lastRow.number + 6;
+        const preparedNameRow = preparedLabelRow + 2;
+        const preparedRoleRow = preparedLabelRow + 3;
+        const inspectedLabelRow = preparedLabelRow + 5;
+        const inspectedNameRow = inspectedLabelRow + 2;
+        const inspectedRoleRow = inspectedLabelRow + 3;
+
+        const safePreparedBy = (preparedBy || "").trim() || "____________________";
+        const safeInspectedBy = (inspectedBy || "").trim() || "____________________";
+
+        worksheet.getCell(`B${preparedLabelRow}`).value = "Prepared and submitted by:";
+        worksheet.getCell(`B${preparedNameRow}`).value = safePreparedBy;
+        worksheet.getCell(`B${preparedRoleRow}`).value = "IT technical support";
+
+        worksheet.getCell(`B${inspectedLabelRow}`).value = "Inspected and verified by:";
+        worksheet.getCell(`B${inspectedNameRow}`).value = safeInspectedBy;
+        worksheet.getCell(`B${inspectedRoleRow}`).value = "Property custodian";
+
+        [preparedLabelRow, inspectedLabelRow].forEach((rowNumber) => {
+            worksheet.getCell(`B${rowNumber}`).font = { bold: true, size: 10 };
+        });
+        [preparedNameRow, inspectedNameRow].forEach((rowNumber) => {
+            worksheet.getCell(`B${rowNumber}`).font = { bold: true, size: 12, name: "Arial" };
+        });
+        [preparedRoleRow, inspectedRoleRow].forEach((rowNumber) => {
+            worksheet.getCell(`B${rowNumber}`).font = { italic: true, size: 10 };
+        });
+    };
+
+    const createDataSheet = (
+        worksheet,
+        summaries,
+        logoImage,
+        separatorImage,
+        preparedBy,
+        inspectedBy,
+        options = {},
+    ) => {
+        const headerColor = { argb: "FF4A1111" };
+
+        applyExportHeader(
+            worksheet,
+            "INVENTORY OF COMPUTER LABORATORY",
+            exportDate,
+            headerColor,
+            logoImage,
+            separatorImage,
+            options,
+        );
+
+        // ensure the DATA sheet has the same spacing as lab sheets
+        worksheet.addRow([]);
+
+        worksheet.getCell("B10").value = "CSTA COMPUTER LAB:";
+        worksheet.getCell("B10").font = { bold: true, size: 20, name: "Arial" };
+
+        const listStartRow = 12;
+        summaries.forEach((summary, index) => {
+            const rowNumber = listStartRow + index;
+            const labelText = String(summary.label || "").toUpperCase();
+            worksheet.getCell(`B${rowNumber}`).value = `${labelText} = ${summary.count}`;
+            worksheet.getCell(`B${rowNumber}`).font = { bold: false, size: 16, name: "Arial" };
+            worksheet.getCell(`B${rowNumber}`).alignment = { horizontal: "left", vertical: "middle" };
+        });
+
+        const totalRow = listStartRow + summaries.length + 1;
+        const totalCount = summaries.reduce((total, s) => total + (s.count || 0), 0);
+        worksheet.getCell(`B${totalRow}`).value = `TOTAL = ${totalCount}`;
+        worksheet.getCell(`B${totalRow}`).font = { bold: true, size: 16, name: "Arial" };
+        worksheet.getCell(`B${totalRow}`).alignment = { horizontal: "left", vertical: "middle" };
+
+        const preparedLabelRow = totalRow + 4;
+        const preparedNameRow = preparedLabelRow + 2;
+        const preparedRoleRow = preparedLabelRow + 3;
+        const inspectedLabelRow = preparedLabelRow + 5;
+        const inspectedNameRow = inspectedLabelRow + 2;
+        const inspectedRoleRow = inspectedLabelRow + 3;
+
+        const safePreparedBy = (preparedBy || "").trim() || "____________________";
+        const safeInspectedBy = (inspectedBy || "").trim() || "____________________";
+
+        worksheet.getCell(`B${preparedLabelRow}`).value = "Prepared and submitted by:";
+        worksheet.getCell(`B${preparedNameRow}`).value = safePreparedBy;
+        worksheet.getCell(`B${preparedRoleRow}`).value = "IT technical support";
+
+        worksheet.getCell(`B${inspectedLabelRow}`).value = "Inspected and verified by:";
+        worksheet.getCell(`B${inspectedNameRow}`).value = safeInspectedBy;
+        worksheet.getCell(`B${inspectedRoleRow}`).value = "Property custodian";
+
+        [preparedLabelRow, inspectedLabelRow].forEach((rowNumber) => {
+            worksheet.getCell(`B${rowNumber}`).font = { bold: true, size: 10 };
+        });
+        [preparedNameRow, inspectedNameRow].forEach((rowNumber) => {
+            worksheet.getCell(`B${rowNumber}`).font = { bold: true, size: 12, name: "Arial" };
+        });
+        [preparedRoleRow, inspectedRoleRow].forEach((rowNumber) => {
+            worksheet.getCell(`B${rowNumber}`).font = { italic: true, size: 10 };
+        });
+
+        worksheet.columns = [
+            { width: 5 },
+            { width: 38 },
+            { width: 18 },
+        ];
     };
 
     const exportLab = async () => {
@@ -804,8 +996,9 @@ export default function ComputerLaboratoryInventory() {
             separatorBuffer = createHeaderSeparatorBase64();
 
             const workbook = new ExcelJS.Workbook();
+            const exportSummaries = [];
 
-            for (const labId of labsToExport) {
+            for (const [index, labId] of labsToExport.entries()) {
                 const labMeta = labOptions.find((l) => l.value === labId);
                 if (!labMeta) continue;
 
@@ -835,13 +1028,34 @@ export default function ComputerLaboratoryInventory() {
                 }
 
                 const sheetName = sanitizeSheetName(labMeta.label);
-                createLabSheet(workbook, sheetName, labMeta.label, grouped, selectedExportColumns, logoBuffer, separatorBuffer);
+                createLabSheet(
+                    workbook,
+                    sheetName,
+                    labMeta.label,
+                    grouped,
+                    selectedExportColumns,
+                    logoBuffer,
+                    separatorBuffer,
+                    preparedByName,
+                    inspectedByName,
+                );
+
+                exportSummaries.push({
+                    label: labMeta.label,
+                    count: grouped.length,
+                });
             }
 
-            // Remove empty default sheet
-            if (workbook.worksheets.length > labsToExport.length) {
-                workbook.removeWorksheet(workbook.worksheets[0].id);
-            }
+                    const dataWorksheet = workbook.addWorksheet("DATA");
+                    createDataSheet(
+                        dataWorksheet,
+                        exportSummaries,
+                        logoBuffer,
+                        separatorBuffer,
+                        preparedByName,
+                        inspectedByName,
+                        { logoCol: 1.5 },
+                    );
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -931,7 +1145,10 @@ export default function ComputerLaboratoryInventory() {
                         <DialogFooter>
                             <button
                                 type="button"
-                                onClick={() => setConfirmExitEditMode(false)}
+                                onClick={() => {
+                                    setConfirmExitEditMode(false);
+                                    setPendingAction(null);
+                                }}
                                 className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
                             >
                                 Keep Editing
@@ -942,61 +1159,14 @@ export default function ComputerLaboratoryInventory() {
                                     setIsEditMode(false);
                                     setHasEditChanges(false);
                                     setConfirmExitEditMode(false);
+                                    if (pendingAction === 'switchHistory') {
+                                        updateHistoryView(true);
+                                    }
+                                    setPendingAction(null);
                                 }}
                                 className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#5a1717]"
                             >
                                 Done
-                            </button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-            )}
-
-            {pendingCellConfirmation && (
-                <Dialog
-                    open={!!pendingCellConfirmation}
-                    onOpenChange={() => {
-                        if (pendingCellConfirmation?.key) {
-                            setCellDrafts((current) => {
-                                const next = { ...current };
-                                delete next[pendingCellConfirmation.key];
-                                return next;
-                            });
-                        }
-                        setPendingCellConfirmation(null);
-                    }}
-                >
-                    <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                            <DialogTitle>Confirm Cell Update</DialogTitle>
-                            <DialogDescription>
-                                Save changes to <strong>{pendingCellConfirmation.field}</strong> for <strong>{pendingCellConfirmation.componentType}</strong> on Computer #{pendingCellConfirmation.computerNumber}?
-                            </DialogDescription>
-                        </DialogHeader>
-                        <DialogFooter>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (pendingCellConfirmation?.key) {
-                                        setCellDrafts((current) => {
-                                            const next = { ...current };
-                                            delete next[pendingCellConfirmation.key];
-                                            return next;
-                                        });
-                                    }
-                                    setPendingCellConfirmation(null);
-                                }}
-                                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={confirmInlineCellSave}
-                                disabled={savingCellKey !== null || exporting}
-                                className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
-                            >
-                                Confirm
                             </button>
                         </DialogFooter>
                     </DialogContent>
@@ -1024,77 +1194,81 @@ export default function ComputerLaboratoryInventory() {
                                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
                             />
                         </div>
-                        <div className="border-t pt-4 space-y-3">
-                            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                                <span className="text-xs font-medium text-slate-600">
-                                    Step {componentStep + 1} of {COMPONENT_TYPES.length}
-                                </span>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setComponentStep((current) => Math.max(current - 1, 0))}
-                                        disabled={componentStep === 0}
-                                        className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                        Previous
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            setComponentStep((current) => Math.min(current + 1, COMPONENT_TYPES.length - 1))
-                                        }
-                                        disabled={componentStep === COMPONENT_TYPES.length - 1}
-                                        className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                        Next
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                                <h4 className="mb-3 text-xs font-semibold text-slate-700 uppercase">{activeComponentType}</h4>
-                                <div className="grid gap-3">
-                                    <div>
-                                        <label className="text-xs font-medium text-slate-600">Brand</label>
-                                        <input
-                                            type="text"
-                                            value={newComponent[`${activeComponentType}_brand`] || ""}
-                                            onChange={(e) =>
-                                                setNewComponent({ ...newComponent, [`${activeComponentType}_brand`]: e.target.value })
-                                            }
-                                            placeholder="e.g., Intel"
-                                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-medium text-slate-600">Description</label>
-                                        <input
-                                            type="text"
-                                            value={newComponent[`${activeComponentType}_description`] || ""}
-                                            onChange={(e) =>
-                                                setNewComponent({ ...newComponent, [`${activeComponentType}_description`]: e.target.value })
-                                            }
-                                            placeholder="e.g., Core i7"
-                                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-medium text-slate-600">Remarks</label>
-                                        <select
-                                            value={newComponent[`${activeComponentType}_remarks`] || ""}
-                                            onChange={(e) =>
-                                                setNewComponent({ ...newComponent, [`${activeComponentType}_remarks`]: e.target.value })
-                                            }
-                                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                        <div className="border-t pt-4 space-y-2">
+                            {COMPONENT_TYPES.map((componentType) => {
+                                const isOpen = !!openComponentSections[componentType];
+                                return (
+                                    <div key={componentType} className="rounded-lg border border-slate-200 bg-slate-50">
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleComponentSection(componentType)}
+                                            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition hover:bg-slate-100"
+                                            aria-expanded={isOpen}
+                                            aria-label={`Toggle ${componentType} fields`}
                                         >
-                                            <option value="">Select remarks...</option>
-                                            <option value="working">WORKING</option>
-                                            <option value="defective">DEFECTIVE</option>
-                                            <option value="built in">BUILT IN</option>
-                                        </select>
+                                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-700">{componentType}</span>
+                                            <ChevronDown
+                                                className={`h-4 w-4 text-slate-500 transition-transform ${isOpen ? "rotate-180" : "rotate-0"}`}
+                                            />
+                                        </button>
+
+                                        {isOpen && (
+                                            <div className="grid gap-3 border-t border-slate-200 p-3">
+                                                <div>
+                                                    <label className="text-xs font-medium text-slate-600">Brand</label>
+                                                    <input
+                                                        type="text"
+                                                        value={newComponent[`${componentType}_brand`] || ""}
+                                                        onChange={(e) =>
+                                                            setNewComponent((current) => ({
+                                                                ...current,
+                                                                [`${componentType}_brand`]: e.target.value,
+                                                            }))
+                                                        }
+                                                        placeholder="e.g., Intel"
+                                                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-medium text-slate-600">Description</label>
+                                                    <input
+                                                        type="text"
+                                                        value={newComponent[`${componentType}_description`] || ""}
+                                                        onChange={(e) =>
+                                                            setNewComponent((current) => ({
+                                                                ...current,
+                                                                [`${componentType}_description`]: e.target.value,
+                                                            }))
+                                                        }
+                                                        placeholder="e.g., Core i7"
+                                                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-medium text-slate-600">Remarks</label>
+                                                    <select
+                                                        value={newComponent[`${componentType}_remarks`] || ""}
+                                                        onChange={(e) =>
+                                                            setNewComponent((current) => ({
+                                                                ...current,
+                                                                [`${componentType}_remarks`]: e.target.value,
+                                                            }))
+                                                        }
+                                                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                                                    >
+                                                        <option value="">Select remarks...</option>
+                                                        {REMARK_OPTIONS.map((remark) => (
+                                                            <option key={remark} value={remark.toLowerCase()}>
+                                                                {remark}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                </div>
-                            </div>
+                                );
+                            })}
                         </div>
                     </div>
                     <DialogFooter>
@@ -1104,14 +1278,6 @@ export default function ComputerLaboratoryInventory() {
                             className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
                         >
                             Cancel
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => handleAddComponent({ closeDialog: false })}
-                            disabled={exporting}
-                            className="rounded-lg border border-[#4a1111] px-4 py-2 text-sm font-medium text-[#4a1111] transition hover:bg-[#f8eeee] disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"
-                        >
-                            Quick Save
                         </button>
                         <button
                             type="button"
@@ -1164,100 +1330,171 @@ export default function ComputerLaboratoryInventory() {
 
             <div className="flex flex-col items-center justify-between gap-3 sm:flex-row sm:gap-4">
                 <div className="flex flex-wrap items-center justify-center gap-1.5 sm:justify-start">
-                    {labOptions.map((lab) => (
-                        <div key={lab.value} className="relative">
-                            <button
-                                type="button"
-                                onClick={() => setSelectedLab(lab.value)}
-                                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${lab.value === selectedLab
-                                        ? "bg-[#4a1111] text-white"
-                                        : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                                    }`}
-                            >
-                                {lab.label}
-                            </button>
-                            {isEditMode && (
+                        {labOptions.map((lab) => (
+                            <div key={lab.value} className="relative">
                                 <button
                                     type="button"
-                                    onClick={() => setDeleteConfirmLab(lab.value)}
-                                    className="absolute -top-2 -right-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 transition"
-                                    title="Delete laboratory"
-                                    aria-label="Delete laboratory"
+                                    onClick={() => setSelectedLab(lab.value)}
+                                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${lab.value === selectedLab
+                                            ? "bg-[#4a1111] text-white"
+                                            : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                                        }`}
                                 >
-                                    <Trash2 className="h-3 w-3" />
+                                    {lab.label}
                                 </button>
-                            )}
-                        </div>
-                    ))}
-                    {isEditMode && (
+                                {isEditMode && isAdminUser && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setDeleteConfirmLab(lab.value)}
+                                        className="absolute -top-2 -right-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 transition"
+                                        title="Delete laboratory"
+                                        aria-label="Delete laboratory"
+                                    >
+                                        <Trash2 className="h-3 w-3" />
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                        {isEditMode && (
+                            <button
+                                type="button"
+                                onClick={openAddLabModal}
+                                className="inline-flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                                title="Add laboratory"
+                                aria-label="Add laboratory"
+                            >
+                                <Plus className="h-4 w-4" />
+                            </button>
+                        )}
+                </div>
+                <div className="flex items-center gap-2">
+                    {!isHistoryOpen && !isEditMode && (
                         <button
                             type="button"
-                            onClick={openAddLabModal}
-                            className="inline-flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-                            title="Add laboratory"
-                            aria-label="Add laboratory"
+                            onClick={() => {
+                                // default selection: current lab
+                                setSelectedExportLabs(selectedLab ? [selectedLab] : labOptions.map((l) => l.value));
+                                setSelectedExportColumns(COMPONENT_TYPES.slice());
+                                setExportDate(new Date().toISOString().slice(0,10));
+                                setPreparedByName("");
+                                setInspectedByName("");
+                                setShowExportModal(true);
+                            }}
+                            disabled={loading || rows.length === 0 || exporting}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                            title={exporting ? "Exporting..." : "Export"}
+                            aria-label={exporting ? "Exporting" : "Export"}
+                        >
+                            <Download className="h-4 w-4" />
+                        </button>
+                    )}
+
+                    {!isHistoryOpen && isEditMode && (
+                        <button
+                            type="button"
+                            onClick={() => setIsAddComponentOpen(true)}
+                            disabled={!selectedLab || exporting}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                            title="Add computer component"
+                            aria-label="Add computer component"
                         >
                             <Plus className="h-4 w-4" />
                         </button>
                     )}
-                </div>
-                <div className="flex items-center gap-2">
-                                        {!isEditMode && (
-            <button
-            type="button"
-            onClick={() => {
-                // default selection: current lab
-                setSelectedExportLabs(selectedLab ? [selectedLab] : labOptions.map((l) => l.value));
-                setSelectedExportColumns(COMPONENT_TYPES.slice());
-                setExportDate(new Date().toISOString().slice(0,10));
-                setShowExportModal(true);
-            }}
-            disabled={loading || rows.length === 0 || exporting}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
-            title={exporting ? "Exporting..." : "Export"}
-            aria-label={exporting ? "Exporting" : "Export"}
-        >
-            <Download className="h-4 w-4" />
-        </button>
-                                        )}
-                    {isEditMode && (
+
+                    {!isHistoryOpen && (
                         <button
-      type="button"
-      onClick={() => setIsAddComponentOpen(true)}
-      disabled={!selectedLab || exporting}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
-      title="Add computer component"
-      aria-label="Add computer component"
-    >
-      <Plus className="h-4 w-4" />
-    </button>
+                            type="button"
+                            onClick={() => {
+                                if (isEditMode) {
+                                    const hasUnsavedChanges = hasEditChanges || Object.keys(cellDrafts).length > 0;
+                                    if (hasUnsavedChanges) {
+                                        setPendingAction('exit');
+                                        setConfirmExitEditMode(true);
+                                    } else {
+                                        setIsEditMode(false);
+                                    }
+                                } else {
+                                    setIsEditMode(true);
+                                    setHasEditChanges(false);
+                                }
+                            }}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-white transition bg-[#4a1111] hover:bg-[#5a1717]"
+                            title={isEditMode ? "Exit edit mode" : "Edit mode"}
+                            aria-label={isEditMode ? "Exit edit mode" : "Edit mode"}
+                        >
+                            {isEditMode ? (
+                                <Check className="h-4 w-4" />
+                            ) : (
+                                <PencilLine className="h-4 w-4" />
+                            )}
+                        </button>
                     )}
-                     <button
-    type="button"
-    onClick={() => {
-      if (isEditMode) {
-        if (hasEditChanges) {
-          setConfirmExitEditMode(true);
-        } else {
-          setIsEditMode(false);
-        }
-      } else {
-        setIsEditMode(true);
-        setHasEditChanges(false);
-      }
-    }}
-    className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-white transition bg-[#4a1111] hover:bg-[#5a1717]"
-    title={isEditMode ? "Exit edit mode" : "Edit mode"}
-    aria-label={isEditMode ? "Exit edit mode" : "Edit mode"}
-  >
-    {isEditMode ? (
-      <Check className="h-4 w-4" />
-    ) : (
-      <PencilLine className="h-4 w-4" />
-    )}
-  </button>
+
+                    {!isEditMode && (
+                        <button
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                                // toggle history mode; prompt if exiting edit mode with changes
+                                if (!isHistoryOpen) {
+                                    // Check if in edit mode and has any unsaved changes (either from cellDrafts or hasEditChanges flag)
+                                    const hasUnsavedChanges = isEditMode && (hasEditChanges || Object.keys(cellDrafts).length > 0);
+                                    if (hasUnsavedChanges) {
+                                        // Show confirmation before switching to history
+                                        setPendingAction('switchHistory');
+                                        setConfirmExitEditMode(true);
+                                    } else {
+                                        // No unsaved changes, proceed directly to history
+                                        setIsEditMode(false);
+                                        setHasEditChanges(false);
+                                        updateHistoryView(true);
+                                    }
+                                } else {
+                                    updateHistoryView(false);
+                                }
+                            }}
+                            title={isHistoryOpen ? "Return to inventory" : "View history"}
+                            aria-label={isHistoryOpen ? "Return to inventory" : "View history"}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717]"
+                        >
+                            <span className="inline-flex items-center justify-center w-4 h-4">
+                                {isHistoryOpen ? (
+                                    <ChevronLeft className="h-4 w-4" />
+                                ) : (
+                                    <FileText className="h-4 w-4" />
+                                )}
+                            </span>
+                        </button>
+                    )}
                 </div>
             </div>
+
+                {!isHistoryOpen && (
+                    <div className="mt-3 w-full sm:w-96">
+                        <div className="relative">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search computer #, component, brand, description..."
+                                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+                            />
+                            {searchQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchQuery("")}
+                                    className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                                    aria-label="Clear search"
+                                    title="Clear search"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {showExportModal && (
                     <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
@@ -1274,6 +1511,28 @@ export default function ComputerLaboratoryInventory() {
                                         type="date"
                                         value={exportDate}
                                         onChange={(e) => setExportDate(e.target.value)}
+                                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-500">Prepared and submitted by</label>
+                                    <input
+                                        type="text"
+                                        value={preparedByName}
+                                        onChange={(e) => setPreparedByName(e.target.value)}
+                                        placeholder="Enter name"
+                                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-500">Inspected and verified by</label>
+                                    <input
+                                        type="text"
+                                        value={inspectedByName}
+                                        onChange={(e) => setInspectedByName(e.target.value)}
+                                        placeholder="Enter name"
                                         className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
                                     />
                                 </div>
@@ -1356,6 +1615,8 @@ export default function ComputerLaboratoryInventory() {
                         <div className="py-16 text-center">
                             <p className="text-sm text-slate-500">No component records found for this laboratory.</p>
                         </div>
+                    ) : isHistoryOpen ? (
+                        <InventoryHistoryView selectedLab={selectedLab} />
                     ) : (
                         <div className="computer-lab-scrollbar h-[80vh] min-h-0 w-full max-w-full overflow-auto">
                             <table className="w-max min-w-full divide-y divide-slate-200">
@@ -1370,7 +1631,7 @@ export default function ComputerLaboratoryInventory() {
                                                 {heading}
                                             </th>
                                         ))}
-                                        {isEditMode && (
+                                        {isEditMode && isAdminUser && (
                                             <th
                                                 scope="col"
                                                 className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700"
@@ -1381,7 +1642,7 @@ export default function ComputerLaboratoryInventory() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-200 bg-white">
-                                    {rows.flatMap((row, computerIndex) =>
+                                    {filteredRows.flatMap((row, computerIndex) =>
                                         COMPONENT_ROWS.map(([label, field], rowIndex) => {
                                             const shadedRow = computerIndex % 2 === 0 ? "bg-slate-50" : "bg-slate-200/70";
                                             const groupDivider = rowIndex === 0 ? "border-t-2 border-slate-300" : "border-t border-slate-200";
@@ -1470,12 +1731,20 @@ export default function ComputerLaboratoryInventory() {
                                                                         />
                                                                     )
                                                                 ) : (
-                                                                    <div className="text-slate-900 font-medium">{value}</div>
+                                                                    <div
+                                                                        className={`font-medium ${
+                                                                            isRemarksField && String(value).toUpperCase() === "DEFECTIVE"
+                                                                                ? "text-red-600"
+                                                                                : "text-slate-900"
+                                                                        }`}
+                                                                    >
+                                                                        {value}
+                                                                    </div>
                                                                 )}
                                                             </td>
                                                         );
                                                     })}
-                                                    {isEditMode && rowIndex === 0 && (
+                                                    {isEditMode && isAdminUser && rowIndex === 0 && (
                                                         <td
                                                             rowSpan={COMPONENT_ROWS.length}
                                                             className="px-4 py-4 text-center align-middle"
@@ -1502,6 +1771,7 @@ export default function ComputerLaboratoryInventory() {
                     )}
                 </div>
             </div>
+            {/* Inline history view used instead of modal Drawer; keep Drawer component file for later use */}
         </div>
     );
 }

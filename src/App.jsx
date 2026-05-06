@@ -2,6 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClientInstance } from "@/lib/query-client";
 import { useSyncExternalStore } from "react";
+import { AuthProvider } from "@/lib/AuthContext";
 import {
   BrowserRouter as Router,
   Navigate,
@@ -106,6 +107,7 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClientInstance}>
+      <AuthProvider>
       <Router>
         <Routes>
           <Route
@@ -172,6 +174,7 @@ function App() {
           />
         </Routes>
       </Router>
+      </AuthProvider>
       <Toaster />
     </QueryClientProvider>
   );
