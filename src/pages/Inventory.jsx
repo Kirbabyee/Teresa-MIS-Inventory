@@ -7,7 +7,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   deleteInventorySection,
   deleteInventoryTab,
-  makeUniqueSlug,
   slugify,
   upsertInventorySection,
   upsertInventoryTab,
@@ -25,8 +24,8 @@ import { isCurrentUserAdmin } from "@/lib/inventoryApi";
 const iconButtonClass =
   "inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700";
 
-const sanitizeNameInput = (value = "") => String(value).replace(/[^a-zA-Z0-9]/g, "");
-const hasOnlyLettersNumbers = (value = "") => /^[a-zA-Z0-9]+$/.test(String(value).trim());
+const sanitizeNameInput = (value = "") => String(value).replace(/[^a-zA-Z0-9 ]/g, "");
+const hasOnlyLettersNumbers = (value = "") => /^(?=.*[a-zA-Z0-9])[a-zA-Z0-9 ]+$/.test(String(value));
 
 const normalizeColumnConfig = (column) => ({
   key: String(column?.key || "").trim(),
@@ -788,14 +787,62 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
     if (editingColumnIndex === index) setEditingColumnIndex(null);
   };
 
+  const saveSectionFromModal = async (sectionForm) => {
+    const nextSection = {
+      ...(sectionToEdit || {}),
+      name: String(sectionForm.name || "").trim(),
+      slug: slugify(sectionForm.name || ""),
+      description: String(sectionForm.description || "").trim(),
+    };
+
+    setSections((currentSections) => {
+      if (editingSectionIndex === null) return [...currentSections, nextSection];
+
+      return currentSections.map((section, index) =>
+        index === editingSectionIndex ? nextSection : section
+      );
+    });
+    setErrors((current) => ({ ...current, sections: "" }));
+    setShowSectionModal(false);
+    setSectionToEdit(null);
+    setEditingSectionIndex(null);
+  };
+
+  const saveColumnFromModal = async (columnForm) => {
+    const normalizedColumn = normalizeColumnConfig({
+      ...(columnToEdit || {}),
+      ...columnForm,
+      key: slugify(columnForm.label || "").replace(/-/g, "_"),
+      label: String(columnForm.label || "").trim(),
+      subColumns: (columnForm.subColumns || []).map((subColumn) => ({
+        ...subColumn,
+        key: slugify(subColumn.label || subColumn.key || "").replace(/-/g, "_"),
+        label: String(subColumn.label || "").trim(),
+      })),
+    });
+
+    setColumns((currentColumns) => {
+      if (editingColumnIndex === null) return [...currentColumns, normalizedColumn];
+
+      return currentColumns.map((column, index) =>
+        index === editingColumnIndex ? normalizedColumn : column
+      );
+    });
+    setErrors((current) => ({ ...current, columns: "" }));
+    setShowColumnModal(false);
+    setColumnToEdit(null);
+    setEditingColumnIndex(null);
+  };
+
   const validateTabForm = () => {
     const nextErrors = {};
-    const name = tabForm.name.trim();
+    const name = String(tabForm.name || "");
+    const trimmedName = name.trim();
     const normalizedSlug = slugify(tabForm.slug || name);
     const duplicateTab = existingTabs.some(
       (currentTab) =>
         currentTab?.id !== tab?.id &&
-        (String(currentTab?.name || "").trim().toLowerCase() === name.toLowerCase() ||
+        (String(currentTab?.name || "").trim().toLowerCase() === trimmedName.toLowerCase() ||
           currentTab?.slug === normalizedSlug)
     );
     const sectionNames = sections.map((section) => String(section?.name || "").trim().toLowerCase()).filter(Boolean);
@@ -807,10 +854,10 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
       (column) => column?.label && !hasOnlyLettersNumbers(column.label)
     );
 
-    if (!name) {
+    if (!trimmedName) {
       nextErrors.name = "Tab name is required.";
     } else if (!hasOnlyLettersNumbers(name)) {
-      nextErrors.name = "Use letters and numbers only.";
+      nextErrors.name = "Use letters, numbers, and spaces only.";
     } else if (name.length > 80) {
       nextErrors.name = "Tab name must be 80 characters or fewer.";
     } else if (duplicateTab) {
@@ -826,7 +873,7 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
     } else if (sectionNames.length !== sections.length) {
       nextErrors.sections = "Every section needs a name.";
     } else if (hasInvalidSectionName) {
-      nextErrors.sections = "Section names can use letters and numbers only.";
+      nextErrors.sections = "Section names can use letters, numbers, and spaces only.";
     } else if (new Set(sectionNames).size !== sectionNames.length) {
       nextErrors.sections = "Section names must be unique.";
     }
@@ -836,7 +883,7 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
     } else if (columnKeys.length !== columns.length) {
       nextErrors.columns = "Every column needs a name.";
     } else if (hasInvalidColumnName) {
-      nextErrors.columns = "Column names can use letters and numbers only.";
+      nextErrors.columns = "Column names can use letters, numbers, and spaces only.";
     } else if (new Set(columnKeys).size !== columnKeys.length) {
       nextErrors.columns = "Column names must be unique.";
     }
@@ -904,6 +951,7 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
   };
 
  return (
+  <>
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
     <div className="flex h-full w-full max-w-2xl max-h-[85vh] flex-col overflow-hidden rounded-[8px] bg-white shadow-2xl ring-1 ring-slate-200">
 
@@ -916,6 +964,7 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
           </h3>
         </div>
         <button
+          type="button"
           onClick={requestClose}
           disabled={saving}
           className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1012,12 +1061,14 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1">
                           <button
+                            type="button"
                             onClick={() => editSection(i)}
                             className="p-2 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                           >
                             <Edit className="h-4 w-4" />
                           </button>
                           <button
+                            type="button"
                             onClick={() => deleteSection(i)}
                             className="p-2 rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"
                           >
@@ -1077,12 +1128,14 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1">
                           <button
+                            type="button"
                             onClick={() => editColumn(i)}
                             className="p-2 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                           >
                             <Edit className="h-4 w-4" />
                           </button>
                           <button
+                            type="button"
                             onClick={() => deleteColumn(i)}
                             className="p-2 rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"
                           >
@@ -1102,6 +1155,7 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
       {/* Footer */}
       <div className="flex justify-end gap-3 rounded-b-[28px] border-t border-slate-100 bg-slate-50 px-6 py-4">
         <button
+          type="button"
           onClick={requestClose}
           disabled={saving}
           className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
@@ -1109,6 +1163,7 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
           Cancel
         </button>
         <button
+          type="button"
           onClick={requestSave}
           disabled={saving}
           className="inline-flex items-center gap-2 rounded-full bg-[#4a1111] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#3f0f0f] disabled:cursor-wait disabled:bg-[#7a4b4b]"
@@ -1119,6 +1174,70 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
       </div>
     </div>
   </div>
+
+  {showDiscardConfirm && (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+        <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
+        <p className="mt-2 text-sm text-slate-600">
+          You have unsaved changes. If you close now, those changes will be lost.
+        </p>
+        <div className="mt-4 flex justify-end gap-3">
+          <button type="button" onClick={cancelDiscard} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+            Keep editing
+          </button>
+          <button type="button" onClick={confirmDiscard} className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700">
+            Discard
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {showSaveConfirm && (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+        <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
+        <p className="mt-2 text-sm text-slate-600">
+          Are you sure you want to save these changes?
+        </p>
+        <div className="mt-4 flex justify-end gap-3">
+          <button type="button" onClick={cancelSave} disabled={saving} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60">
+            Cancel
+          </button>
+          <button type="button" onClick={confirmSave} disabled={saving} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-70">
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {showSectionModal && (
+    <SectionModal
+      section={sectionToEdit}
+      onClose={() => {
+        setShowSectionModal(false);
+        setSectionToEdit(null);
+        setEditingSectionIndex(null);
+      }}
+      onSave={saveSectionFromModal}
+    />
+  )}
+
+  {showColumnModal && (
+    <ColumnRowModal
+      column={columnToEdit}
+      existingColumns={columns}
+      onClose={() => {
+        setShowColumnModal(false);
+        setColumnToEdit(null);
+        setEditingColumnIndex(null);
+      }}
+      onSave={saveColumnFromModal}
+    />
+  )}
+  </>
 );
 }
 

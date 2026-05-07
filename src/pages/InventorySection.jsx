@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Edit, Plus, Trash2, X, Download } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown, Edit, Plus, Trash2, X, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import ExcelJS from "exceljs";
@@ -12,7 +12,6 @@ import {
   upsertInventoryItem,
   useInventoryCatalog,
 } from "@/lib/inventoryApi";
-import { size } from "lodash";
 
 // Utility functions
 const normalizeSubColumns = (subColumns = [], parentKey = "") => {
@@ -151,6 +150,32 @@ const getRowSortIndex = (field) => {
   const text = normalizeForMatch(`${field.key} ${field.label}`);
   const priorityIndex = componentRowPriority.findIndex((key) => text.includes(key));
   return priorityIndex === -1 ? componentRowPriority.length : priorityIndex;
+};
+
+const getSortableValue = (item, key) => {
+  if (!key) return "";
+  const value = item?.[key];
+  if (value === null || value === undefined) return "";
+  return value;
+};
+
+const compareSortableValues = (first, second) => {
+  const firstValue = getSortableValue(first.item, first.key);
+  const secondValue = getSortableValue(second.item, second.key);
+  const firstNumber = Number(firstValue);
+  const secondNumber = Number(secondValue);
+  const bothNumeric =
+    firstValue !== "" &&
+    secondValue !== "" &&
+    !Number.isNaN(firstNumber) &&
+    !Number.isNaN(secondNumber);
+
+  if (bothNumeric) return firstNumber - secondNumber;
+
+  return String(firstValue).localeCompare(String(secondValue), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
 };
 
 // Item Modal Component
@@ -784,6 +809,7 @@ export default function InventorySection() {
   const [exportingMultiple, setExportingMultiple] = useState(false);
   const [exportableItems, setExportableItems] = useState({});
   const [checkingExportItems, setCheckingExportItems] = useState(false);
+  const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" });
 
   const checkAllSectionsForItems = async () => {
     if (!sections.length) {
@@ -893,6 +919,45 @@ export default function InventorySection() {
     usesTemplateColumns &&
     componentMatrix.componentColumns.length > 0 &&
     componentMatrix.rowFields.length > 0;
+  const sortedItems = useMemo(() => {
+    if (!sortConfig.key) return items;
+
+    return [...items].sort((firstItem, secondItem) => {
+      const result = compareSortableValues(
+        { item: firstItem, key: sortConfig.key },
+        { item: secondItem, key: sortConfig.key }
+      );
+
+      return sortConfig.direction === "desc" ? -result : result;
+    });
+  }, [items, sortConfig]);
+  const requestSort = (key) => {
+    if (!key) return;
+
+    setSortConfig((current) => ({
+      key,
+      direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+  };
+  const renderSortButton = (key, label, align = "center") => {
+    const isActive = sortConfig.key === key;
+    const Icon = isActive ? (sortConfig.direction === "asc" ? ArrowUp : ArrowDown) : ChevronsUpDown;
+
+    return (
+      <button
+        type="button"
+        onClick={() => requestSort(key)}
+        className={`inline-flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-inherit transition hover:bg-slate-200/70 hover:text-slate-900 ${
+          align === "left" ? "justify-start text-left" : "justify-center text-center"
+        }`}
+        title={`Sort by ${label}`}
+        aria-label={`Sort by ${label}`}
+      >
+        <span>{label}</span>
+        <Icon className={`h-3.5 w-3.5 ${isActive ? "text-[#4a1111]" : "text-slate-400"}`} />
+      </button>
+    );
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -1477,7 +1542,10 @@ const createInventorySheet = async (
                         scope="col"
                         className="whitespace-nowrap bg-slate-50 px-4 py-3 text-center text-sm font-semibold text-slate-700"
                       >
-                        Computer #
+                        {renderSortButton(
+                          componentMatrix.computerColumn?.key || "computer_number",
+                          "Computer #"
+                        )}
                       </th>
                       {componentMatrix.componentColumns.map((column) => (
                         <th
@@ -1485,7 +1553,10 @@ const createInventorySheet = async (
                           scope="col"
                           className="whitespace-nowrap bg-slate-50 px-4 py-3 text-center text-sm font-semibold text-slate-700"
                         >
-                          {column.label}
+                          {renderSortButton(
+                            column.subColumns?.[0]?.physicalKey || column.key,
+                            column.label
+                          )}
                         </th>
                       ))}
                       {gridEditMode && (
@@ -1499,7 +1570,7 @@ const createInventorySheet = async (
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 bg-white">
-                    {items.flatMap((item, itemIndex) => {
+                    {sortedItems.flatMap((item, itemIndex) => {
                       const computerNumber = formatCellValue(
                         componentMatrix.computerColumn
                           ? item?.[componentMatrix.computerColumn.key]
@@ -1615,7 +1686,9 @@ const createInventorySheet = async (
                               rowSpan={hasGroupedHeaders && !subColumnCount ? 2 : 1}
                               className="border-r border-slate-200 px-4 py-3 text-center text-xs font-bold uppercase tracking-[0.16em] last:border-r-0"
                             >
-                              {column.label}
+                              {subColumnCount
+                                ? column.label
+                                : renderSortButton(column.key, column.label)}
                             </th>
                           );
                         })}
@@ -1639,7 +1712,11 @@ const createInventorySheet = async (
                                     scope="col"
                                     className="min-w-[140px] border-r border-t border-slate-200 px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 last:border-r-0"
                                   >
-                                    {subColumn.label}
+                                    {renderSortButton(
+                                      subColumn.physicalKey,
+                                      subColumn.label,
+                                      "left"
+                                    )}
                                   </th>
                                 ))
                               : []
@@ -1648,7 +1725,7 @@ const createInventorySheet = async (
                       )}
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
-                      {items.map((item) => (
+                      {sortedItems.map((item) => (
                         <tr key={item.id} className="transition hover:bg-emerald-50/30">
                           {tableColumns.map((column) =>
                             column.subColumns && column.subColumns.length > 0 ? (
