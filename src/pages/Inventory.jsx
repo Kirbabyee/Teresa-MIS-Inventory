@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle, Edit, FolderOpen, Plus, Trash2, X } from "lucide-react";
+import { Edit, FolderOpen, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   deleteInventorySection,
   deleteInventoryTab,
-  slugify,
   upsertInventorySection,
   upsertInventoryTab,
   useInventoryCatalog,
@@ -17,7 +16,6 @@ import {
   getInventoryCreateTableEndpoint,
   getInventoryModifyTableEndpoint,
   getTabTableConfig,
-  notifyInventoryCatalogChanged,
 } from "@/lib/inventoryApi";
 import { isCurrentUserAdmin } from "@/lib/inventoryApi";
 
@@ -234,11 +232,8 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
             <Input
               className="mt-2"
               value={form.label}
-              onChange={(e) => {
-                const nextLabel = sanitizeNameInput(e.target.value);
-                setForm((c) => ({ ...c, label: nextLabel, key: labelToKey(nextLabel) }));
-              }}
-              placeholder="e.g., Keyboard"
+              onChange={(e) => setForm((c) => ({ ...c, label: e.target.value, key: labelToKey(e.target.value) }))}
+              placeholder="e.g., Keyboard, Mouse, Monitor, etc"
             />
           </div>
 
@@ -323,7 +318,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
                     <Input
                       placeholder="Field Name (e.g., Brand)"
                       value={form.newSubColLabel}
-                      onChange={(e) => setForm((c) => ({ ...c, newSubColLabel: sanitizeNameInput(e.target.value) }))}
+                      onChange={(e) => setForm((c) => ({ ...c, newSubColLabel: e.target.value }))}
                       className="flex-1"
                     />
                     <button
@@ -594,8 +589,8 @@ function SectionModal({ section, onClose, onSave }) {
             <Input
               className="mt-2"
               value={form.name}
-              onChange={(event) => setForm((current) => ({ ...current, name: sanitizeNameInput(event.target.value) }))}
-              placeholder="Laboratory1"
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Laboratory 1"
             />
           </div>
           <div>
@@ -660,11 +655,9 @@ function SectionModal({ section, onClose, onSave }) {
   );
 }
 
-function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
+function TabModal({ tab, onClose, onSave }) {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [errors, setErrors] = useState({});
   const initialSnapshotRef = useRef("");
   const [tabForm, setTabForm] = useState({
     name: tab?.name || "",
@@ -731,8 +724,6 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
     setShowColumnModal(false);
     setShowDiscardConfirm(false);
     setShowSaveConfirm(false);
-    setSaving(false);
-    setErrors({});
     initialSnapshotRef.current = buildTabSnapshot(nextTabForm, nextSections, nextColumns);
   }, [tab]);
 
@@ -769,7 +760,6 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
 
   const deleteSection = (index) => {
     setSections((currentSections) => currentSections.filter((_, currentIndex) => currentIndex !== index));
-    setErrors((current) => ({ ...current, sections: "" }));
     if (editingSectionIndex === index) setEditingSectionIndex(null);
   };
 
@@ -783,7 +773,6 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
 
   const deleteColumn = (index) => {
     setColumns((currentColumns) => currentColumns.filter((_, currentIndex) => currentIndex !== index));
-    setErrors((current) => ({ ...current, columns: "" }));
     if (editingColumnIndex === index) setEditingColumnIndex(null);
   };
 
@@ -834,79 +823,11 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
     setEditingColumnIndex(null);
   };
 
-  const validateTabForm = () => {
-    const nextErrors = {};
-    const name = String(tabForm.name || "");
-    const trimmedName = name.trim();
-    const normalizedSlug = slugify(tabForm.slug || name);
-    const duplicateTab = existingTabs.some(
-      (currentTab) =>
-        currentTab?.id !== tab?.id &&
-        (String(currentTab?.name || "").trim().toLowerCase() === trimmedName.toLowerCase() ||
-          currentTab?.slug === normalizedSlug)
-    );
-    const sectionNames = sections.map((section) => String(section?.name || "").trim().toLowerCase()).filter(Boolean);
-    const hasInvalidSectionName = sections.some(
-      (section) => section?.name && !hasOnlyLettersNumbers(section.name)
-    );
-    const columnKeys = columns.map((column) => normalizeColumnConfig(column).key).filter(Boolean);
-    const hasInvalidColumnName = columns.some(
-      (column) => column?.label && !hasOnlyLettersNumbers(column.label)
-    );
-
-    if (!trimmedName) {
-      nextErrors.name = "Tab name is required.";
-    } else if (!hasOnlyLettersNumbers(name)) {
-      nextErrors.name = "Use letters, numbers, and spaces only.";
-    } else if (name.length > 80) {
-      nextErrors.name = "Tab name must be 80 characters or fewer.";
-    } else if (duplicateTab) {
-      nextErrors.name = "A tab with this name already exists.";
-    }
-
-    if (tabForm.description.trim().length > 500) {
-      nextErrors.description = "Description must be 500 characters or fewer.";
-    }
-
-    if (sections.length === 0) {
-      nextErrors.sections = "Add at least one section.";
-    } else if (sectionNames.length !== sections.length) {
-      nextErrors.sections = "Every section needs a name.";
-    } else if (hasInvalidSectionName) {
-      nextErrors.sections = "Section names can use letters, numbers, and spaces only.";
-    } else if (new Set(sectionNames).size !== sectionNames.length) {
-      nextErrors.sections = "Section names must be unique.";
-    }
-
-    if (columns.length === 0) {
-      nextErrors.columns = "Add at least one column.";
-    } else if (columnKeys.length !== columns.length) {
-      nextErrors.columns = "Every column needs a name.";
-    } else if (hasInvalidColumnName) {
-      nextErrors.columns = "Column names can use letters, numbers, and spaces only.";
-    } else if (new Set(columnKeys).size !== columnKeys.length) {
-      nextErrors.columns = "Column names must be unique.";
-    }
-
-    setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
-  };
-
-  const handleSaveTab = async () => {
-    if (saving) return;
-    if (!validateTabForm()) return;
-
-    setSaving(true);
-    try {
-      await onSave({ ...tabForm, sections, columns });
-    } finally {
-      setSaving(false);
-    }
+  const handleSaveTab = () => {
+    onSave({ ...tabForm, sections, columns });
   };
 
   const requestClose = () => {
-    if (saving) return;
-
     if (hasUnsavedChanges) {
       setShowDiscardConfirm(true);
       return;
@@ -924,155 +845,105 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
     setShowDiscardConfirm(false);
   };
 
-  const requestSave = async () => {
-    if (saving) return;
-    if (!validateTabForm()) return;
-
+  const requestSave = () => {
     if (hasUnsavedChanges) {
       setShowSaveConfirm(true);
       return;
     }
 
-    await handleSaveTab();
+    handleSaveTab();
   };
 
   const confirmSave = async () => {
-    if (saving) return;
-    if (!validateTabForm()) return;
-
     setShowSaveConfirm(false);
     await handleSaveTab();
   };
 
   const cancelSave = () => {
-    if (saving) return;
-
     setShowSaveConfirm(false);
   };
 
- return (
-  <>
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
-    <div className="flex h-full w-full max-w-2xl max-h-[85vh] flex-col overflow-hidden rounded-[8px] bg-white shadow-2xl ring-1 ring-slate-200">
-
-      {/* Header */}
-      <div className="flex items-center justify-between rounded-t-[28px] border-b border-slate-100 bg-slate-50 px-6 py-5">
-        <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Inventory tab</p>
-          <h3 className="mt-1 text-lg font-semibold text-slate-900">
-            {tab ? "Edit Inventory Tab" : "New Inventory Tab"}
-          </h3>
-        </div>
-        <button
-          type="button"
-          onClick={requestClose}
-          disabled={saving}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-
-      {/* Body */}
-      <div className="flex-1 min-h-0 space-y-8 px-6 py-6 overflow-y-auto">
-
-        {/* Form */}
-        <div className="space-y-5">
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 p-5">
           <div>
-            <label className="block text-xs font-medium text-slate-600">
-              Tab Name
-            </label>
+            <h3 className="text-lg font-semibold text-slate-900">{tab ? "Edit inventory tab" : "Add inventory tab"}</h3>
+          </div>
+          <button type="button" onClick={requestClose} className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="grid gap-4 px-5 py-5 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Tab name</label>
             <Input
-              className={`mt-2 ${errors.name ? "border-rose-300 focus-visible:ring-rose-500" : ""}`}
+              className="mt-2"
               value={tabForm.name}
-              onChange={(e) => {
-                setTabForm((c) => ({ ...c, name: sanitizeNameInput(e.target.value) }));
-                setErrors((current) => ({ ...current, name: "" }));
-              }}
-              aria-invalid={Boolean(errors.name)}
+              onChange={(event) => setTabForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder=""
             />
-            {errors.name && <p className="mt-1 text-xs text-rose-600">{errors.name}</p>}
           </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-600">
-              Description (Optional)
-            </label>
+          <div className="md:col-span-2">
+            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Description (Optional)</label>
             <Textarea
-              className={`mt-2 min-h-[100px] ${errors.description ? "border-rose-300 focus-visible:ring-rose-500" : ""}`}
+              className="mt-2 min-h-[96px]"
               value={tabForm.description}
-              onChange={(e) => {
-                setTabForm((c) => ({ ...c, description: e.target.value }));
-                setErrors((current) => ({ ...current, description: "" }));
-              }}
-              aria-invalid={Boolean(errors.description)}
+              onChange={(event) => setTabForm((current) => ({ ...current, description: event.target.value }))}
+              placeholder=""
             />
-            {errors.description && <p className="mt-1 text-xs text-rose-600">{errors.description}</p>}
           </div>
         </div>
 
-        {/* Sections */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
+        <div className="border-t border-slate-200 px-5 py-5">
+          <div className="flex items-center justify-between gap-3">
             <div>
               <h4 className="text-sm font-semibold text-slate-900">Sections</h4>
-              {errors.sections && <p className="mt-1 text-sm text-rose-600">{errors.sections}</p>}
+              <p className="text-sm text-slate-500"></p>
             </div>
             <button
-                type="button"
-                onClick={() => {
-                  setSectionToEdit(null);
-                  setEditingSectionIndex(null);
-                  setShowSectionModal(true);
-                }}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <Plus className="h-4 w-4 text-slate-500" />
-                Add Section
+              type="button"
+              onClick={() => {
+                setSectionToEdit(null);
+                setEditingSectionIndex(null);
+                setShowSectionModal(true);
+              }}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              <Plus className="h-4 w-4" />
+              Add Section
             </button>
           </div>
 
-          <div className="overflow-hidden rounded-lg border border-slate-200">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
+          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 <tr>
-                  <th className="px-4 py-3 text-left">Section</th>
-                  <th className="px-4 py-3 text-left">Description</th>
+                  <th className="px-4 py-3">Section Name</th>
+                  <th className="px-4 py-3">Description</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {sections.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
-                      No sections added.
+                    <td className="px-4 py-8 text-center text-slate-500" colSpan={3}>
+                      Add atleast one or more sections.
                     </td>
                   </tr>
                 ) : (
-                  sections.map((s, i) => (
-                    <tr key={s.id || s.slug || i} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 font-medium text-slate-900">
-                        {s.name}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {s.description || "—"}
-                      </td>
+                  sections.map((currentSection, index) => (
+                    <tr key={currentSection.id || currentSection.slug || index} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-medium text-slate-900">{currentSection.name}</td>
+                      <td className="px-4 py-3 text-slate-600">{currentSection.description || "—"}</td>
                       <td className="px-4 py-3">
-                        <div className="flex justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => editSection(i)}
-                            className="p-2 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                          >
+                        <div className="flex justify-end gap-2">
+                          <button type="button" onClick={() => editSection(index)} className={iconButtonClass} title="Edit Section">
                             <Edit className="h-4 w-4" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteSection(i)}
-                            className="p-2 rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4" />
+                          <button type="button" onClick={() => deleteSection(index)} className={iconButtonClass} title="Delete Section">
+                            <Trash2 className="h-4 w-4 text-rose-500" />
                           </button>
                         </div>
                       </td>
@@ -1084,62 +955,52 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
           </div>
         </div>
 
-        {/* Columns */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
+        <div className="border-t border-slate-200 px-5 py-5">
+          <div className="flex items-center justify-between gap-3">
             <div>
               <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
-              {errors.columns && <p className="mt-1 text-sm text-rose-600">{errors.columns}</p>}
             </div>
             <button
-                type="button"
-                onClick={() => {
-                  setColumnToEdit(null);
-                  setEditingColumnIndex(null);
-                  setShowColumnModal(true);
-                }}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <Plus className="h-4 w-4 text-slate-500" />
-                Add Column
+              type="button"
+              onClick={() => {
+                setColumnToEdit(null);
+                setEditingColumnIndex(null);
+                setShowColumnModal(true);
+              }}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              <Plus className="h-4 w-4" />
+              Add Column
             </button>
           </div>
 
-          <div className="overflow-hidden rounded-lg border border-slate-200">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
+          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 <tr>
-                  <th className="px-4 py-3 text-left">Name</th>
+                 
+                  <th className="px-4 py-3">Name</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {columns.length === 0 ? (
                   <tr>
-                    <td colSpan={2} className="px-4 py-8 text-center text-slate-500">
-                      No columns added.
+                    <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
+                       Add at least one column.
                     </td>
                   </tr>
                 ) : (
-                  columns.map((c, i) => (
-                    <tr key={c.id || c.key || i} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-slate-700">{c.label}</td>
+                  columns.map((currentColumn, index) => (
+                    <tr key={currentColumn.id || currentColumn.key || index} className="hover:bg-slate-50">          
+                      <td className="px-4 py-3 text-slate-600">{currentColumn.label}</td>
                       <td className="px-4 py-3">
-                        <div className="flex justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => editColumn(i)}
-                            className="p-2 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                          >
+                        <div className="flex justify-end gap-2">
+                          <button type="button" onClick={() => editColumn(index)} className={iconButtonClass} title="Edit Column">
                             <Edit className="h-4 w-4" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteColumn(i)}
-                            className="p-2 rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4" />
+                          <button type="button" onClick={() => deleteColumn(index)} className={iconButtonClass} title="Delete Column">
+                            <Trash2 className="h-4 w-4 text-rose-500" />
                           </button>
                         </div>
                       </td>
@@ -1150,95 +1011,175 @@ function TabModal({ tab, onClose, onSave, existingTabs = [] }) {
             </table>
           </div>
         </div>
-      </div>
 
-      {/* Footer */}
-      <div className="flex justify-end gap-3 rounded-b-[28px] border-t border-slate-100 bg-slate-50 px-6 py-4">
-        <button
-          type="button"
-          onClick={requestClose}
-          disabled={saving}
-          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={requestSave}
-          disabled={saving}
-          className="inline-flex items-center gap-2 rounded-full bg-[#4a1111] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#3f0f0f] disabled:cursor-wait disabled:bg-[#7a4b4b]"
-        >
-          {saving && <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />}
-          {saving ? (tab ? "Saving..." : "Adding...") : "Save Tab"}
-        </button>
-      </div>
-    </div>
-  </div>
-
-  {showDiscardConfirm && (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
-        <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
-        <p className="mt-2 text-sm text-slate-600">
-          You have unsaved changes. If you close now, those changes will be lost.
-        </p>
-        <div className="mt-4 flex justify-end gap-3">
-          <button type="button" onClick={cancelDiscard} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
-            Keep editing
-          </button>
-          <button type="button" onClick={confirmDiscard} className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700">
-            Discard
-          </button>
-        </div>
-      </div>
-    </div>
-  )}
-
-  {showSaveConfirm && (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
-        <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
-        <p className="mt-2 text-sm text-slate-600">
-          Are you sure you want to save these changes?
-        </p>
-        <div className="mt-4 flex justify-end gap-3">
-          <button type="button" onClick={cancelSave} disabled={saving} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60">
+        <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4">
+          <button type="button" onClick={requestClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
             Cancel
           </button>
-          <button type="button" onClick={confirmSave} disabled={saving} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-70">
-            Save
+          <button type="button" onClick={requestSave} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
+            Save Tab
           </button>
         </div>
       </div>
+
+      {showDiscardConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+            <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              You have unsaved changes. If you close now, those changes will be lost.
+            </p>
+            <div className="mt-4 flex justify-end gap-3">
+              <button type="button" onClick={cancelDiscard} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+                Keep editing
+              </button>
+              <button type="button" onClick={confirmDiscard} className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700">
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSaveConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+            <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Are you sure you want to save these changes?
+            </p>
+            <div className="mt-4 flex justify-end gap-3">
+              <button type="button" onClick={cancelSave} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmSave} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSectionModal && (
+        <SectionModal
+          section={sectionToEdit}
+          onClose={() => {
+            setShowSectionModal(false);
+            setSectionToEdit(null);
+            setEditingSectionIndex(null);
+          }}
+          onSave={(form) => {
+            try {
+              console.log("SectionModal onSave called with:", form);
+              
+              const name = form.name.trim();
+              console.log("Section name:", name);
+              
+              if (!name) {
+                console.warn("Section name is empty, returning");
+                alert("Section name is required.");
+                return;
+              }
+
+              setSections((currentSections) => {
+                const currentSection = editingSectionIndex !== null ? currentSections[editingSectionIndex] : null;
+                const nextSlug = makeUniqueSlug(
+                  name,
+                  currentSections.map((section) => section.slug),
+                  currentSection?.slug || "",
+                );
+
+                const nextSection = currentSection
+                  ? { ...currentSection, name, slug: nextSlug, description: form.description.trim() }
+                  : { name, slug: nextSlug, description: form.description.trim() };
+
+                const nextSections = [...currentSections];
+                if (editingSectionIndex !== null && nextSections[editingSectionIndex]) {
+                  console.log("Updating existing section at index:", editingSectionIndex);
+                  nextSections[editingSectionIndex] = nextSection;
+                } else {
+                  console.log("Adding new section to sections array");
+                  nextSections.push(nextSection);
+                }
+
+                console.log("Updated sections:", nextSections);
+                return nextSections;
+              });
+
+              console.log("Section saved successfully, closing modal");
+              setShowSectionModal(false);
+              setSectionToEdit(null);
+              setEditingSectionIndex(null);
+            } catch (err) {
+              console.error("Error saving section:", err);
+              alert(`Error saving section: ${err.message}`);
+            }
+          }}
+        />
+      )}
+      {showColumnModal && (
+        <ColumnRowModal
+          column={columnToEdit}
+          existingColumns={columns}
+          onClose={() => {
+            setShowColumnModal(false);
+            setColumnToEdit(null);
+            setEditingColumnIndex(null);
+          }}
+          onSave={(colForm) => {
+            try {
+              console.log("ColumnRowModal onSave called with:", colForm);
+              
+              const label = (colForm.label || "").trim();
+              console.log("Column label:", label);
+              
+              if (!label) {
+                console.warn("Column label is empty, returning");
+                alert("Column name is required.");
+                return;
+              }
+
+              // Auto-generate key from label if not provided
+              const labelToKey = (l) => l.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+              const key = labelToKey(label);
+              console.log("Generated column key:", key);
+              
+              if (!key) {
+                console.warn("Column key generated from label is invalid");
+                alert("Column name contains only special characters. Please use alphanumeric characters.");
+                return;
+              }
+
+              console.log("Normalizing column config...");
+              const nextColumn = normalizeColumnConfig({ ...colForm, key, label });
+              console.log("Normalized column:", nextColumn);
+
+              setColumns((currentColumns) => {
+                const next = [...currentColumns];
+                if (editingColumnIndex !== null && next[editingColumnIndex]) {
+                  console.log("Updating existing column at index:", editingColumnIndex);
+                  next[editingColumnIndex] = nextColumn;
+                } else {
+                  console.log("Adding new column to columns array");
+                  next.push(nextColumn);
+                }
+                console.log("Updated columns array:", next);
+                return next;
+              });
+
+              console.log("Column saved successfully, closing modal");
+              setShowColumnModal(false);
+              setColumnToEdit(null);
+              setEditingColumnIndex(null);
+            } catch (err) {
+              console.error("Error saving column:", err);
+              alert(`Error saving column: ${err.message}`);
+            }
+          }}
+        />
+      )}
     </div>
-  )}
-
-  {showSectionModal && (
-    <SectionModal
-      section={sectionToEdit}
-      onClose={() => {
-        setShowSectionModal(false);
-        setSectionToEdit(null);
-        setEditingSectionIndex(null);
-      }}
-      onSave={saveSectionFromModal}
-    />
-  )}
-
-  {showColumnModal && (
-    <ColumnRowModal
-      column={columnToEdit}
-      existingColumns={columns}
-      onClose={() => {
-        setShowColumnModal(false);
-        setColumnToEdit(null);
-        setEditingColumnIndex(null);
-      }}
-      onSave={saveColumnFromModal}
-    />
-  )}
-  </>
-);
+  );
 }
 
 export default function Inventory() {
@@ -1248,13 +1189,23 @@ export default function Inventory() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pendingDeleteTab, setPendingDeleteTab] = useState(null);
-  const [deletingTabId, setDeletingTabId] = useState(null);
-  const [successMessage, setSuccessMessage] = useState("");
 
   const editingTab = useMemo(() => tabs.find((tab) => tab.slug === editingSlug) || null, [tabs, editingSlug]);
   const ddlEndpoint = getInventoryCreateTableEndpoint();
 
   const handleSave = async (form) => {
+    // Validate required fields
+    if (!form.name || !form.name.trim()) {
+      alert("Please enter a tab name.");
+      return;
+    }
+
+    // For new tabs, require at least one column
+    if (!editingTab && (!form.columns || form.columns.length === 0)) {
+      alert("New tabs must have at least one column.");
+      return;
+    }
+
     const currentTab = editingTab;
     const savedTab = await upsertInventoryTab({
       id: currentTab?.id,
@@ -1297,30 +1248,33 @@ export default function Inventory() {
         const tabConfig = { tableName: existingConfig?.tableName, columns: updatedColumns };
 
         const tableName = existingConfig?.tableName;
-        if (tableName) {
+        if (tableName && updatedColumns.length > 0) {
           const modifyEndpoint = getInventoryModifyTableEndpoint();
           // Ensure columns are flattened for the SQL generation (DDL)
           const flattened = flattenColumnsForDDL(updatedColumns);
+          console.log("Modifying table:", tableName, "with columns:", flattened);
           await callModifyInventoryTable(modifyEndpoint, tableName, "sync", flattened);
+          console.log("Table columns modified successfully");
         }
 
         // Always persist the latest column config, including nested field metadata.
         try {
           window.localStorage.setItem(`inventory.tab_table.${currentTab.id}`, JSON.stringify(tabConfig));
+          console.log("Tab config saved to localStorage");
         } catch (storageErr) {
           console.warn("Failed to update localStorage config:", storageErr);
         }
 
         try {
-          await upsertSetting(`inventory.tab_table.${currentTab.id}`, tabConfig);
+          const settingResult = await upsertSetting(`inventory.tab_table.${currentTab.id}`, tabConfig);
+          console.log("Tab config persisted to inventory_settings:", settingResult);
         } catch (settingErr) {
-          console.warn("Failed to update inventory_settings config:", settingErr);
+          console.error("Failed to update inventory_settings config:", settingErr);
+          alert(`Warning: Column config may not have saved. Error: ${settingErr.message}`);
         }
       } catch (err) {
-        console.warn("Failed to modify table columns:", err);
-        try {
-          alert(`Failed to modify table columns: ${err.message}`);
-        } catch (e) {}
+        console.error("Failed to modify table columns:", err);
+        alert(`Failed to modify table columns: ${err.message || err}`);
         refetch();
         return;
       }
@@ -1337,27 +1291,41 @@ export default function Inventory() {
         const cols = (form.columns || [])
           .filter((it) => it && it.key)
           .map((it) => normalizeColumnConfig(it));
+        
+        if (!cols || cols.length === 0) {
+          throw new Error("No valid columns provided for table creation.");
+        }
+
         const endpoint = ddlEndpoint;
+        console.log("Creating inventory table:", tableName, "with columns:", cols);
 
         // Flatten columns so the Edge Function creates physical sub-columns in the DB
         const flattened = flattenColumnsForDDL(cols);
+        console.log("Flattened columns for DDL:", flattened);
+        
         await callCreateInventoryTable(endpoint, tableName, flattened);
+        console.log("Physical table created successfully");
 
         // persist mapping and create-time template columns for this tab
         const tabConfig = { tableName, columns: cols };
         try {
           window.localStorage.setItem(`inventory.tab_table.${savedTab.id}`, JSON.stringify(tabConfig));
+          console.log("Tab config saved to localStorage");
         } catch (storageError) {
           console.warn("Failed to write tab config to localStorage:", storageError);
         }
 
         try {
-          await upsertSetting(`inventory.tab_table.${savedTab.id}`, tabConfig);
+          const settingResult = await upsertSetting(`inventory.tab_table.${savedTab.id}`, tabConfig);
+          console.log("Tab config persisted to inventory_settings:", settingResult);
         } catch (settingError) {
-          console.warn("Failed to persist tab config to inventory_settings:", settingError);
+          console.error("Failed to persist tab config to inventory_settings:", settingError);
+          // Don't rollback on settings error - the physical table was created successfully
+          alert(`Warning: Table created but settings may not have saved. Error: ${settingError.message}`);
         }
       } catch (err) {
         // keep tab creation strict: rollback tab if physical table setup fails
+        console.error("Table creation failed, rolling back:", err);
         try {
           await deleteInventoryTab(savedTab.id);
         } catch (rollbackError) {
@@ -1365,47 +1333,32 @@ export default function Inventory() {
         }
 
         console.warn("Failed to create physical table:", err);
-        try {
-          alert("Tab creation failed because physical table creation failed. Please check endpoint/config and try again.");
-        } catch (e) {}
+        alert(`Tab creation failed: ${err.message || err}`);
         refetch();
         return;
       }
     }
 
+    // Close modal and refresh only after all operations complete successfully
     setShowModal(false);
     setEditingSlug("");
     refetch();
-    notifyInventoryCatalogChanged();
-    setSuccessMessage(currentTab ? "Inventory tab updated successfully." : "Inventory tab added successfully.");
   };
 
   const handleDelete = (tab) => {
-    if (deletingTabId) return;
-
     setPendingDeleteTab(tab);
     setShowDeleteConfirm(true);
   };
 
   const confirmDelete = async () => {
-    if (!pendingDeleteTab?.id || deletingTabId) return;
-
-    setDeletingTabId(pendingDeleteTab.id);
-    try {
-      await deleteInventoryTab(pendingDeleteTab.id);
-      setShowDeleteConfirm(false);
-      setSuccessMessage(`${pendingDeleteTab.name || "Inventory tab"} deleted successfully.`);
-      setPendingDeleteTab(null);
-      refetch();
-      notifyInventoryCatalogChanged();
-    } finally {
-      setDeletingTabId(null);
-    }
+    if (!pendingDeleteTab?.id) return;
+    setShowDeleteConfirm(false);
+    await deleteInventoryTab(pendingDeleteTab.id);
+    setPendingDeleteTab(null);
+    refetch();
   };
 
   const cancelDelete = () => {
-    if (deletingTabId) return;
-
     setShowDeleteConfirm(false);
     setPendingDeleteTab(null);
   };
@@ -1436,13 +1389,13 @@ export default function Inventory() {
 
   return (
     <>
-    <div className="p-6">
+    <div className="p-6 space-y-5">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Inventory Manager</h1>
           <p className="text-slate-500 text-sm">{tabs.length} total tabs</p>
         </div>
-        <Button onClick={() => setShowModal(true)} className="gap-2 bg-[#4a1111] hover:bg-[#3f0f0f] text-white">
+        <Button onClick={() => setShowModal(true)} className="gap-2">
           <Plus className="w-4 h-4" /> Add Tab
         </Button>
       </div>
@@ -1496,15 +1449,10 @@ export default function Inventory() {
                         <button
                           type="button"
                           onClick={() => handleDelete(tab)}
-                          disabled={Boolean(deletingTabId)}
                           className={iconButtonClass}
                           title="Delete Tab"
                         >
-                          {deletingTabId === tab.id ? (
-                            <span className="h-4 w-4 rounded-full border-2 border-rose-200 border-t-rose-600 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4 text-rose-500" />
-                          )}
+                          <Trash2 className="h-4 w-4 text-rose-500" />
                         </button>
                       </div>
                     </td>
@@ -1519,7 +1467,6 @@ export default function Inventory() {
       {showModal && (
         <TabModal
           tab={editingTab}
-          existingTabs={tabs}
           onClose={() => setShowModal(false)}
           onSave={handleSave}
         />
@@ -1536,42 +1483,16 @@ export default function Inventory() {
               <button
                 type="button"
                 onClick={cancelDelete}
-                disabled={Boolean(deletingTabId)}
-                className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={confirmDelete}
-                disabled={Boolean(deletingTabId)}
-                className="inline-flex items-center gap-2 rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-wait disabled:bg-rose-400"
+                className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700"
               >
-                {deletingTabId && <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />}
-                {deletingTabId ? "Deleting..." : "Delete"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {successMessage && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
-            <div className="px-5 py-5 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-                <CheckCircle className="h-7 w-7" />
-              </div>
-              <h3 className="mt-4 text-lg font-semibold text-slate-900">Success</h3>
-              <p className="mt-2 text-sm text-slate-500">{successMessage}</p>
-            </div>
-            <div className="border-t border-slate-200 px-5 py-4">
-              <button
-                type="button"
-                onClick={() => setSuccessMessage("")}
-                className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700"
-              >
-                OK
+                Delete
               </button>
             </div>
           </div>

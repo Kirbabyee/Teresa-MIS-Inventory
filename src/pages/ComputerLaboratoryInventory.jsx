@@ -179,6 +179,7 @@ export default function ComputerLaboratoryInventory() {
     const [showExportModal, setShowExportModal] = useState(false);
     const [selectedExportLabs, setSelectedExportLabs] = useState([]);
     const [selectedExportColumns, setSelectedExportColumns] = useState(COMPONENT_TYPES.slice());
+    const [showColumnOptions, setShowColumnOptions] = useState(true);
     const [exportDate, setExportDate] = useState(new Date().toISOString().slice(0, 10));
     const [preparedByName, setPreparedByName] = useState("");
     const [inspectedByName, setInspectedByName] = useState("");
@@ -1557,9 +1558,21 @@ export default function ComputerLaboratoryInventory() {
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="text-xs font-semibold text-slate-500">Columns</label>
-                                <div className="mt-2 grid grid-cols-2 gap-2">
+                            <div className="rounded-lg border border-slate-200 bg-slate-50">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowColumnOptions((current) => !current)}
+                                    className="flex w-full items-center justify-between px-3 py-2 text-left"
+                                    aria-expanded={showColumnOptions}
+                                >
+                                    <span className="text-xs font-semibold text-slate-500">Columns</span>
+                                    <span className="text-xs font-medium text-slate-500">
+                                        {showColumnOptions ? "Hide" : "Show"}
+                                    </span>
+                                </button>
+                                <div
+                                    className={`grid grid-cols-2 gap-2 overflow-hidden px-3 transition-all duration-300 ease-in-out ${showColumnOptions ? "max-h-96 pb-3 opacity-100" : "max-h-0 pb-0 opacity-0"}`}
+                                >
                                     {COMPONENT_TYPES.map((col) => (
                                         <label key={col} className="flex items-center gap-2">
                                             <input
