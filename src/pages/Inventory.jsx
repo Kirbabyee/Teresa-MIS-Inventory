@@ -149,7 +149,12 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
   };
 
   const saveColumn = async () => {
-    await onSave(form);
+    setIsSaving(true);
+    try {
+      await onSave(form);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const requestSave = () => {
@@ -217,7 +222,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{column ? "Edit column" : "Add column"}</h3>
@@ -453,13 +458,35 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
-          <button type="button" onClick={requestClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+          <button
+            type="button"
+            onClick={requestClose}
+            disabled={isSaving}
+            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
             Cancel
           </button>
-          <button type="button" onClick={requestSave} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
-            Save Column
+          <button
+            type="button"
+            onClick={requestSave}
+            disabled={isSaving}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSaving && (
+              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+            )}
+            {isSaving ? "Saving..." : "Save Column"}
           </button>
         </div>
+
+        {isSaving && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm">
+            <div className="inline-flex items-center gap-3 rounded-2xl bg-slate-950/95 px-5 py-4 text-sm font-medium text-white shadow-lg">
+              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+              Saving column...
+            </div>
+          </div>
+        )}
       </div>
 
       {showDiscardConfirm && (
@@ -489,11 +516,14 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
               Are you sure you want to save these changes?
             </p>
             <div className="mt-4 flex justify-end gap-3">
-              <button type="button" onClick={cancelSave} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+              <button type="button" onClick={cancelSave} disabled={isSaving} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50">
                 Cancel
               </button>
-              <button type="button" onClick={confirmSave} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
-                Save
+              <button type="button" onClick={confirmSave} disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+                {isSaving && (
+                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+                )}
+                {isSaving ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
@@ -506,6 +536,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
 function SectionModal({ section, onClose, onSave }) {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const initialSnapshotRef = useRef("");
   const [form, setForm] = useState({
     name: section?.name || "",
@@ -566,7 +597,12 @@ function SectionModal({ section, onClose, onSave }) {
   };
 
   const saveSection = async () => {
-    await onSave(form);
+    setIsSaving(true);
+    try {
+      await onSave(form);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const requestSave = () => {
@@ -593,7 +629,7 @@ function SectionModal({ section, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+      <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{section ? "Edit section" : "Add section"}</h3>
@@ -629,18 +665,35 @@ function SectionModal({ section, onClose, onSave }) {
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
-          <button type="button" onClick={requestClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+          <button
+            type="button"
+            onClick={requestClose}
+            disabled={isSaving}
+            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
             Cancel
           </button>
           <button
             type="button"
             onClick={requestSave}
-            disabled={isSectionSaveDisabled}
-            className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isSectionSaveDisabled || isSaving}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Save Section
+            {isSaving && (
+              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+            )}
+            {isSaving ? "Saving..." : "Save Section"}
           </button>
         </div>
+
+        {isSaving && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm">
+            <div className="inline-flex items-center gap-3 rounded-2xl bg-slate-950/95 px-5 py-4 text-sm font-medium text-white shadow-lg">
+              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+              Saving section...
+            </div>
+          </div>
+        )}
       </div>
 
       {showDiscardConfirm && (
@@ -670,11 +723,14 @@ function SectionModal({ section, onClose, onSave }) {
               Are you sure you want to save these changes?
             </p>
             <div className="mt-4 flex justify-end gap-3">
-              <button type="button" onClick={cancelSave} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
+              <button type="button" onClick={cancelSave} disabled={isSaving} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50">
                 Cancel
               </button>
-              <button type="button" onClick={confirmSave} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
-                Save
+              <button type="button" onClick={confirmSave} disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+                {isSaving && (
+                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+                )}
+                {isSaving ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
@@ -879,7 +935,7 @@ function TabModal({ tab, onClose, onSave }) {
   };
 
   const handleSaveTab = () => {
-    onSave({ ...tabForm, sections, columns });
+    return onSave({ ...tabForm, sections, columns });
   };
 
   const requestClose = () => {
@@ -900,7 +956,7 @@ function TabModal({ tab, onClose, onSave }) {
     setShowDiscardConfirm(false);
   };
 
-  const requestSave = () => {
+  const requestSave = async () => {
     setHasUserInteracted(true);
     if (tabValidation.name || tabValidation.columns || tabValidation.sections) {
       return;
@@ -911,7 +967,12 @@ function TabModal({ tab, onClose, onSave }) {
       return;
     }
 
-    handleSaveTab();
+    setIsSaving(true);
+    try {
+      await handleSaveTab();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const confirmSave = async () => {
@@ -930,7 +991,7 @@ function TabModal({ tab, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 p-5">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{tab ? "Edit inventory tab" : "Add inventory tab"}</h3>
@@ -1096,11 +1157,23 @@ function TabModal({ tab, onClose, onSave }) {
             type="button"
             onClick={requestSave}
             disabled={isSaveDisabled}
-            className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
+            {isSaving && (
+              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+            )}
             {isSaving ? "Saving..." : "Save Tab"}
           </button>
         </div>
+
+        {isSaving && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm">
+            <div className="inline-flex items-center gap-3 rounded-2xl bg-slate-950/95 px-5 py-4 text-sm font-medium text-white shadow-lg">
+              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+              Saving table...
+            </div>
+          </div>
+        )}
       </div>
 
       {showDiscardConfirm && (
@@ -1133,8 +1206,16 @@ function TabModal({ tab, onClose, onSave }) {
               <button type="button" onClick={cancelSave} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
                 Cancel
               </button>
-              <button type="button" onClick={confirmSave} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
-                Save
+              <button
+                type="button"
+                onClick={confirmSave}
+                disabled={isSaving}
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSaving && (
+                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+                )}
+                {isSaving ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
@@ -1434,12 +1515,12 @@ export default function Inventory() {
 
   const confirmDelete = async () => {
     if (!pendingDeleteTab?.id) return;
-    setShowDeleteConfirm(false);
     setIsDeleting(true);
     try {
       await deleteInventoryTab(pendingDeleteTab.id);
       setPendingDeleteTab(null);
       refetch();
+      setShowDeleteConfirm(false);
     } finally {
       setIsDeleting(false);
     }
@@ -1562,7 +1643,7 @@ export default function Inventory() {
 
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
             <h3 className="text-lg font-semibold text-slate-900">Confirm delete</h3>
             <p className="mt-2 text-sm text-slate-600">
               Are you sure you want to delete {pendingDeleteTab?.name || "this tab"}? This action cannot be undone.
@@ -1571,7 +1652,8 @@ export default function Inventory() {
               <button
                 type="button"
                 onClick={cancelDelete}
-                className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                disabled={isDeleting}
+                className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -1584,6 +1666,14 @@ export default function Inventory() {
                 {isDeleting ? "Deleting..." : "Delete"}
               </button>
             </div>
+            {isDeleting && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm">
+                <div className="inline-flex items-center gap-3 rounded-2xl bg-slate-950/95 px-5 py-4 text-sm font-medium text-white shadow-lg">
+                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+                  Deleting tab...
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
