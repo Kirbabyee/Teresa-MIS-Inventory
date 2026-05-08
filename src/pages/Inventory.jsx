@@ -687,6 +687,8 @@ function SectionModal({ section, onClose, onSave }) {
 function TabModal({ tab, onClose, onSave }) {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [hasUserInteracted, setHasUserInteracted] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const initialSnapshotRef = useRef("");
   const [tabForm, setTabForm] = useState({
     name: tab?.name || "",
@@ -703,7 +705,7 @@ function TabModal({ tab, onClose, onSave }) {
   const [columnToEdit, setColumnToEdit] = useState(null);
 
   const tabValidation = useMemo(() => {
-    const errors = { name: "", columns: "" };
+    const errors = { name: "", columns: "", sections: "" };
     const trimmedName = tabForm.name.trim();
 
     if (!trimmedName) {
@@ -716,10 +718,14 @@ function TabModal({ tab, onClose, onSave }) {
       errors.columns = "New tabs must include at least one column.";
     }
 
-    return errors;
-  }, [tabForm.name, columns, tab?.id]);
+    if (sections.length === 0) {
+      errors.sections = "At least one section is required.";
+    }
 
-  const isSaveDisabled = Boolean(tabValidation.name || tabValidation.columns);
+    return errors;
+  }, [tabForm.name, columns, sections, tab?.id]);
+
+  const isSaveDisabled = Boolean(tabValidation.name || tabValidation.columns || tabValidation.sections || isSaving);
 
   const buildTabSnapshot = (currentTabForm, currentSections, currentColumns) =>
     JSON.stringify({
@@ -772,6 +778,7 @@ function TabModal({ tab, onClose, onSave }) {
     setShowColumnModal(false);
     setShowDiscardConfirm(false);
     setShowSaveConfirm(false);
+    setHasUserInteracted(false);
     initialSnapshotRef.current = buildTabSnapshot(nextTabForm, nextSections, nextColumns);
   }, [tab]);
 
@@ -894,7 +901,8 @@ function TabModal({ tab, onClose, onSave }) {
   };
 
   const requestSave = () => {
-    if (tabValidation.name || tabValidation.columns) {
+    setHasUserInteracted(true);
+    if (tabValidation.name || tabValidation.columns || tabValidation.sections) {
       return;
     }
 
@@ -908,7 +916,12 @@ function TabModal({ tab, onClose, onSave }) {
 
   const confirmSave = async () => {
     setShowSaveConfirm(false);
-    await handleSaveTab();
+    setIsSaving(true);
+    try {
+      await handleSaveTab();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const cancelSave = () => {
@@ -933,10 +946,13 @@ function TabModal({ tab, onClose, onSave }) {
             <Input
               className="mt-2"
               value={tabForm.name}
-              onChange={(event) => setTabForm((current) => ({ ...current, name: event.target.value }))}
+              onChange={(event) => {
+                setTabForm((current) => ({ ...current, name: event.target.value }));
+                setHasUserInteracted(true);
+              }}
               placeholder=""
             />
-            {tabValidation.name ? (
+            {hasUserInteracted && tabValidation.name ? (
               <p className="mt-2 text-sm text-rose-600">{tabValidation.name}</p>
             ) : null}
           </div>
@@ -955,7 +971,9 @@ function TabModal({ tab, onClose, onSave }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h4 className="text-sm font-semibold text-slate-900">Sections</h4>
-              <p className="text-sm text-slate-500"></p>
+              {hasUserInteracted && tabValidation.sections ? (
+                <p className="mt-1 text-sm text-rose-600">{tabValidation.sections}</p>
+              ) : null}
             </div>
             <button
               type="button"
@@ -1014,7 +1032,7 @@ function TabModal({ tab, onClose, onSave }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
-              {tabValidation.columns ? (
+              {hasUserInteracted && tabValidation.columns ? (
                 <p className="mt-1 text-sm text-rose-600">{tabValidation.columns}</p>
               ) : null}
             </div>
@@ -1080,7 +1098,7 @@ function TabModal({ tab, onClose, onSave }) {
             disabled={isSaveDisabled}
             className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Save Tab
+            {isSaving ? "Saving..." : "Save Tab"}
           </button>
         </div>
       </div>
@@ -1252,6 +1270,7 @@ export default function Inventory() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pendingDeleteTab, setPendingDeleteTab] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const editingTab = useMemo(() => tabs.find((tab) => tab.slug === editingSlug) || null, [tabs, editingSlug]);
   const ddlEndpoint = getInventoryCreateTableEndpoint();
@@ -1416,9 +1435,14 @@ export default function Inventory() {
   const confirmDelete = async () => {
     if (!pendingDeleteTab?.id) return;
     setShowDeleteConfirm(false);
-    await deleteInventoryTab(pendingDeleteTab.id);
-    setPendingDeleteTab(null);
-    refetch();
+    setIsDeleting(true);
+    try {
+      await deleteInventoryTab(pendingDeleteTab.id);
+      setPendingDeleteTab(null);
+      refetch();
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const cancelDelete = () => {
@@ -1554,9 +1578,10 @@ export default function Inventory() {
               <button
                 type="button"
                 onClick={confirmDelete}
-                className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700"
+                disabled={isDeleting}
+                className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Delete
+                {isDeleting ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>
