@@ -16,6 +16,8 @@ import {
   getInventoryCreateTableEndpoint,
   getInventoryModifyTableEndpoint,
   getTabTableConfig,
+  slugify,
+  makeUniqueSlug,
 } from "@/lib/inventoryApi";
 import { isCurrentUserAdmin } from "@/lib/inventoryApi";
 
