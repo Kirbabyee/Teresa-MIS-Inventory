@@ -10,7 +10,7 @@ const mapBorrowingRecord = (record = {}) => ({
   status: record.status || "borrowed",
   items: (record.borrowing_items || []).map((item) => ({
     id: item.id,
-    inventoryItemId: item.inventory_item_id,
+    inventoryItemId: item.inventory_item_id ?? null,
     inventoryTabId: item.inventory_tab_id,
     inventorySectionId: item.inventory_section_id,
     label: item.item_label || "Item",
@@ -19,6 +19,7 @@ const mapBorrowingRecord = (record = {}) => ({
     section: "",
     tableName: item.inventory_table_name || "",
   })),
+
 });
 
 export const fetchBorrowingRecords = async ({ status = "borrowed" } = {}) => {
@@ -63,7 +64,7 @@ export const createBorrowingRecord = async ({
   if (items.length > 0) {
     const itemPayload = items.map((item) => ({
       borrowing_record_id: record.id,
-      inventory_item_id: item.inventoryItemId,
+      inventory_item_id: item.inventoryItemId || null,
       inventory_tab_id: item.inventoryTabId || null,
       inventory_section_id: item.inventorySectionId || null,
       inventory_table_name: item.inventoryTableName || "",

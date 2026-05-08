@@ -105,6 +105,12 @@ export default function Borrowing() {
   const [savingBorrow, setSavingBorrow] = useState(false);
   const [returningBorrow, setReturningBorrow] = useState(false);
 
+  const [statusFilter, setStatusFilter] = useState("borrowed");
+  const [showHistory, setShowHistory] = useState(false);
+  const [customItems, setCustomItems] = useState([]);
+  const [customItemForm, setCustomItemForm] = useState({ name: "", description: "" });
+  const [addingCustom, setAddingCustom] = useState(false);
+
   const [data, setData] = useState([]);
 
   const selectedTab = useMemo(
@@ -150,7 +156,7 @@ export default function Borrowing() {
       setBorrowingsError("");
 
       try {
-        const records = await fetchBorrowingRecords({ status: "borrowed" });
+        const records = await fetchBorrowingRecords({ status: statusFilter === "all" ? null : "borrowed" });
         if (!cancelled) {
           setData(records);
         }
@@ -171,7 +177,7 @@ export default function Borrowing() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [statusFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -248,6 +254,8 @@ export default function Borrowing() {
     setSelectedSectionId("");
     setSelectedItemIds([]);
     setInventoryItems([]);
+    setCustomItems([]);
+    setCustomItemForm({ name: "", description: "" });
     setItemsError("");
     setFormError("");
   };
@@ -303,14 +311,35 @@ export default function Borrowing() {
       return;
     }
 
-    if (!selectedTabId || !selectedSectionId) {
-      setFormError("Choose an inventory tab and section.");
+    const pendingCustomItemName = customItemForm.name.trim();
+    const hasSelectedItems = selectedItemIds.length > 0 || customItems.length > 0 || pendingCustomItemName;
+
+    if (!hasSelectedItems) {
+      setFormError("Choose at least one item to borrow.");
       return;
     }
 
-    if (selectedItemIds.length === 0) {
-      setFormError("Choose at least one item to borrow.");
-      return;
+    if (pendingCustomItemName) {
+      const newCustomItem = {
+        id: `custom-${Date.now()}`,
+        label: pendingCustomItemName,
+        details: customItemForm.description.trim()
+          ? [
+              {
+                key: "description",
+                label: "Description",
+                value: customItemForm.description.trim(),
+              },
+            ]
+          : [],
+        inventoryItemId: null,
+        inventoryTabId: null,
+        inventorySectionId: null,
+        inventoryTableName: "",
+      };
+
+      setCustomItems((current) => [...current, newCustomItem]);
+      setCustomItemForm({ name: "", description: "" });
     }
 
     setShowConfirm(true);
@@ -325,7 +354,7 @@ export default function Borrowing() {
         borrowerName: form.name.trim(),
         borrowerIdNumber: form.studentId.trim(),
         borrowerRole: form.role,
-        items: selectedItems.map((item) => ({
+        items: [...selectedItems.map((item) => ({
           inventoryItemId: item.id,
           inventoryTabId: selectedTab?.id || null,
           inventoryTabName: selectedTab?.name || "",
@@ -334,12 +363,21 @@ export default function Borrowing() {
           inventoryTableName: tabTableNames[selectedTabId] || "",
           label: getItemLabel(item),
           details: getItemDetails(item),
-        })),
+        })), ...customItems.map((item) => ({
+          inventoryItemId: null,
+          inventoryTabId: null,
+          inventoryTabName: "",
+          inventorySectionId: null,
+          inventorySectionName: "",
+          inventoryTableName: "",
+          label: item.label,
+          details: item.details,
+        }))],
       });
 
       const newEntry = {
         ...savedRecord,
-        items: selectedItems.map((item) => ({
+        items: [...selectedItems.map((item) => ({
           id: item.id,
           inventoryItemId: item.id,
           inventoryTabId: selectedTab?.id || null,
@@ -348,7 +386,16 @@ export default function Borrowing() {
           details: getItemDetails(item),
           tab: selectedTab?.name || "",
           section: selectedSection?.name || "",
-        })),
+        })), ...customItems.map((item) => ({
+          id: item.id,
+          inventoryItemId: null,
+          inventoryTabId: null,
+          inventorySectionId: null,
+          label: item.label,
+          details: item.details,
+          tab: "",
+          section: "",
+        }))],
       };
 
       setData((prev) => [newEntry, ...prev]);
@@ -366,7 +413,9 @@ export default function Borrowing() {
     <div className="min-h-screen bg-slate-100 py-10 px-6">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-semibold text-slate-800">Borrowed Items</h1>
+          <h1 className="text-2xl font-semibold text-slate-800">
+            {statusFilter === "borrowed" ? "Borrowed Items" : "Borrowing History"}
+          </h1>
 
           <Link to="/login" className="text-sm text-slate-500 hover:text-red-500">
             Sign out
@@ -398,6 +447,18 @@ export default function Borrowing() {
             Ascending
           </button>
 
+          <button
+            type="button"
+            onClick={() => setStatusFilter(statusFilter === "borrowed" ? "all" : "borrowed")}
+            className={`px-4 py-1.5 rounded-full text-sm border transition ${
+              statusFilter === "all"
+                ? "bg-[#4a1111] text-white border-[#4a1111]"
+                : "text-[#4a1111] border-[#4a1111] hover:bg-[#4a1111] hover:text-white"
+            }`}
+          >
+            {statusFilter === "borrowed" ? "Show History" : "Show Current"}
+          </button>
+
           <input
             type="text"
             placeholder="Search..."
@@ -423,34 +484,42 @@ export default function Borrowing() {
 
         {borrowingsLoading ? (
           <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
-            Loading borrowed items...
+            Loading {statusFilter === "borrowed" ? "borrowed items" : "borrowing records"}...
           </div>
         ) : filteredData.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-            No borrowed items yet.
+            {statusFilter === "borrowed" ? "No borrowed items yet." : "No borrowing records found."}
           </div>
         ) : null}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {filteredData.map((person) => (
-            <div key={person.id} className="bg-white border rounded-xl p-5">
+            <div key={person.id} className={`bg-white border rounded-xl p-5 ${person.status === "returned" ? "opacity-75" : ""}`}>
               <div className="flex justify-between mb-3 gap-4">
                 <div>
                   <h3 className="font-medium">{person.name}</h3>
                   <p className="text-xs text-gray-400">{person.studentId}</p>
                   <p className="text-xs text-gray-400">{person.role}</p>
+                  {person.status === "returned" && (
+                    <p className="text-xs text-green-600 font-medium">Returned</p>
+                  )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => requestReturn(person)}
-                  className="self-start text-xs border px-3 py-1 rounded"
-                >
-                  Return
-                </button>
+                {person.status === "borrowed" && (
+                  <button
+                    type="button"
+                    onClick={() => requestReturn(person)}
+                    className="self-start text-xs border px-3 py-1 rounded"
+                  >
+                    Return
+                  </button>
+                )}
               </div>
 
-              <p className="text-xs text-gray-400">{new Date(person.date).toLocaleString()}</p>
+              <p className="text-xs text-gray-400">
+                Borrowed: {new Date(person.date).toLocaleString()}
+                {person.returnedAt && ` | Returned: ${new Date(person.returnedAt).toLocaleString()}`}
+              </p>
 
               {person.items?.length > 0 ? (
                 <div className="mt-4 border-t pt-3">
@@ -639,6 +708,83 @@ export default function Borrowing() {
                   </div>
                 )}
               </div>
+
+              <div className="mt-4">
+                <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-[#4a1111] mb-2">
+                  Or Add Custom Item (Outside Inventory)
+                </h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="Item name"
+                    value={customItemForm.name}
+                    onChange={(e) => setCustomItemForm({ ...customItemForm, name: e.target.value })}
+                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Description (optional)"
+                    value={customItemForm.description}
+                    onChange={(e) => setCustomItemForm({ ...customItemForm, description: e.target.value })}
+                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (customItemForm.name.trim()) {
+                      const newItem = {
+                        id: `custom-${Date.now()}`,
+                        label: customItemForm.name.trim(),
+                        details: customItemForm.description.trim() ? [{ key: "description", label: "Description", value: customItemForm.description.trim() }] : [],
+                        inventoryItemId: null,
+                        inventoryTabId: null,
+                        inventorySectionId: null,
+                        inventoryTableName: "",
+                      };
+                      setCustomItems([...customItems, newItem]);
+                      setCustomItemForm({ name: "", description: "" });
+                    }
+                  }}
+                  className="mt-2 px-4 py-1 bg-[#4a1111] text-white text-sm rounded hover:opacity-90"
+                >
+                  Add Custom Item
+                </button>
+              </div>
+
+              {(selectedItems.length > 0 || customItems.length > 0) && (
+                <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+                  <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-[#4a1111] mb-2">
+                    Selected Items
+                  </h4>
+                  <div className="space-y-2">
+                    {selectedItems.map((item) => (
+                      <div key={item.id} className="flex justify-between items-center">
+                        <span className="text-sm">{getItemLabel(item)}</span>
+                        <button
+                          type="button"
+                          onClick={() => toggleItem(String(item.id))}
+                          className="text-xs text-red-500 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    {customItems.map((item) => (
+                      <div key={item.id} className="flex justify-between items-center">
+                        <span className="text-sm">{item.label}</span>
+                        <button
+                          type="button"
+                          onClick={() => setCustomItems(customItems.filter((i) => i.id !== item.id))}
+                          className="text-xs text-red-500 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {formError ? <p className="mt-4 text-sm text-rose-600">{formError}</p> : null}
@@ -672,12 +818,12 @@ export default function Borrowing() {
               Add this borrowing record for {form.name.trim()}?
             </p>
             <ul className="mt-4 space-y-2 text-sm">
-              {selectedItems.map((item) => {
-                const details = getItemDetails(item);
+              {[...selectedItems, ...customItems].map((item) => {
+                const details = item.inventoryItemId ? getItemDetails(item) : item.details || [];
 
                 return (
                   <li key={item.id} className="rounded-lg bg-slate-50 px-3 py-2">
-                    <span className="font-medium text-slate-800">{getItemLabel(item)}</span>
+                    <span className="font-medium text-slate-800">{item.label || getItemLabel(item)}</span>
                     {details.length > 0 ? (
                       <span className="mt-2 flex flex-wrap gap-1.5">
                         {details.map((detail) => (

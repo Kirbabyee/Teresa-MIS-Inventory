@@ -15,7 +15,7 @@ create table if not exists public.borrowing_records (
 create table if not exists public.borrowing_items (
   id uuid primary key default gen_random_uuid(),
   borrowing_record_id uuid not null references public.borrowing_records(id) on delete cascade,
-  inventory_item_id uuid not null,
+  inventory_item_id uuid,
   inventory_tab_id uuid references public.inventory_tabs(id) on delete set null,
   inventory_section_id uuid references public.inventory_sections(id) on delete set null,
   inventory_table_name text,
