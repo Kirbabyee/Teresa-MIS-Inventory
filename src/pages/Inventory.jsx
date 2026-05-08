@@ -409,7 +409,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
                                         if (input) input.value = "";
                                       }
                                     }}
-                                    className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700"
+                                    className="rounded-md bg-#4a1111 px-2 py-1 text-xs font-medium text-white hover:bg-#3f0f0f"
                                   >
                                     Add
                                   </button>
@@ -510,6 +510,21 @@ function SectionModal({ section, onClose, onSave }) {
     description: section?.description || "",
   });
 
+  const sectionValidation = useMemo(() => {
+    const errors = { name: "" };
+    const trimmedName = String(form.name || "").trim();
+
+    if (!trimmedName) {
+      errors.name = "Section name is required.";
+    } else if (!hasOnlyLettersNumbers(trimmedName)) {
+      errors.name = "Section name may only contain letters, numbers, and spaces.";
+    }
+
+    return errors;
+  }, [form.name]);
+
+  const isSectionSaveDisabled = Boolean(sectionValidation.name);
+
   const buildSectionSnapshot = (currentForm) =>
     JSON.stringify({
       name: String(currentForm.name || ""),
@@ -553,6 +568,10 @@ function SectionModal({ section, onClose, onSave }) {
   };
 
   const requestSave = () => {
+    if (isSectionSaveDisabled) {
+      return;
+    }
+
     if (hasUnsavedChanges) {
       setShowSaveConfirm(true);
       return;
@@ -592,6 +611,9 @@ function SectionModal({ section, onClose, onSave }) {
               onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
               placeholder="Laboratory 1"
             />
+            {sectionValidation.name ? (
+              <p className="mt-2 text-sm text-rose-600">{sectionValidation.name}</p>
+            ) : null}
           </div>
           <div>
             <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Description</label>
@@ -608,7 +630,12 @@ function SectionModal({ section, onClose, onSave }) {
           <button type="button" onClick={requestClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
             Cancel
           </button>
-          <button type="button" onClick={requestSave} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
+          <button
+            type="button"
+            onClick={requestSave}
+            disabled={isSectionSaveDisabled}
+            className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
             Save Section
           </button>
         </div>
@@ -672,6 +699,25 @@ function TabModal({ tab, onClose, onSave }) {
   const [showColumnModal, setShowColumnModal] = useState(false);
   const [sectionToEdit, setSectionToEdit] = useState(null);
   const [columnToEdit, setColumnToEdit] = useState(null);
+
+  const tabValidation = useMemo(() => {
+    const errors = { name: "", columns: "" };
+    const trimmedName = tabForm.name.trim();
+
+    if (!trimmedName) {
+      errors.name = "Tab name is required.";
+    } else if (!hasOnlyLettersNumbers(trimmedName)) {
+      errors.name = "Tab name may only contain letters, numbers, and spaces.";
+    }
+
+    if (!tab?.id && columns.length === 0) {
+      errors.columns = "New tabs must include at least one column.";
+    }
+
+    return errors;
+  }, [tabForm.name, columns, tab?.id]);
+
+  const isSaveDisabled = Boolean(tabValidation.name || tabValidation.columns);
 
   const buildTabSnapshot = (currentTabForm, currentSections, currentColumns) =>
     JSON.stringify({
@@ -846,6 +892,10 @@ function TabModal({ tab, onClose, onSave }) {
   };
 
   const requestSave = () => {
+    if (tabValidation.name || tabValidation.columns) {
+      return;
+    }
+
     if (hasUnsavedChanges) {
       setShowSaveConfirm(true);
       return;
@@ -884,6 +934,9 @@ function TabModal({ tab, onClose, onSave }) {
               onChange={(event) => setTabForm((current) => ({ ...current, name: event.target.value }))}
               placeholder=""
             />
+            {tabValidation.name ? (
+              <p className="mt-2 text-sm text-rose-600">{tabValidation.name}</p>
+            ) : null}
           </div>
           <div className="md:col-span-2">
             <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Description (Optional)</label>
@@ -909,7 +962,7 @@ function TabModal({ tab, onClose, onSave }) {
                 setEditingSectionIndex(null);
                 setShowSectionModal(true);
               }}
-              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
             >
               <Plus className="h-4 w-4" />
               Add Section
@@ -959,6 +1012,9 @@ function TabModal({ tab, onClose, onSave }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
+              {tabValidation.columns ? (
+                <p className="mt-1 text-sm text-rose-600">{tabValidation.columns}</p>
+              ) : null}
             </div>
             <button
               type="button"
@@ -967,7 +1023,7 @@ function TabModal({ tab, onClose, onSave }) {
                 setEditingColumnIndex(null);
                 setShowColumnModal(true);
               }}
-              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
             >
               <Plus className="h-4 w-4" />
               Add Column
@@ -1016,7 +1072,12 @@ function TabModal({ tab, onClose, onSave }) {
           <button type="button" onClick={requestClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
             Cancel
           </button>
-          <button type="button" onClick={requestSave} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
+          <button
+            type="button"
+            onClick={requestSave}
+            disabled={isSaveDisabled}
+            className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
             Save Tab
           </button>
         </div>
@@ -1395,12 +1456,13 @@ export default function Inventory() {
           <h1 className="text-2xl font-bold text-slate-900">Inventory Manager</h1>
           <p className="text-slate-500 text-sm">{tabs.length} total tabs</p>
         </div>
-        <Button onClick={() => setShowModal(true)} className="gap-2">
+        <Button
+          onClick={() => setShowModal(true)}
+          className="gap-2 bg-[#4a1111] hover:bg-[#3f0f0f]"
+        >
           <Plus className="w-4 h-4" /> Add Tab
         </Button>
       </div>
-
-      {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
