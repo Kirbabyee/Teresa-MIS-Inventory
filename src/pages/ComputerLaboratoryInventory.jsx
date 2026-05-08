@@ -179,7 +179,7 @@ export default function ComputerLaboratoryInventory() {
     const [showExportModal, setShowExportModal] = useState(false);
     const [selectedExportLabs, setSelectedExportLabs] = useState([]);
     const [selectedExportColumns, setSelectedExportColumns] = useState(COMPONENT_TYPES.slice());
-    const [showColumnOptions, setShowColumnOptions] = useState(true);
+    const [showColumnOptions, setShowColumnOptions] = useState(false);
     const [exportDate, setExportDate] = useState(new Date().toISOString().slice(0, 10));
     const [preparedByName, setPreparedByName] = useState("");
     const [inspectedByName, setInspectedByName] = useState("");
