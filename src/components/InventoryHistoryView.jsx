@@ -27,9 +27,38 @@ const formatValue = (value) => {
   return String(value);
 };
 
-const extractChangedPair = (oldData, newData) => {
-  // If both are objects, find first differing key (skip metadata/ids)
-  const skipKeys = new Set(['id', 'lab_number_id', 'created_at', 'updated_at']);
+const extractChangedPair = (oldData, newData, action) => {
+  const skipKeys = new Set(['id', 'lab_number_id', 'created_at', 'updated_at', 'change_ts', 'changed_by', 'action', 'component_type', 'computer_number', 'type']);
+  const preferredKeys = ['brand', 'description', 'status', 'remarks'];
+
+  const pickDisplayValue = (payload) => {
+    if (!payload || typeof payload !== 'object') return payload ?? null;
+
+    for (const key of preferredKeys) {
+      if (skipKeys.has(key)) continue;
+      const value = payload[key];
+      if (value !== null && value !== undefined && String(value).trim() !== '') {
+        return value;
+      }
+    }
+
+    const fallbackKey = Object.keys(payload).find((key) => {
+      if (skipKeys.has(key)) return false;
+      const value = payload[key];
+      return value !== null && value !== undefined && String(value).trim() !== '';
+    });
+
+    return fallbackKey ? payload[fallbackKey] : null;
+  };
+
+  const normalizedAction = String(action || '').toUpperCase();
+  if (normalizedAction === 'INSERT') {
+    return { oldVal: null, newVal: pickDisplayValue(newData) };
+  }
+  if (normalizedAction === 'DELETE') {
+    return { oldVal: pickDisplayValue(oldData), newVal: null };
+  }
+
   if (oldData && newData && typeof oldData === 'object' && typeof newData === 'object') {
     const keys = Array.from(new Set([...Object.keys(oldData), ...Object.keys(newData)]));
     for (const k of keys) {
@@ -38,23 +67,18 @@ const extractChangedPair = (oldData, newData) => {
       const nv = newData[k];
       try {
         if (JSON.stringify(ov) !== JSON.stringify(nv)) {
-          return { oldVal: ov, newVal: nv };
+          return { oldVal: ov ?? null, newVal: nv ?? null };
         }
       } catch (e) {
-        if (String(ov) !== String(nv)) return { oldVal: ov, newVal: nv };
+        if (String(ov) !== String(nv)) return { oldVal: ov ?? null, newVal: nv ?? null };
       }
     }
   }
-  // fallback: show first property of newData or oldData
-  if (newData && typeof newData === 'object') {
-    const k = Object.keys(newData)[0];
-    return { oldVal: oldData ? oldData[k] : null, newVal: newData[k] };
-  }
-  if (oldData && typeof oldData === 'object') {
-    const k = Object.keys(oldData)[0];
-    return { oldVal: oldData[k], newVal: newData ? newData[k] : null };
-  }
-  return { oldVal: oldData, newVal: newData };
+
+  return {
+    oldVal: pickDisplayValue(oldData),
+    newVal: pickDisplayValue(newData),
+  };
 };
 
 export default function InventoryHistoryView({ selectedLab }) {
@@ -98,12 +122,20 @@ export default function InventoryHistoryView({ selectedLab }) {
         }
 
         const map = {};
+        const normalizeName = (profile) => {
+          const firstName = String(profile?.first_name || "").trim();
+          const lastName = String(profile?.last_name || "").trim();
+          const candidate = [firstName, lastName].filter(Boolean).join(" ").trim();
+
+          return candidate || profile?.email || profile?.id || "system";
+        };
+
         // Query by id if any
         if (ids.size > 0) {
           try {
-            const { data: usersById } = await supabase.from('users').select('id, email, user_metadata').in('id', Array.from(ids));
+            const { data: usersById } = await supabase.from('user_accounts').select('id, email, first_name, last_name').in('id', Array.from(ids));
             (usersById || []).forEach((u) => {
-              const name = (u.user_metadata && (u.user_metadata.name || u.user_metadata.full_name)) || u.email || u.id;
+              const name = normalizeName(u);
               map[u.id] = name;
               if (u.email) map[u.email] = name;
             });
@@ -114,9 +146,9 @@ export default function InventoryHistoryView({ selectedLab }) {
 
         if (emails.size > 0) {
           try {
-            const { data: usersByEmail } = await supabase.from('users').select('id, email, user_metadata').in('email', Array.from(emails));
+            const { data: usersByEmail } = await supabase.from('user_accounts').select('id, email, first_name, last_name').in('email', Array.from(emails));
             (usersByEmail || []).forEach((u) => {
-              const name = (u.user_metadata && (u.user_metadata.name || u.user_metadata.full_name)) || u.email || u.id;
+              const name = normalizeName(u);
               map[u.email] = name;
               map[u.id] = name;
             });
@@ -198,8 +230,8 @@ export default function InventoryHistoryView({ selectedLab }) {
                 <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Computer #</th>
                 
                 <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Component</th>
-                <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Old</th>
-                <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">New</th>
+                <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Old Version</th>
+                <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">New Version</th>
                 <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Changed By</th>
                 <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700 cursor-pointer hover:bg-slate-200" onClick={() => setDateOrder(dateOrder === 'desc' ? 'asc' : 'desc')}>Date {dateOrder === 'desc' ? '↓' : '↑'}</th>
               </tr>
@@ -207,7 +239,7 @@ export default function InventoryHistoryView({ selectedLab }) {
             <tbody className="divide-y divide-slate-200 bg-white">
             {paginatedLogs.map((entry, index) => {
                 const isGrayRow = index % 2 === 0;
-                const { oldVal, newVal } = extractChangedPair(entry.old_data, entry.new_data);
+                const { oldVal, newVal } = extractChangedPair(entry.old_data, entry.new_data, entry.action);
                 const changedByKey = entry.changed_by || 'system';
                 const displayName = userMap[changedByKey] || entry.changed_by || 'system';
                 return (
@@ -243,7 +275,6 @@ export default function InventoryHistoryView({ selectedLab }) {
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
-
                 {Array.from({ length: totalPages }).map((_, index) => {
                   const pageNumber = index + 1;
                   return (

@@ -317,7 +317,7 @@ export default function ComputerLaboratoryInventory() {
                 .eq("lab_number_id", selectedLab)
                 .eq("computer_number", Number(computerNumber)) // force number
                 .eq("type", componentType.toUpperCase()) // force uppercase match
-                .select(); // IMPORTANT: returns updated rows
+                .select("id, computer_number, type, brand, description, status, lab_number_id, lab_number");
 
             if (updateError) throw updateError;
 
@@ -393,9 +393,9 @@ export default function ComputerLaboratoryInventory() {
                 const type = item.type?.toString().trim().toUpperCase();
                 if (type && VALID_TYPES.has(type)) {
                     acc[key].components[type] = {
-                        brand: item.brand || '-',
-                        description: item.description || '-',
-                        remarks: item.status || '-',
+                        brand: String(item.brand || '-'),
+                        description: String(item.description || '-'),
+                        remarks: String(item.status || '-'),
                     };
                 }
                 return acc;
@@ -1632,14 +1632,14 @@ export default function ComputerLaboratoryInventory() {
                         <InventoryHistoryView selectedLab={selectedLab} />
                     ) : (
                         <div className="computer-lab-scrollbar h-[80vh] min-h-0 w-full max-w-full overflow-auto">
-                            <table className="w-max min-w-full divide-y divide-slate-200">
+                            <table className="w-max min-w-full divide-y divide-slate-200 table-fixed">
                                 <thead className="sticky top-0 z-20 bg-slate-100">
                                     <tr>
                                         {TABLE_COLUMNS.map((heading, index) => (
                                             <th
                                                 key={`${heading || "row-label"}-${index}`}
                                                 scope="col"
-                                                className="whitespace-nowrap border-r border-slate-300 px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700 last:border-r-0"
+                                                className="whitespace-nowrap border-r border-slate-300 px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700 last:border-r-0"
                                             >
                                                 {heading}
                                             </th>
@@ -1647,7 +1647,7 @@ export default function ComputerLaboratoryInventory() {
                                         {isEditMode && isAdminUser && (
                                             <th
                                                 scope="col"
-                                                className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700"
+                                                className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700"
                                             >
                                                 Action
                                             </th>
@@ -1668,17 +1668,21 @@ export default function ComputerLaboratoryInventory() {
                                                     {rowIndex === 0 && (
                                                         <td
                                                             rowSpan={COMPONENT_ROWS.length}
-                                                            className={`whitespace-nowrap border-r border-slate-200 px-4 py-4 text-center align-middle font-semibold text-slate-900 ${shadedRow}`}
+                                                            className={`whitespace-nowrap border-r border-slate-200 px-4 py-3 text-center align-middle font-semibold text-slate-900 ${shadedRow}`}
                                                         >
                                                             {formatValue(row["COMPUTER #"])}
                                                         </td>
                                                     )}
-                                                    <td className="whitespace-nowrap border-r border-slate-200 px-4 py-4 text-sm font-semibold text-slate-700">
+                                                    <td className="whitespace-nowrap border-r border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700">
                                                         {label}
                                                     </td>
                                                     {TABLE_HEADING.slice(1).map((componentType) => {
                                                         const componentData = row.components?.[componentType] || {};
-                                                        const value = componentData[field] || "-";
+                                                        let value = componentData[field];
+                                                        // Ensure value is always a string, never an object or ID
+                                                        if (typeof value !== 'string' || value === 'null' || value === 'undefined') {
+                                                            value = '-';
+                                                        }
                                                         const cellKey = getCellDraftKey(row["COMPUTER #"], componentType, field);
                                                         const inputValue = cellDrafts[cellKey] ?? normalizeCellValue(value);
                                                         const isRemarksField = field === "remarks";
@@ -1687,7 +1691,7 @@ export default function ComputerLaboratoryInventory() {
                                                         return (
                                                             <td
                                                                 key={`${row["COMPUTER #"]}-${componentType}-${field}`}
-                                                                className="border-r border-slate-200 px-4 py-4 text-sm last:border-r-0"
+                                                                className="border-r border-slate-200 px-4 py-3 text-sm last:border-r-0"
                                                             >
                                                                 {isEditMode ? (
                                                                     isRemarksField ? (
@@ -1759,7 +1763,7 @@ export default function ComputerLaboratoryInventory() {
                                                     {isEditMode && isAdminUser && rowIndex === 0 && (
                                                         <td
                                                             rowSpan={COMPONENT_ROWS.length}
-                                                            className="px-4 py-4 text-center align-middle"
+                                                            className="px-4 py-3 text-center align-middle"
                                                         >
                                                             <button
                                                                 type="button"

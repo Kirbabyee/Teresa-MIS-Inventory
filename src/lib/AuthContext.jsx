@@ -101,6 +101,29 @@ export const AuthProvider = ({ children }) => {
         const accountRow = await fetchUserProfileFromAccount(sessionUser);
         setUser(buildAuthUser(sessionUser, accountRow));
         setIsAuthenticated(true);
+        // persist lightweight session for layout and other components
+        try {
+          if (typeof window !== "undefined") {
+            const now = Date.now();
+            const expiresAt = sessionResult?.session?.expires_at ? Number(sessionResult.session.expires_at) * 1000 : now + 8 * 60 * 60 * 1000;
+            const accountType = accountRow?.account_type || null;
+            const role = (accountType || sessionUser.user_metadata?.role || sessionUser.app_metadata?.role || "staff").toLowerCase();
+            const displayName = accountRow ? `${accountRow.first_name} ${accountRow.last_name}`.trim() : (sessionUser.user_metadata?.full_name || sessionUser.email || "User");
+
+            window.localStorage.setItem(SESSION_KEY, JSON.stringify({
+              email: sessionUser.email || null,
+              role,
+              account_type: accountType,
+              displayName,
+              loggedInAt: now,
+              expiresAt,
+              supabaseUserId: sessionUser.id,
+            }));
+            window.dispatchEvent(new Event(SESSION_EVENT));
+          }
+        } catch (e) {
+          // ignore localStorage errors
+        }
       }
     } catch (error) {
       console.error("Failed to restore auth session:", error);
