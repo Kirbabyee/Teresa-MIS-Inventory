@@ -15,6 +15,7 @@ const mapBorrowingRecord = (record = {}) => ({
     inventorySectionId: item.inventory_section_id,
     label: item.item_label || "Item",
     details: Array.isArray(item.item_details) ? item.item_details : [],
+    returnRemarks: item.return_remarks || "",
     tab: "",
     section: "",
     tableName: item.inventory_table_name || "",
@@ -90,8 +91,8 @@ export const createBorrowingRecord = async ({
   };
 };
 
-export const returnBorrowingRecord = async (id) => {
-  const { error } = await supabase
+export const returnBorrowingRecord = async (id, returnRemarks = {}) => {
+  const { error: recordError } = await supabase
     .from("borrowing_records")
     .update({
       status: "returned",
@@ -100,5 +101,29 @@ export const returnBorrowingRecord = async (id) => {
     })
     .eq("id", id);
 
-  if (error) throw error;
+  if (recordError) throw recordError;
+
+  if (typeof returnRemarks === "string") {
+    const { error: itemsError } = await supabase
+      .from("borrowing_items")
+      .update({
+        return_remarks: returnRemarks || null,
+      })
+      .eq("borrowing_record_id", id);
+
+    if (itemsError) throw itemsError;
+    return;
+  }
+
+  const itemUpdates = Object.entries(returnRemarks).map(([itemId, remark]) =>
+    supabase
+      .from("borrowing_items")
+      .update({ return_remarks: remark || null })
+      .eq("id", itemId)
+  );
+
+  const results = await Promise.all(itemUpdates);
+  const updateError = results.find((result) => result.error)?.error;
+
+  if (updateError) throw updateError;
 };
