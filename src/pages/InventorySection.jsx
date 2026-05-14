@@ -482,7 +482,7 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+      <div className="w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">
@@ -504,7 +504,8 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
           </button>
         </div>
 
-        <div className="space-y-4 px-5 py-5">
+        <div className="flex-1 overflow-y-auto">
+          <div className="space-y-4 px-5 py-5">
           {useTemplate ? (
             templateColumns.map((column) =>
               column.subColumns && column.subColumns.length > 0 ? (
@@ -677,9 +678,10 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
               </div>
             </div>
           )}
+          </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4">
+        <div className="sticky bottom-0 z-10 flex justify-end gap-3 border-t border-slate-200 bg-white px-5 py-4">
           <button
             type="button"
             onClick={requestClose}

@@ -149,12 +149,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
   };
 
   const saveColumn = async () => {
-    setIsSaving(true);
-    try {
-      await onSave(form);
-    } finally {
-      setIsSaving(false);
-    }
+    await onSave(form);
   };
 
   const requestSave = () => {
@@ -222,7 +217,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{column ? "Edit column" : "Add column"}</h3>
@@ -458,35 +453,13 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
-          <button
-            type="button"
-            onClick={requestClose}
-            disabled={isSaving}
-            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          <button type="button" onClick={requestClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={requestSave}
-            disabled={isSaving}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isSaving && (
-              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
-            )}
-            {isSaving ? "Saving..." : "Save Column"}
+          <button type="button" onClick={requestSave} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
+            Save Column
           </button>
         </div>
-
-        {isSaving && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm">
-            <div className="inline-flex items-center gap-3 rounded-2xl bg-slate-950/95 px-5 py-4 text-sm font-medium text-white shadow-lg">
-              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
-              Saving column...
-            </div>
-          </div>
-        )}
       </div>
 
       {showDiscardConfirm && (
@@ -516,14 +489,11 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
               Are you sure you want to save these changes?
             </p>
             <div className="mt-4 flex justify-end gap-3">
-              <button type="button" onClick={cancelSave} disabled={isSaving} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" onClick={cancelSave} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
                 Cancel
               </button>
-              <button type="button" onClick={confirmSave} disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
-                {isSaving && (
-                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
-                )}
-                {isSaving ? "Saving..." : "Save"}
+              <button type="button" onClick={confirmSave} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                Save
               </button>
             </div>
           </div>
@@ -536,7 +506,6 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
 function SectionModal({ section, onClose, onSave }) {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const initialSnapshotRef = useRef("");
   const [form, setForm] = useState({
     name: section?.name || "",
@@ -597,12 +566,7 @@ function SectionModal({ section, onClose, onSave }) {
   };
 
   const saveSection = async () => {
-    setIsSaving(true);
-    try {
-      await onSave(form);
-    } finally {
-      setIsSaving(false);
-    }
+    await onSave(form);
   };
 
   const requestSave = () => {
@@ -629,7 +593,7 @@ function SectionModal({ section, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+      <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{section ? "Edit section" : "Add section"}</h3>
@@ -665,35 +629,18 @@ function SectionModal({ section, onClose, onSave }) {
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
-          <button
-            type="button"
-            onClick={requestClose}
-            disabled={isSaving}
-            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          <button type="button" onClick={requestClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
             Cancel
           </button>
           <button
             type="button"
             onClick={requestSave}
-            disabled={isSectionSaveDisabled || isSaving}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isSectionSaveDisabled}
+            className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isSaving && (
-              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
-            )}
-            {isSaving ? "Saving..." : "Save Section"}
+            Save Section
           </button>
         </div>
-
-        {isSaving && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm">
-            <div className="inline-flex items-center gap-3 rounded-2xl bg-slate-950/95 px-5 py-4 text-sm font-medium text-white shadow-lg">
-              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
-              Saving section...
-            </div>
-          </div>
-        )}
       </div>
 
       {showDiscardConfirm && (
@@ -723,14 +670,11 @@ function SectionModal({ section, onClose, onSave }) {
               Are you sure you want to save these changes?
             </p>
             <div className="mt-4 flex justify-end gap-3">
-              <button type="button" onClick={cancelSave} disabled={isSaving} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" onClick={cancelSave} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
                 Cancel
               </button>
-              <button type="button" onClick={confirmSave} disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
-                {isSaving && (
-                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
-                )}
-                {isSaving ? "Saving..." : "Save"}
+              <button type="button" onClick={confirmSave} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                Save
               </button>
             </div>
           </div>
@@ -743,8 +687,6 @@ function SectionModal({ section, onClose, onSave }) {
 function TabModal({ tab, onClose, onSave }) {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
-  const [hasUserInteracted, setHasUserInteracted] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const initialSnapshotRef = useRef("");
   const [tabForm, setTabForm] = useState({
     name: tab?.name || "",
@@ -762,7 +704,7 @@ function TabModal({ tab, onClose, onSave }) {
   const [isTabNameTouched, setIsTabNameTouched] = useState(false);
 
   const tabValidation = useMemo(() => {
-    const errors = { name: "", columns: "", sections: "" };
+    const errors = { name: "", columns: "" };
     const trimmedName = tabForm.name.trim();
 
     if (!trimmedName) {
@@ -775,14 +717,10 @@ function TabModal({ tab, onClose, onSave }) {
       errors.columns = "New tabs must include at least one column.";
     }
 
-    if (sections.length === 0) {
-      errors.sections = "At least one section is required.";
-    }
-
     return errors;
-  }, [tabForm.name, columns, sections, tab?.id]);
+  }, [tabForm.name, columns, tab?.id]);
 
-  const isSaveDisabled = Boolean(tabValidation.name || tabValidation.columns || tabValidation.sections || isSaving);
+  const isSaveDisabled = Boolean(tabValidation.name || tabValidation.columns);
 
   const buildTabSnapshot = (currentTabForm, currentSections, currentColumns) =>
     JSON.stringify({
@@ -836,7 +774,6 @@ function TabModal({ tab, onClose, onSave }) {
     setShowDiscardConfirm(false);
     setShowSaveConfirm(false);
     setIsTabNameTouched(false);
-    setHasUserInteracted(false);
     initialSnapshotRef.current = buildTabSnapshot(nextTabForm, nextSections, nextColumns);
   }, [tab]);
 
@@ -937,7 +874,7 @@ function TabModal({ tab, onClose, onSave }) {
   };
 
   const handleSaveTab = () => {
-    return onSave({ ...tabForm, sections, columns });
+    onSave({ ...tabForm, sections, columns });
   };
 
   const requestClose = () => {
@@ -958,9 +895,8 @@ function TabModal({ tab, onClose, onSave }) {
     setShowDiscardConfirm(false);
   };
 
-  const requestSave = async () => {
-    setHasUserInteracted(true);
-    if (tabValidation.name || tabValidation.columns || tabValidation.sections) {
+  const requestSave = () => {
+    if (tabValidation.name || tabValidation.columns) {
       return;
     }
 
@@ -969,22 +905,12 @@ function TabModal({ tab, onClose, onSave }) {
       return;
     }
 
-    setIsSaving(true);
-    try {
-      await handleSaveTab();
-    } finally {
-      setIsSaving(false);
-    }
+    handleSaveTab();
   };
 
   const confirmSave = async () => {
     setShowSaveConfirm(false);
-    setIsSaving(true);
-    try {
-      await handleSaveTab();
-    } finally {
-      setIsSaving(false);
-    }
+    await handleSaveTab();
   };
 
   const cancelSave = () => {
@@ -993,7 +919,7 @@ function TabModal({ tab, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl">
+      <div className="w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl">
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between border-b border-slate-200 p-5">
             <div>
@@ -1017,14 +943,11 @@ function TabModal({ tab, onClose, onSave }) {
                   : ""
               }`}
               value={tabForm.name}
-              onChange={(event) => {
-                setTabForm((current) => ({ ...current, name: event.target.value }));
-                setHasUserInteracted(true);
-              }}
+              onChange={(event) => setTabForm((current) => ({ ...current, name: event.target.value }))}
               onBlur={() => setIsTabNameTouched(true)}
               placeholder=""
             />
-            {isTabNameTouched && hasUserInteracted && tabValidation.name ? (
+            {isTabNameTouched && tabValidation.name ? (
               <p className="mt-2 text-sm text-rose-600">{tabValidation.name}</p>
             ) : null}
           </div>
@@ -1043,9 +966,7 @@ function TabModal({ tab, onClose, onSave }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h4 className="text-sm font-semibold text-slate-900">Sections</h4>
-              {hasUserInteracted && tabValidation.sections ? (
-                <p className="mt-1 text-sm text-rose-600">{tabValidation.sections}</p>
-              ) : null}
+              <p className="text-sm text-slate-500"></p>
             </div>
             <button
               type="button"
@@ -1104,7 +1025,7 @@ function TabModal({ tab, onClose, onSave }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
-              {hasUserInteracted && tabValidation.columns ? (
+              {tabValidation.columns ? (
                 <p className="mt-1 text-sm text-rose-600">{tabValidation.columns}</p>
               ) : null}
             </div>
@@ -1173,15 +1094,6 @@ function TabModal({ tab, onClose, onSave }) {
             </button>
           </div>
         </div>
-
-        {isSaving && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm">
-            <div className="inline-flex items-center gap-3 rounded-2xl bg-slate-950/95 px-5 py-4 text-sm font-medium text-white shadow-lg">
-              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
-              Saving table...
-            </div>
-          </div>
-        )}
       </div>
 
       {showDiscardConfirm && (
@@ -1214,16 +1126,8 @@ function TabModal({ tab, onClose, onSave }) {
               <button type="button" onClick={cancelSave} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={confirmSave}
-                disabled={isSaving}
-                className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isSaving && (
-                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
-                )}
-                {isSaving ? "Saving..." : "Save"}
+              <button type="button" onClick={confirmSave} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                Save
               </button>
             </div>
           </div>
@@ -1349,345 +1253,5 @@ function TabModal({ tab, onClose, onSave }) {
         />
       )}
     </div>
-  </div>
-</div>
-  );
-}
-
-export default function Inventory() {
-  const { tabs, loading, error, refetch } = useInventoryCatalog();
-  const [showModal, setShowModal] = useState(false);
-  const [editingSlug, setEditingSlug] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [pendingDeleteTab, setPendingDeleteTab] = useState(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const editingTab = useMemo(() => tabs.find((tab) => tab.slug === editingSlug) || null, [tabs, editingSlug]);
-  const ddlEndpoint = getInventoryCreateTableEndpoint();
-
-  const handleSave = async (form) => {
-    // Validate required fields
-    if (!form.name || !form.name.trim()) {
-      alert("Please enter a tab name.");
-      return;
-    }
-
-    // For new tabs, require at least one column
-    if (!editingTab && (!form.columns || form.columns.length === 0)) {
-      alert("New tabs must have at least one column.");
-      return;
-    }
-
-    const currentTab = editingTab;
-    const savedTab = await upsertInventoryTab({
-      id: currentTab?.id,
-      name: form.name.trim(),
-      slug: form.slug || form.name,
-      description: form.description.trim(),
-      sort_order: currentTab?.sort_order || tabs.length + 1,
-    });
-
-    const existingSections = currentTab?.sections || [];
-    const keptSectionIds = [];
-
-    for (let index = 0; index < form.sections.length; index += 1) {
-      const section = form.sections[index];
-      const savedSection = await upsertInventorySection({
-        id: section.id,
-        tabId: savedTab.id,
-        name: section.name.trim(),
-        slug: section.slug || section.name,
-        description: section.description?.trim() || "",
-        sort_order: index + 1,
-      });
-      keptSectionIds.push(savedSection.id);
-    }
-
-    for (const section of existingSections) {
-      if (!keptSectionIds.includes(section.id)) {
-        await deleteInventorySection(section.id);
-      }
-    }
-
-    // Handle column modifications for existing tabs
-    if (currentTab) {
-      try {
-        // Get the existing tab config to compare columns
-        const existingConfig = await getTabTableConfig(currentTab.id);
-        const updatedColumns = (form.columns || [])
-          .filter((col) => col && col.key)
-          .map((col) => normalizeColumnConfig(col));
-        const tabConfig = { tableName: existingConfig?.tableName, columns: updatedColumns };
-
-        const tableName = existingConfig?.tableName;
-        if (tableName && updatedColumns.length > 0) {
-          const modifyEndpoint = getInventoryModifyTableEndpoint();
-          // Ensure columns are flattened for the SQL generation (DDL)
-          const flattened = flattenColumnsForDDL(updatedColumns);
-          console.log("Modifying table:", tableName, "with columns:", flattened);
-          await callModifyInventoryTable(modifyEndpoint, tableName, "sync", flattened);
-          console.log("Table columns modified successfully");
-        }
-
-        // Always persist the latest column config, including nested field metadata.
-        try {
-          window.localStorage.setItem(`inventory.tab_table.${currentTab.id}`, JSON.stringify(tabConfig));
-          console.log("Tab config saved to localStorage");
-        } catch (storageErr) {
-          console.warn("Failed to update localStorage config:", storageErr);
-        }
-
-        try {
-          const settingResult = await upsertSetting(`inventory.tab_table.${currentTab.id}`, tabConfig);
-          console.log("Tab config persisted to inventory_settings:", settingResult);
-        } catch (settingErr) {
-          console.error("Failed to update inventory_settings config:", settingErr);
-          alert(`Warning: Column config may not have saved. Error: ${settingErr.message}`);
-        }
-      } catch (err) {
-        console.error("Failed to modify table columns:", err);
-        alert(`Failed to modify table columns: ${err.message || err}`);
-        refetch();
-        return;
-      }
-    }
-
-    // If creating a new tab, create the physical table and persist tab->table mapping
-    if (!currentTab) {
-      try {
-        const tableName = `inventory_${String(savedTab.name || "tab")
-          .toLowerCase()
-          .trim()
-          .replace(/[^a-z0-9_]+/g, "_")
-          .replace(/^_+|_+$/g, "")}`;
-        const cols = (form.columns || [])
-          .filter((it) => it && it.key)
-          .map((it) => normalizeColumnConfig(it));
-        
-        if (!cols || cols.length === 0) {
-          throw new Error("No valid columns provided for table creation.");
-        }
-
-        const endpoint = ddlEndpoint;
-        console.log("Creating inventory table:", tableName, "with columns:", cols);
-
-        // Flatten columns so the Edge Function creates physical sub-columns in the DB
-        const flattened = flattenColumnsForDDL(cols);
-        console.log("Flattened columns for DDL:", flattened);
-        
-        await callCreateInventoryTable(endpoint, tableName, flattened);
-        console.log("Physical table created successfully");
-
-        // persist mapping and create-time template columns for this tab
-        const tabConfig = { tableName, columns: cols };
-        try {
-          window.localStorage.setItem(`inventory.tab_table.${savedTab.id}`, JSON.stringify(tabConfig));
-          console.log("Tab config saved to localStorage");
-        } catch (storageError) {
-          console.warn("Failed to write tab config to localStorage:", storageError);
-        }
-
-        try {
-          const settingResult = await upsertSetting(`inventory.tab_table.${savedTab.id}`, tabConfig);
-          console.log("Tab config persisted to inventory_settings:", settingResult);
-        } catch (settingError) {
-          console.error("Failed to persist tab config to inventory_settings:", settingError);
-          // Don't rollback on settings error - the physical table was created successfully
-          alert(`Warning: Table created but settings may not have saved. Error: ${settingError.message}`);
-        }
-      } catch (err) {
-        // keep tab creation strict: rollback tab if physical table setup fails
-        console.error("Table creation failed, rolling back:", err);
-        try {
-          await deleteInventoryTab(savedTab.id);
-        } catch (rollbackError) {
-          console.warn("Rollback failed after table creation error:", rollbackError);
-        }
-
-        console.warn("Failed to create physical table:", err);
-        alert(`Tab creation failed: ${err.message || err}`);
-        refetch();
-        return;
-      }
-    }
-
-    // Close modal and refresh only after all operations complete successfully
-    setShowModal(false);
-    setEditingSlug("");
-    refetch();
-  };
-
-  const handleDelete = (tab) => {
-    setPendingDeleteTab(tab);
-    setShowDeleteConfirm(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!pendingDeleteTab?.id) return;
-    setIsDeleting(true);
-    try {
-      await deleteInventoryTab(pendingDeleteTab.id);
-      setPendingDeleteTab(null);
-      refetch();
-      setShowDeleteConfirm(false);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const cancelDelete = () => {
-    setShowDeleteConfirm(false);
-    setPendingDeleteTab(null);
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    const checkAdmin = async () => {
-      try {
-        const admin = await isCurrentUserAdmin();
-        if (!cancelled) setIsAdmin(admin);
-      } catch (err) {
-        if (!cancelled) setIsAdmin(false);
-      }
-    };
-    checkAdmin();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="p-6 space-y-5">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading inventory tabs...</div>
-      </div>
-    );
-  }
-
-  return (
-    <>
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Inventory Manager</h1>
-          <p className="text-slate-500 text-sm">{tabs.length} total tabs</p>
-        </div>
-        <Button
-          onClick={() => setShowModal(true)}
-          className="gap-2 bg-[#4a1111] hover:bg-[#3f0f0f]"
-        >
-          <Plus className="w-4 h-4" /> Add Tab
-        </Button>
-      </div>
-
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Description</th>
-                <th className="px-4 py-3">Sections</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {tabs.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-10 text-center text-slate-500" colSpan={4}>
-                    No inventory tabs yet. Add Laboratory or any custom tab from the modal.
-                  </td>
-                </tr>
-              ) : (
-                tabs.map((tab) => (
-                  <tr key={tab.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-900">{tab.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{tab.description || "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{tab.sections?.length || 0}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <Link
-                          to={`/inventory/${tab.slug}${tab.sections?.[0]?.slug ? `?section=${tab.sections[0].slug}` : ""}`}
-                          className={iconButtonClass}
-                          title="Open Tab"
-                        >
-                          <FolderOpen className="h-4 w-4" />
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingSlug(tab.slug);
-                            setShowModal(true);
-                          }}
-                          className={iconButtonClass}
-                          title="Edit Tab"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(tab)}
-                          className={iconButtonClass}
-                          title="Delete Tab"
-                        >
-                          <Trash2 className="h-4 w-4 text-rose-500" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {showModal && (
-        <TabModal
-          tab={editingTab}
-          onClose={() => setShowModal(false)}
-          onSave={handleSave}
-        />
-      )}
-
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
-            <h3 className="text-lg font-semibold text-slate-900">Confirm delete</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Are you sure you want to delete {pendingDeleteTab?.name || "this tab"}? This action cannot be undone.
-            </p>
-            <div className="mt-4 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={cancelDelete}
-                disabled={isDeleting}
-                className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmDelete}
-                disabled={isDeleting}
-                className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isDeleting ? "Deleting..." : "Delete"}
-              </button>
-            </div>
-            {isDeleting && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm">
-                <div className="inline-flex items-center gap-3 rounded-2xl bg-slate-950/95 px-5 py-4 text-sm font-medium text-white shadow-lg">
-                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
-                  Deleting tab...
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-    </>
   );
 }

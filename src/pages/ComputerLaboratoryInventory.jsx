@@ -1175,104 +1175,106 @@ export default function ComputerLaboratoryInventory() {
             )}
 
             <Dialog open={isAddComponentOpen} onOpenChange={setIsAddComponentOpen}>
-                <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>Add Computer</DialogTitle>
-                        <DialogDescription>Add a new computer to {selectedLabLabel}.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700" htmlFor="computer-number">
-                                Computer Number *
-                            </label>
-                            <input
-                                id="computer-number"
-                                type="number"
-                                min="1"
-                                value={newComponent.computer_number}
-                                onChange={(e) => setNewComponent({ ...newComponent, computer_number: e.target.value })}
-                                placeholder="1"
-                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                            />
-                        </div>
-                        <div className="border-t pt-4 space-y-2">
-                            {COMPONENT_TYPES.map((componentType) => {
-                                const isOpen = !!openComponentSections[componentType];
-                                return (
-                                    <div key={componentType} className="rounded-lg border border-slate-200 bg-slate-50">
-                                        <button
-                                            type="button"
-                                            onClick={() => toggleComponentSection(componentType)}
-                                            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition hover:bg-slate-100"
-                                            aria-expanded={isOpen}
-                                            aria-label={`Toggle ${componentType} fields`}
-                                        >
-                                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-700">{componentType}</span>
-                                            <ChevronDown
-                                                className={`h-4 w-4 text-slate-500 transition-transform ${isOpen ? "rotate-180" : "rotate-0"}`}
-                                            />
-                                        </button>
+                <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+                    <div className="flex-1 overflow-y-auto">
+                        <DialogHeader>
+                            <DialogTitle>Add Computer</DialogTitle>
+                            <DialogDescription>Add a new computer to {selectedLabLabel}.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 px-0 py-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-700" htmlFor="computer-number">
+                                    Computer Number *
+                                </label>
+                                <input
+                                    id="computer-number"
+                                    type="number"
+                                    min="1"
+                                    value={newComponent.computer_number}
+                                    onChange={(e) => setNewComponent({ ...newComponent, computer_number: e.target.value })}
+                                    placeholder="1"
+                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                                />
+                            </div>
+                            <div className="border-t pt-4 space-y-2">
+                                {COMPONENT_TYPES.map((componentType) => {
+                                    const isOpen = !!openComponentSections[componentType];
+                                    return (
+                                        <div key={componentType} className="rounded-lg border border-slate-200 bg-slate-50">
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleComponentSection(componentType)}
+                                                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition hover:bg-slate-100"
+                                                aria-expanded={isOpen}
+                                                aria-label={`Toggle ${componentType} fields`}
+                                            >
+                                                <span className="text-xs font-semibold uppercase tracking-wide text-slate-700">{componentType}</span>
+                                                <ChevronDown
+                                                    className={`h-4 w-4 text-slate-500 transition-transform ${isOpen ? "rotate-180" : "rotate-0"}`}
+                                                />
+                                            </button>
 
-                                        {isOpen && (
-                                            <div className="grid gap-3 border-t border-slate-200 p-3">
-                                                <div>
-                                                    <label className="text-xs font-medium text-slate-600">Brand</label>
-                                                    <input
-                                                        type="text"
-                                                        value={newComponent[`${componentType}_brand`] || ""}
-                                                        onChange={(e) =>
-                                                            setNewComponent((current) => ({
-                                                                ...current,
-                                                                [`${componentType}_brand`]: e.target.value,
-                                                            }))
-                                                        }
-                                                        placeholder="e.g., Intel"
-                                                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                                                    />
+                                            {isOpen && (
+                                                <div className="grid gap-3 border-t border-slate-200 p-3">
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-600">Brand</label>
+                                                        <input
+                                                            type="text"
+                                                            value={newComponent[`${componentType}_brand`] || ""}
+                                                            onChange={(e) =>
+                                                                setNewComponent((current) => ({
+                                                                    ...current,
+                                                                    [`${componentType}_brand`]: e.target.value,
+                                                                }))
+                                                            }
+                                                            placeholder="e.g., Intel"
+                                                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-600">Description</label>
+                                                        <input
+                                                            type="text"
+                                                            value={newComponent[`${componentType}_description`] || ""}
+                                                            onChange={(e) =>
+                                                                setNewComponent((current) => ({
+                                                                    ...current,
+                                                                    [`${componentType}_description`]: e.target.value,
+                                                                }))
+                                                            }
+                                                            placeholder="e.g., Core i7"
+                                                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs font-medium text-slate-600">Remarks</label>
+                                                        <select
+                                                            value={newComponent[`${componentType}_remarks`] || ""}
+                                                            onChange={(e) =>
+                                                                setNewComponent((current) => ({
+                                                                    ...current,
+                                                                    [`${componentType}_remarks`]: e.target.value,
+                                                                }))
+                                                            }
+                                                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                                                        >
+                                                            <option value="">Select remarks...</option>
+                                                            {REMARK_OPTIONS.map((remark) => (
+                                                                <option key={remark} value={remark.toLowerCase()}>
+                                                                    {remark}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <label className="text-xs font-medium text-slate-600">Description</label>
-                                                    <input
-                                                        type="text"
-                                                        value={newComponent[`${componentType}_description`] || ""}
-                                                        onChange={(e) =>
-                                                            setNewComponent((current) => ({
-                                                                ...current,
-                                                                [`${componentType}_description`]: e.target.value,
-                                                            }))
-                                                        }
-                                                        placeholder="e.g., Core i7"
-                                                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="text-xs font-medium text-slate-600">Remarks</label>
-                                                    <select
-                                                        value={newComponent[`${componentType}_remarks`] || ""}
-                                                        onChange={(e) =>
-                                                            setNewComponent((current) => ({
-                                                                ...current,
-                                                                [`${componentType}_remarks`]: e.target.value,
-                                                            }))
-                                                        }
-                                                        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                                                    >
-                                                        <option value="">Select remarks...</option>
-                                                        {REMARK_OPTIONS.map((remark) => (
-                                                            <option key={remark} value={remark.toLowerCase()}>
-                                                                {remark}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     </div>
-                    <DialogFooter>
+                    <DialogFooter className="sticky bottom-0 z-20 border-t border-slate-200 bg-white px-4 py-4">
                         <button
                             type="button"
                             onClick={() => setIsAddComponentOpen(false)}

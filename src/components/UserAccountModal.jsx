@@ -25,6 +25,18 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
+  
+  // Validation state
+  const [touched, setTouched] = useState({
+    firstName: false,
+    lastName: false,
+    email: false,
+  });
+  const [fieldErrors, setFieldErrors] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+  });
 
   useEffect(() => {
     if (account) {
@@ -43,10 +55,73 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
       setAccountType("staff");
     }
     setError("");
+    setTouched({ firstName: false, lastName: false, email: false });
+    setFieldErrors({ firstName: "", lastName: "", email: "" });
   }, [account]);
 
+  // Validation functions
+  const validateFirstName = (value) => {
+    if (!value.trim()) return "First name is required";
+    if (value.trim().length < 2) return "First name must be at least 2 characters";
+    return "";
+  };
+
+  const validateLastName = (value) => {
+    if (!value.trim()) return "Last name is required";
+    if (value.trim().length < 2) return "Last name must be at least 2 characters";
+    return "";
+  };
+
+  const validateEmail = (value) => {
+    if (!value.trim()) return "Email is required";
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(value.trim())) return "Please enter a valid email";
+    return "";
+  };
+
+  // Get field status (valid, invalid, or untouched)
+  const getFieldStatus = (field, value) => {
+    if (!touched[field]) return "untouched"; // No warning yet
+    const error = 
+      field === "firstName" ? validateFirstName(value) :
+      field === "lastName" ? validateLastName(value) :
+      field === "email" ? validateEmail(value) : "";
+    return error ? "invalid" : "valid";
+  };
+
+  // Handle field change and real-time validation
+  const handleFieldChange = (field, value, setter) => {
+    setter(value);
+    
+    // Validate on change if field has been touched
+    if (touched[field]) {
+      let error = "";
+      if (field === "firstName") error = validateFirstName(value);
+      else if (field === "lastName") error = validateLastName(value);
+      else if (field === "email") error = validateEmail(value);
+      
+      setFieldErrors(prev => ({ ...prev, [field]: error }));
+    }
+  };
+
+  // Handle field blur (mark as touched)
+  const handleFieldBlur = (field, value) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+    
+    let error = "";
+    if (field === "firstName") error = validateFirstName(value);
+    else if (field === "lastName") error = validateLastName(value);
+    else if (field === "email") error = validateEmail(value);
+    
+    setFieldErrors(prev => ({ ...prev, [field]: error }));
+  };
+
+
   const isValid = () => {
-    return firstName.trim() && lastName.trim() && email.trim();
+    const firstNameError = validateFirstName(firstName);
+    const lastNameError = validateLastName(lastName);
+    const emailError = validateEmail(email);
+    return !firstNameError && !lastNameError && !emailError;
   };
 
   const handleSave = async () => {
@@ -153,9 +228,21 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
               <Input
                 type="text"
                 value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
+                onChange={(e) => handleFieldChange("firstName", e.target.value, setFirstName)}
+                onBlur={() => handleFieldBlur("firstName", firstName)}
                 placeholder="Enter first name"
+                className={`${
+                  touched.firstName
+                    ? fieldErrors.firstName
+                      ? "border-red-500 bg-red-50 focus:border-red-500"
+                      : "border-green-500 bg-green-50 focus:border-green-500"
+                    : ""
+                }`}
               />
+              {touched.firstName && fieldErrors.firstName && (
+                <p className="mt-1 text-xs text-red-600 font-medium">{fieldErrors.firstName}</p>
+              )}
+              
             </div>
 
             <div>
@@ -177,9 +264,23 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
               <Input
                 type="text"
                 value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
+                onChange={(e) => handleFieldChange("lastName", e.target.value, setLastName)}
+                onBlur={() => handleFieldBlur("lastName", lastName)}
                 placeholder="Enter last name"
+                className={`${
+                  touched.lastName
+                    ? fieldErrors.lastName
+                      ? "border-red-500 bg-red-50 focus:border-red-500"
+                      : "border-green-500 bg-green-50 focus:border-green-500"
+                    : ""
+                }`}
               />
+              {touched.lastName && fieldErrors.lastName && (
+                <p className="mt-1 text-xs text-red-600 font-medium">{fieldErrors.lastName}</p>
+              )}
+              {touched.lastName && !fieldErrors.lastName && (
+                <p className="mt-1 text-xs text-green-600 font-medium">✓ Valid</p>
+              )}
             </div>
 
             <div>
@@ -201,9 +302,23 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
               <Input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => handleFieldChange("email", e.target.value, setEmail)}
+                onBlur={() => handleFieldBlur("email", email)}
                 placeholder="Enter email address"
+                className={`${
+                  touched.email
+                    ? fieldErrors.email
+                      ? "border-red-500 bg-red-50 focus:border-red-500"
+                      : "border-green-500 bg-green-50 focus:border-green-500"
+                    : ""
+                }`}
               />
+              {touched.email && fieldErrors.email && (
+                <p className="mt-1 text-xs text-red-600 font-medium">{fieldErrors.email}</p>
+              )}
+              {touched.email && !fieldErrors.email && (
+                <p className="mt-1 text-xs text-green-600 font-medium">✓ Valid</p>
+              )}
             </div>
 
             <div>

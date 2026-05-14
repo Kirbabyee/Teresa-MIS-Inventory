@@ -1,0 +1,10 @@
+import fs from "fs";
+const src = fs.readFileSync("temp-tabmodal.jsx","utf8");
+const count = (pattern) => (src.match(new RegExp(pattern,'g')) || []).length;
+console.log('div open', count('<div'));
+console.log('div close', count('</div>'));
+console.log('button open', count('<button'));
+console.log('button close', count('</button>'));
+console.log('sectionmodal open', count('<SectionModal'));
+console.log('columnrowmodal open', count('<ColumnRowModal'));
+console.log('jsx selfclose', count('/>'));
