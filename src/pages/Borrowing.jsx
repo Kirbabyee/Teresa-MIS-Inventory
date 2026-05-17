@@ -1,5 +1,16 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Download, History } from "lucide-react";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   fetchInventoryItems,
   getTabTableConfig,
@@ -83,6 +94,134 @@ const getItemDetails = (item = {}) =>
       value: String(value),
     }));
 
+const getExportItemLabel = (item = {}) => {
+  if (item.label) return String(item.label);
+
+  const computerNumber = item.computer_number ?? item.computerNumber;
+  const namedValue =
+    item.name || item.item_name || item.asset_name || item.brand || item.type || item.description;
+
+  if (computerNumber) {
+    const details = [item.type, item.brand, item.description].filter(Boolean).join(" - ");
+    return details ? `Computer #${computerNumber} - ${details}` : `Computer #${computerNumber}`;
+  }
+
+  if (namedValue) return String(namedValue);
+  return "";
+};
+
+const formatExportDate = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+};
+
+const getColumnLetter = (columnNumber) => {
+  let value = columnNumber;
+  let letters = "";
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    letters = String.fromCharCode(65 + remainder) + letters;
+    value = Math.floor((value - 1) / 26);
+  }
+  return letters;
+};
+
+const createHeaderSeparatorBase64 = () => {
+  if (typeof document === "undefined") return null;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 1200;
+  canvas.height = 24;
+
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#4a1111";
+  context.fillRect(0, 9, canvas.width, 5);
+
+  return canvas.toDataURL("image/png").split(",")[1];
+};
+
+const applyExportHeader = (worksheet, titleText, exportDate, separatorImage, totalColumns) => {
+  const headerColor = { argb: "FF4A1111" };
+  const endColumnNumber = Math.max(13, totalColumns + 1);
+  const endColumnLetter = getColumnLetter(endColumnNumber);
+
+  for (let i = 1; i <= 5; i++) {
+    worksheet.getRow(i).height = 25;
+  }
+
+  if (separatorImage) {
+    const separator = worksheet.workbook.addImage({
+      base64: separatorImage,
+      extension: "png",
+    });
+
+    worksheet.addImage(separator, {
+      tl: { col: 0.5, row: 5.35 },
+      br: { col: endColumnNumber + 0.5, row: 5.65 },
+    });
+  }
+
+  worksheet.mergeCells(`B1:${endColumnLetter}1`);
+  const titleCell = worksheet.getCell("B1");
+  titleCell.value = "COLEGIO DE STA. TERESA DE AVILA, INC.";
+  titleCell.alignment = { horizontal: "center", vertical: "middle" };
+  titleCell.font = { bold: true, size: 22, color: headerColor, name: "Corbel" };
+
+  worksheet.mergeCells(`B2:${endColumnLetter}2`);
+  const addr1 = worksheet.getCell("B2");
+  addr1.value = "1177 Quirino Highway, Brgy. Kaligayahan, Novaliches";
+  addr1.alignment = { horizontal: "center", vertical: "middle" };
+  addr1.font = { bold: false, size: 8, color: { argb: "FF663300" }, name: "Arial" };
+
+  worksheet.mergeCells(`B3:${endColumnLetter}3`);
+  const addr2 = worksheet.getCell("B3");
+  addr2.value = "Quezon City 1124 Philippines";
+  addr2.alignment = { horizontal: "center", vertical: "middle" };
+  addr2.font = { bold: false, size: 8, color: { argb: "FF663300" }, name: "Arial" };
+
+  worksheet.mergeCells(`B4:${endColumnLetter}4`);
+  const phone = worksheet.getCell("B4");
+  phone.value = "Tel. No. (02) 8-275-3916";
+  phone.alignment = { horizontal: "center", vertical: "middle" };
+  phone.font = { bold: false, size: 8, color: { argb: "FF663300" }, name: "Arial" };
+
+  worksheet.mergeCells(`B5:${endColumnLetter}5`);
+  const email = worksheet.getCell("B5");
+  email.value = "Email: officialcstaregistrar@gmail.com";
+  email.alignment = { horizontal: "center", vertical: "middle" };
+  email.font = { bold: false, size: 8, color: { argb: "FF663300" }, name: "Arial" };
+  worksheet.getRow(6).height = 15;
+
+  worksheet.mergeCells(`B7:${endColumnLetter}7`);
+  const exportTitle = worksheet.getCell("B7");
+  exportTitle.value = titleText;
+  exportTitle.alignment = { horizontal: "center", vertical: "middle" };
+  exportTitle.font = { bold: true, size: 11, color: headerColor, name: "Arial" };
+
+  worksheet.mergeCells(`B8:${endColumnLetter}8`);
+  const dateCell = worksheet.getCell("B8");
+  dateCell.value =
+    "AS OF " +
+    new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    })
+      .format(new Date(exportDate))
+      .replace(/^[A-Za-z]+/, (month) => month.toUpperCase());
+  dateCell.alignment = { horizontal: "center", vertical: "middle" };
+  dateCell.font = { bold: true, size: 11, color: headerColor, name: "Arial" };
+};
+
 export default function Borrowing() {
   const { tabs, loading: inventoryLoading, error: inventoryError } = useInventoryCatalog();
   const [search, setSearch] = useState("");
@@ -106,7 +245,6 @@ export default function Borrowing() {
   const [returningBorrow, setReturningBorrow] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState("borrowed");
-  const [showHistory, setShowHistory] = useState(false);
   const [customItems, setCustomItems] = useState([]);
   const [customItemForm, setCustomItemForm] = useState({ name: "", description: "" });
   const [addingCustom, setAddingCustom] = useState(false);
@@ -115,6 +253,11 @@ export default function Borrowing() {
   const pageSize = 5;
 
   const [data, setData] = useState([]);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportDate, setExportDate] = useState(new Date().toISOString().slice(0, 10));
+  const [preparedByName, setPreparedByName] = useState("");
+  const [inspectedByName, setInspectedByName] = useState("");
 
   const selectedTab = useMemo(
     () => tabs.find((tab) => String(tab.id) === String(selectedTabId)) || null,
@@ -307,6 +450,174 @@ export default function Borrowing() {
     );
   };
 
+  const openExportModal = () => {
+    if (!filteredData.length) return;
+    setExportDate(new Date().toISOString().slice(0, 10));
+    setPreparedByName("");
+    setInspectedByName("");
+    setShowExportModal(true);
+  };
+
+  const handleExportBorrowings = async () => {
+    if (!filteredData.length) return;
+
+    setExporting(true);
+    try {
+      const separatorBuffer = createHeaderSeparatorBase64();
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Borrowings");
+
+      const columns = [
+        { key: "name", label: "Borrower" },
+        { key: "studentId", label: "Student ID" },
+        { key: "role", label: "Role" },
+        { key: "status", label: "Status" },
+        { key: "date", label: "Date" },
+        { key: "item", label: "Item" },
+        { key: "remark", label: "Item Remark" },
+      ];
+
+      applyExportHeader(worksheet, "BORROWING RECORDS", exportDate, separatorBuffer, columns.length);
+
+      worksheet.addRow([]);
+      const startColumn = 2;
+      const headerRowIndex = worksheet.lastRow.number + 1;
+      const headerRow = worksheet.getRow(headerRowIndex);
+      headerRow.height = 26;
+
+      columns.forEach((column, index) => {
+        const cell = headerRow.getCell(startColumn + index);
+        cell.value = column.label;
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+        cell.font = { bold: true, size: 10 };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF0F0F0" } };
+        cell.border = {
+          top: { style: "thin" },
+          bottom: { style: "thin" },
+          left: { style: "thin" },
+          right: { style: "thin" },
+        };
+      });
+
+      let currentRowIndex = headerRowIndex + 1;
+      filteredData.forEach((record, recordIndex) => {
+        const itemLabels = (record.items || []).map((item) => getExportItemLabel(item));
+        const itemRemarks = (record.items || []).map((item) => item.returnRemarks || "Working");
+        const rowCount = Math.max(itemLabels.length, itemRemarks.length, 1);
+        const rowFill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: recordIndex % 2 === 0 ? "FFF8FAFC" : "FFFFFFFF" },
+        };
+
+        for (let itemIndex = 0; itemIndex < rowCount; itemIndex += 1) {
+          const excelRow = worksheet.getRow(currentRowIndex + itemIndex);
+          const values = [
+            record.name,
+            record.studentId,
+            record.role,
+            record.status || statusFilter,
+            formatExportDate(record.date),
+            itemLabels[itemIndex] || "",
+            itemRemarks[itemIndex] || "",
+          ];
+
+          values.forEach((value, colIndex) => {
+            const cell = excelRow.getCell(startColumn + colIndex);
+            cell.value = value === null || value === undefined ? "" : String(value);
+            cell.alignment = {
+              horizontal: "center",
+              vertical: "middle",
+              wrapText: true,
+            };
+            cell.font = { size: 10, name: "Arial" };
+            cell.fill = rowFill;
+            cell.border = {
+              top: { style: "thin" },
+              bottom: { style: "thin" },
+              left: { style: "thin" },
+              right: { style: "thin" },
+            };
+          });
+        }
+
+        if (rowCount > 1) {
+          const mergedColumns = ["name", "studentId", "role", "status", "date"].map((key) => {
+            return columns.findIndex((column) => column.key === key);
+          });
+
+          mergedColumns.forEach((colIndex) => {
+            const startCell = `${getColumnLetter(startColumn + colIndex)}${currentRowIndex}`;
+            const endCell = `${getColumnLetter(startColumn + colIndex)}${currentRowIndex + rowCount - 1}`;
+            worksheet.mergeCells(`${startCell}:${endCell}`);
+          });
+        }
+
+        currentRowIndex += rowCount;
+      });
+
+      columns.forEach((column, index) => {
+        const colNumber = startColumn + index;
+        const longestData = filteredData.reduce((max, record) => {
+          if (column.key === "item") {
+            const itemMax = (record.items || []).reduce(
+              (itemMax, item) => Math.max(itemMax, String(getExportItemLabel(item) || "").length),
+              0
+            );
+            return Math.max(max, itemMax);
+          }
+
+          if (column.key === "remark") {
+            const remarkMax = (record.items || []).reduce(
+              (remarkMax, item) => Math.max(remarkMax, String(item.returnRemarks || "").length),
+              0
+            );
+            return Math.max(max, remarkMax);
+          }
+
+          if (column.key === "date") {
+            return Math.max(max, String(formatExportDate(record.date)).length);
+          }
+
+          const value = record[column.key];
+          return Math.max(max, value === null || value === undefined ? 0 : String(value).length);
+        }, 0);
+
+        const width = Math.min(40, Math.max(14, column.label.length + 4, longestData + 2));
+        worksheet.getColumn(colNumber).width = width;
+      });
+
+      const signatoryStart = headerRowIndex + filteredData.length + 5;
+      const safePreparedBy = preparedByName.trim() || "____________________";
+      const safeInspectedBy = inspectedByName.trim() || "____________________";
+
+      worksheet.getCell(`B${signatoryStart}`).value = "Prepared and submitted by:";
+      worksheet.getCell(`B${signatoryStart}`).font = { bold: true, size: 10 };
+      worksheet.getCell(`B${signatoryStart + 2}`).value = safePreparedBy;
+      worksheet.getCell(`B${signatoryStart + 2}`).font = { bold: true, size: 12, name: "Arial" };
+      worksheet.getCell(`B${signatoryStart + 3}`).value = "Borrowing office";
+      worksheet.getCell(`B${signatoryStart + 3}`).font = { italic: true, size: 10 };
+
+      worksheet.getCell(`B${signatoryStart + 5}`).value = "Inspected and verified by:";
+      worksheet.getCell(`B${signatoryStart + 5}`).font = { bold: true, size: 10 };
+      worksheet.getCell(`B${signatoryStart + 7}`).value = safeInspectedBy;
+      worksheet.getCell(`B${signatoryStart + 7}`).font = { bold: true, size: 12, name: "Arial" };
+      worksheet.getCell(`B${signatoryStart + 8}`).value = "Inventory custodian";
+      worksheet.getCell(`B${signatoryStart + 8}`).font = { italic: true, size: 10 };
+
+      worksheet.views = [];
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      saveAs(blob, `borrowing-records-${statusFilter}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      setShowExportModal(false);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const cancelReturn = () => {
     setPendingReturn(null);
     setReturnRemarksByItem({});
@@ -465,38 +776,119 @@ export default function Borrowing() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 mb-8">
-          <button
-            type="button"
-            onClick={() => setStatusFilter(statusFilter === "borrowed" ? "all" : "borrowed")}
-            className={`px-4 py-1.5 rounded-full text-sm border transition ${
-              statusFilter === "all"
-                ? "bg-[#4a1111] text-white border-[#4a1111]"
-                : "text-[#4a1111] border-[#4a1111] hover:bg-[#4a1111] hover:text-white"
-            }`}
-          >
-            {statusFilter === "borrowed" ? "Show History" : "Show Current"}
-          </button>
-
           <input
             type="text"
             placeholder="Search..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 border rounded-full px-4 py-2 text-sm"
+            className="min-w-[220px] flex-1 border rounded-full px-4 py-2 text-sm"
           />
 
-          <button
-            type="button"
-            onClick={() => {
-              setShowModal(true);
-              setFormErrors({});
-              setFormError("");
-            }}
-            className="bg-[#4a1111] text-white px-5 py-2 rounded-full text-sm hover:opacity-90 transition"
-          >
-            + Borrow
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setStatusFilter(statusFilter === "borrowed" ? "all" : "borrowed")}
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition ${
+                statusFilter === "all"
+                  ? "bg-[#4a1111] text-white border-[#4a1111] hover:bg-[#4a1111]"
+                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900"
+              }`}
+              title={statusFilter === "borrowed" ? "Show all borrowing history" : "Show current borrowed items"}
+              aria-label={statusFilter === "borrowed" ? "Show all borrowing history" : "Show current borrowed items"}
+            >
+              <History className="h-4 w-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={openExportModal}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#4a1111] text-white border border-[#4a1111] hover:opacity-90 transition"
+              title={borrowingsLoading ? "Loading borrowings..." : "Export borrowings"}
+              aria-label={borrowingsLoading ? "Loading borrowings" : "Export borrowings"}
+            >
+              <Download className="h-4 w-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowModal(true);
+                setFormErrors({});
+                setFormError("");
+              }}
+              className="bg-[#4a1111] text-white px-5 py-2 rounded-full text-sm hover:opacity-90 transition"
+              title="Open borrow modal"
+              aria-label="Open borrow modal"
+            >
+              + Borrow
+            </button>
+          </div>
         </div>
+
+        {showExportModal && (
+          <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Export Borrowing Records</DialogTitle>
+                <DialogDescription>
+                  Export filtered borrowing records to Excel with export date and signatory fields.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="max-h-72 overflow-auto px-4 py-2 space-y-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500">Date</label>
+                  <input
+                    type="date"
+                    value={exportDate}
+                    onChange={(event) => setExportDate(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-500">Prepared and submitted by</label>
+                  <input
+                    type="text"
+                    value={preparedByName}
+                    onChange={(event) => setPreparedByName(event.target.value)}
+                    placeholder="Enter name"
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-500">Inspected and verified by</label>
+                  <input
+                    type="text"
+                    value={inspectedByName}
+                    onChange={(event) => setInspectedByName(event.target.value)}
+                    placeholder="Enter name"
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                  />
+                </div>
+              </div>
+
+              <DialogFooter>
+                <button
+                  type="button"
+                  onClick={() => setShowExportModal(false)}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportBorrowings}
+                  disabled={exporting || filteredData.length === 0}
+                  className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {exporting ? "Exporting..." : "Export"}
+                </button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
 
         {borrowingsError ? (
           <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -653,7 +1045,7 @@ export default function Borrowing() {
 
       {showModal && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
-          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-white p-6 shadow-md">
+          <div className="flex h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-white p-6 shadow-md">
             <h2 className="text-xl font-bold mb-6 text-[#4a1111]">
               BORROWER'S INFORMATION
             </h2>
@@ -723,7 +1115,7 @@ export default function Borrowing() {
               </div>
             </div>
 
-            <div className="mt-8 max-h-[320px] overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="mt-8 h-[620px] overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-4">
               <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-[#4a1111]">
                 Choose item to borrow
               </h3>
@@ -777,7 +1169,7 @@ export default function Borrowing() {
                 </>
               )}
 
-              <div className="mt-4 rounded-lg border border-slate-200 bg-white">
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white overflow-auto h-[35vh]">
                 {!selectedSectionId ? (
                   <p className="px-4 py-8 text-center text-sm text-slate-400">
                     Select an inventory tab and section to show items.
