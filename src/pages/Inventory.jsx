@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Edit, FolderOpen, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { supabase } from "@/api/supabaseClient";
 import {
   deleteInventorySection,
   deleteInventoryTab,
@@ -1356,6 +1358,8 @@ function TabModal({ tab, onClose, onSave }) {
 
 export default function Inventory() {
   const { tabs, loading, error, refetch } = useInventoryCatalog();
+  const navigate = useNavigate();
+  const [computerLaboratoryCount, setComputerLaboratoryCount] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [editingSlug, setEditingSlug] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
@@ -1557,6 +1561,30 @@ export default function Inventory() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadComputerLaboratoryCount = async () => {
+      const { data, error: countError } = await supabase.from("lab_numbers").select("id");
+
+      if (cancelled) return;
+
+      if (countError) {
+        console.warn("Failed to load computer laboratory count:", countError.message);
+        setComputerLaboratoryCount(0);
+        return;
+      }
+
+      setComputerLaboratoryCount((data || []).length);
+    };
+
+    loadComputerLaboratoryCount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   if (loading) {
     return (
       <div className="p-6 space-y-5">
@@ -1593,51 +1621,60 @@ export default function Inventory() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {tabs.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-10 text-center text-slate-500" colSpan={4}>
-                    No inventory tabs yet. Add Laboratory or any custom tab from the modal.
+              <tr
+                className="cursor-pointer hover:bg-slate-50"
+                onClick={() => navigate("/inventory/laboratory")}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    navigate("/inventory/laboratory");
+                  }
+                }}
+                tabIndex={0}
+                role="link"
+              >
+                <td className="px-4 py-3 font-medium text-slate-900">Computer Laboratories</td>
+                <td className="px-4 py-3 text-slate-600">CSTA Computer Laboratories</td>
+                <td className="px-4 py-3 text-slate-600">{computerLaboratoryCount}</td>
+                <td className="px-4 py-3 text-right text-slate-400">—</td>
+              </tr>
+              {tabs.map((tab) => (
+                <tr key={tab.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-3 font-medium text-slate-900">{tab.name}</td>
+                  <td className="px-4 py-3 text-slate-600">{tab.description || "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{tab.sections?.length || 0}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-2">
+                      <Link
+                        to={`/inventory/${tab.slug}${tab.sections?.[0]?.slug ? `?section=${tab.sections[0].slug}` : ""}`}
+                        className={iconButtonClass}
+                        title="Open Tab"
+                      >
+                        <FolderOpen className="h-4 w-4" />
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingSlug(tab.slug);
+                          setShowModal(true);
+                        }}
+                        className={iconButtonClass}
+                        title="Edit Tab"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(tab)}
+                        className={iconButtonClass}
+                        title="Delete Tab"
+                      >
+                        <Trash2 className="h-4 w-4 text-rose-500" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
-              ) : (
-                tabs.map((tab) => (
-                  <tr key={tab.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-900">{tab.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{tab.description || "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{tab.sections?.length || 0}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <Link
-                          to={`/inventory/${tab.slug}${tab.sections?.[0]?.slug ? `?section=${tab.sections[0].slug}` : ""}`}
-                          className={iconButtonClass}
-                          title="Open Tab"
-                        >
-                          <FolderOpen className="h-4 w-4" />
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingSlug(tab.slug);
-                            setShowModal(true);
-                          }}
-                          className={iconButtonClass}
-                          title="Edit Tab"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(tab)}
-                          className={iconButtonClass}
-                          title="Delete Tab"
-                        >
-                          <Trash2 className="h-4 w-4 text-rose-500" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
           </table>
         </div>
