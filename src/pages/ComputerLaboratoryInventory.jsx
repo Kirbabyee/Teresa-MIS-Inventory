@@ -190,6 +190,7 @@ export default function ComputerLaboratoryInventory() {
     const [isAddComponentOpen, setIsAddComponentOpen] = useState(false);
     const [isHistoryOpen, setIsHistoryOpen] = useState(() => searchParams.get("view") === "logs");
     const [searchQuery, setSearchQuery] = useState("");
+    const [historySearchQuery, setHistorySearchQuery] = useState("");
     const [openComponentSections, setOpenComponentSections] = useState(() => createInitialComponentSections());
     const [cellDrafts, setCellDrafts] = useState({});
     const [savingCellKey, setSavingCellKey] = useState(null);
@@ -427,6 +428,17 @@ export default function ComputerLaboratoryInventory() {
             }));
 
             setLabOptions(normalizedLabs);
+
+            // respect labId query param if present
+            const labIdParam = searchParams.get("labId");
+            if (labIdParam) {
+                const match = normalizedLabs.find((l) => String(l.value) === String(labIdParam));
+                if (match) {
+                    setSelectedLab(match.value);
+                    return;
+                }
+            }
+
             setSelectedLab((current) =>
                 normalizedLabs.some((lab) => lab.value === current) ? current : normalizedLabs[0]?.value || null
             );
@@ -437,7 +449,7 @@ export default function ComputerLaboratoryInventory() {
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [searchParams]);
 
     const openAddLabModal = () => {
         const nextValue = Math.max(...labOptions.map((lab) => Number(lab.order) || 0), 0) + 1;
@@ -745,6 +757,25 @@ export default function ComputerLaboratoryInventory() {
                 }, {}),
             ).sort((left, right) => Number(left["COMPUTER #"]) - Number(right["COMPUTER #"]));
 
+            // If the URL requested defective-only, filter to only PCs with defective remarks.
+            const defectiveOnlyParam = searchParams.get("defectiveOnly");
+            if (defectiveOnlyParam) {
+                const defectiveRows = grouped.filter((pc) => {
+                    const comps = pc.components || {};
+                    return Object.values(comps).some((comp) => {
+                        const remarks = String(comp.remarks || "").toUpperCase();
+                        return remarks.includes("DEFECT") || remarks.includes("BROKEN");
+                    });
+                });
+
+                // If there are defective PCs, show them; otherwise fall back to full list.
+                if (defectiveRows.length > 0) {
+                    setRows(defectiveRows);
+                    setLoading(false);
+                    return;
+                }
+            }
+
             setRows(grouped);
             setLoading(false);
         };
@@ -754,7 +785,7 @@ export default function ComputerLaboratoryInventory() {
         return () => {
             cancelled = true;
         };
-    }, [selectedLab]);
+    }, [selectedLab, searchParams]);
 
     useEffect(() => {
         if (!isEditMode) {
@@ -772,6 +803,12 @@ export default function ComputerLaboratoryInventory() {
         // clear search when switching labs
         setSearchQuery("");
     }, [selectedLab]);
+
+    useEffect(() => {
+        if (!isHistoryOpen) {
+            setHistorySearchQuery("");
+        }
+    }, [isHistoryOpen]);
 
     useEffect(() => {
         if (isAddComponentOpen) {
@@ -1499,6 +1536,32 @@ export default function ComputerLaboratoryInventory() {
                 </div>
             )}
 
+            {isHistoryOpen && (
+                <div className="mt-3 w-full sm:w-96">
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                            type="text"
+                            value={historySearchQuery}
+                            onChange={(e) => setHistorySearchQuery(e.target.value)}
+                            placeholder="Search computer #, component, brand, description..."
+                            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+                        />
+                        {historySearchQuery && (
+                            <button
+                                type="button"
+                                onClick={() => setHistorySearchQuery("")}
+                                className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                                aria-label="Clear search"
+                                title="Clear search"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {showExportModal && (
                 <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
                     <DialogContent className="sm:max-w-lg">
@@ -1631,7 +1694,7 @@ export default function ComputerLaboratoryInventory() {
                             <p className="text-sm text-slate-500">No component records found for this laboratory.</p>
                         </div>
                     ) : isHistoryOpen ? (
-                        <InventoryHistoryView selectedLab={selectedLab} />
+                        <InventoryHistoryView selectedLab={selectedLab} searchQuery={historySearchQuery} />
                     ) : (
                         <div className="computer-lab-scrollbar h-[80vh] min-h-0 w-full max-w-full overflow-auto">
                             <table className="w-max min-w-full divide-y divide-slate-200 table-fixed">
@@ -1662,15 +1725,22 @@ export default function ComputerLaboratoryInventory() {
                                             const shadedRow = computerIndex % 2 === 0 ? "bg-slate-50" : "bg-slate-200/70";
                                             const groupDivider = rowIndex === 0 ? "border-t-2 border-slate-300" : "border-t border-slate-200";
 
+                                            const computerHasDefect = Object.values(row.components || {}).some((component) => {
+                                                const remark = String(component?.remarks || "").toUpperCase();
+                                                return remark.includes("DEFECT") || remark.includes("BROKEN");
+                                            });
+                                            const rowBg = shadedRow;
+                                            const defectCellClass = computerHasDefect ? "border-l-4 border-rose-500" : "";
+
                                             return (
                                                 <tr
                                                     key={`${row["COMPUTER #"]}-${field}`}
-                                                    className={`transition hover:bg-slate-100 ${shadedRow} ${groupDivider}`}
+                                                    className={`transition hover:bg-slate-100 ${rowBg} ${groupDivider}`}
                                                 >
                                                     {rowIndex === 0 && (
                                                         <td
                                                             rowSpan={COMPONENT_ROWS.length}
-                                                            className={`whitespace-nowrap border-r border-slate-200 px-4 py-3 text-center align-middle font-semibold text-slate-900 ${shadedRow}`}
+                                                            className={`whitespace-nowrap px-4 py-3 text-center align-middle font-semibold text-slate-900 ${defectCellClass}`}
                                                         >
                                                             {formatValue(row["COMPUTER #"])}
                                                         </td>
@@ -1689,11 +1759,14 @@ export default function ComputerLaboratoryInventory() {
                                                         const inputValue = cellDrafts[cellKey] ?? normalizeCellValue(value);
                                                         const isRemarksField = field === "remarks";
                                                         const hasCustomRemark = inputValue && !REMARK_OPTIONS.includes(inputValue);
+                                                        const isIncompleteComponent = [componentData.brand, componentData.description, componentData.remarks].some(
+                                                            (val) => !val || val === '-' || String(val).trim() === ''
+                                                        );
 
                                                         return (
                                                             <td
                                                                 key={`${row["COMPUTER #"]}-${componentType}-${field}`}
-                                                                className="border-r border-slate-200 px-4 py-3 text-sm last:border-r-0"
+                                                                className={`border-r border-slate-200 px-4 py-3 text-sm last:border-r-0 ${isIncompleteComponent ? "border-l-2 border-rose-300 bg-rose-50/60" : ""}`}
                                                             >
                                                                 {isEditMode ? (
                                                                     isRemarksField ? (
@@ -1751,7 +1824,7 @@ export default function ComputerLaboratoryInventory() {
                                                                     )
                                                                 ) : (
                                                                     <div
-                                                                        className={`font-medium ${isRemarksField && String(value).toUpperCase() === "DEFECTIVE"
+                                                                        className={` ${isRemarksField && String(value).toUpperCase() === "DEFECTIVE"
                                                                                 ? "text-red-600"
                                                                                 : "text-slate-900"
                                                                             }`}

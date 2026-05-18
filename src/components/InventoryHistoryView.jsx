@@ -81,7 +81,7 @@ const extractChangedPair = (oldData, newData, action) => {
   };
 };
 
-export default function InventoryHistoryView({ selectedLab }) {
+export default function InventoryHistoryView({ selectedLab, searchQuery = "" }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -202,7 +202,25 @@ export default function InventoryHistoryView({ selectedLab }) {
     [labOptions]
   );
 
-  const displayedLogs = logs;
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const displayedLogs = useMemo(() => {
+    if (!normalizedSearchQuery) return logs;
+
+    return logs.filter((entry) => {
+      const changedBy = userMap[entry.changed_by] || entry.changed_by || "system";
+      const { oldVal, newVal } = extractChangedPair(entry.old_data, entry.new_data, entry.action);
+      const combined = [
+        String(entry.action || ""),
+        String(entry.computer_number ?? ""),
+        String(entry.component_type || ""),
+        String(changedBy || ""),
+        formatValue(oldVal),
+        formatValue(newVal),
+        formatDate(entry.change_ts),
+      ].join(" ").toLowerCase();
+      return combined.includes(normalizedSearchQuery);
+    });
+  }, [logs, userMap, normalizedSearchQuery]);
 
   const totalPages = Math.ceil(displayedLogs.length / itemsPerPage);
   const startIdx = (currentPage - 1) * itemsPerPage;
@@ -211,29 +229,44 @@ export default function InventoryHistoryView({ selectedLab }) {
   const showingStart = displayedLogs.length === 0 ? 0 : startIdx + 1;
   const showingEnd = Math.min(endIdx, displayedLogs.length);
 
-  const FiltersBar = null;
+  const visiblePageNumbers = (() => {
+    const maxVisible = 3;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const offset = Math.min(Math.max(currentPage - 2, 0), totalPages - maxVisible);
+    const startPage = offset + 1;
+    return Array.from({ length: maxVisible }, (_, index) => startPage + index);
+  })();
 
   return (
-    <div>
-      <div className="computer-lab-scrollbar w-full max-w-full overflow-x-auto">
+      <div>
         {loading && <div className="p-4 text-sm text-slate-500">Loading history…</div>}
         {error && <div className="p-4 text-sm text-rose-600">{error}</div>}
 
         {!loading && logs.length === 0 && <div className="p-4 text-sm text-slate-500">No history entries found.</div>}
 
+        {!loading && logs.length > 0 && normalizedSearchQuery && displayedLogs.length === 0 && (
+          <div className="p-4 text-sm text-slate-500">No logs match your search.</div>
+        )}
+
         {!loading && displayedLogs.length > 0 ? (
           <div className="w-full overflow-x-auto rounded-2xl border border-border bg-card text-card-foreground shadow-sm">
-            <table className="min-w-full divide-y divide-slate-200 bg-white">
+            <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+              <div className="text-sm font-medium text-slate-700">History</div>
+            </div>
+            <table className="min-w-full divide-y divide-slate-200 bg-white table-fixed">
             <thead className="sticky top-0 z-20 bg-slate-100">
               <tr>
-                <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Action</th>
-                <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Computer #</th>
-                
-                <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Component</th>
-                <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Old Version</th>
-                <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">New Version</th>
-                <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Changed By</th>
-                <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700 cursor-pointer hover:bg-slate-200" onClick={() => setDateOrder(dateOrder === 'desc' ? 'asc' : 'desc')}>Date {dateOrder === 'desc' ? '↓' : '↑'}</th>
+                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Action</th>
+                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Computer #</th>
+
+                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Component</th>
+                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Old Version</th>
+                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">New Version</th>
+                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Changed By</th>
+                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700 cursor-pointer hover:bg-slate-200" onClick={() => setDateOrder(dateOrder === 'desc' ? 'asc' : 'desc')}>Date {dateOrder === 'desc' ? '↓' : '↑'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
@@ -247,11 +280,11 @@ export default function InventoryHistoryView({ selectedLab }) {
                     <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-slate-700 text-center align-top">{entry.action || "-"}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 text-center align-top">{entry.computer_number ?? "-"}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 text-center align-top">{entry.component_type || "-"}</td>
-                    <td className="px-4 py-3 text-xs text-slate-600 align-top max-w-xs overflow-auto">
-                      <div className="whitespace-pre-wrap break-words text-xs">{formatValue(oldVal)}</div>
+                    <td className="px-4 py-3 text-xs text-slate-600 align-top max-w-xs overflow-auto text-center">
+                      <div className="whitespace-pre-wrap break-words text-xs text-center">{formatValue(oldVal)}</div>
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-600 align-top max-w-xs overflow-auto">
-                      <div className="whitespace-pre-wrap break-words text-xs">{formatValue(newVal)}</div>
+                    <td className="px-4 py-3 text-xs text-slate-600 align-top max-w-xs overflow-auto text-center">
+                      <div className="whitespace-pre-wrap break-words text-xs text-center">{formatValue(newVal)}</div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 text-center align-top">{displayName}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 text-center align-top">{formatDate(entry.change_ts)}</td>
@@ -275,23 +308,20 @@ export default function InventoryHistoryView({ selectedLab }) {
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
-                {Array.from({ length: totalPages }).map((_, index) => {
-                  const pageNumber = index + 1;
-                  return (
-                    <button
-                      key={pageNumber}
-                      type="button"
-                      onClick={() => setCurrentPage(pageNumber)}
-                      className={`rounded-md px-3 py-1 text-sm transition ${
-                        currentPage === pageNumber
-                          ? "bg-[#4a1111] text-primary-foreground"
-                          : "text-foreground hover:bg-accent hover:text-accent-foreground"
-                      }`}
-                    >
-                      {pageNumber}
-                    </button>
-                  );
-                })}
+                {visiblePageNumbers.map((pageNumber) => (
+                  <button
+                    key={pageNumber}
+                    type="button"
+                    onClick={() => setCurrentPage(pageNumber)}
+                    className={`rounded-md px-3 py-1 text-sm transition ${
+                      currentPage === pageNumber
+                        ? "bg-[#4a1111] text-primary-foreground"
+                        : "text-foreground hover:bg-accent hover:text-accent-foreground"
+                    }`}
+                  >
+                    {pageNumber}
+                  </button>
+                ))}
 
                 <button
                   type="button"
@@ -307,6 +337,5 @@ export default function InventoryHistoryView({ selectedLab }) {
           </div>
         ) : null}
       </div>
-    </div>
   );
 }

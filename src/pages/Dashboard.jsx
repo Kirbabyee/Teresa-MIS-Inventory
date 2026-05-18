@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Package, Cpu, AlertCircle } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [labs, setLabs] = useState([]);
   const [overall, setOverall] = useState({ total: 0, defective: 0 });
@@ -189,7 +190,7 @@ export default function Dashboard() {
                   <p className="mt-2 text-xs text-slate-400">Across all labs</p>
                 </div>
                 <div className="flex flex-col items-center justify-center bg-[#4a1111] rounded-full p-3">
-                  <Cpu className="h-6 w-6 text-white" />
+                  <Cpu className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 lg:h-8 lg:w-8 text-white" />
                 </div>
               </div>
               {overall.total > 0 && (
@@ -216,7 +217,7 @@ export default function Dashboard() {
                   <p className="mt-2 text-xs text-slate-400">Total defective parts</p>
                 </div>
                 <div className="flex flex-col items-center justify-center bg-rose-500 rounded-full p-3">
-                  <AlertCircle className="h-6 w-6 text-white" />
+                  <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 lg:h-8 lg:w-8 text-white" />
                 </div>
               </div>
             </div>
@@ -232,7 +233,7 @@ export default function Dashboard() {
                   <p className="mt-2 text-xs text-slate-400">Active sections</p>
                 </div>
                 <div className="flex flex-col items-center justify-center bg-slate-700 rounded-full p-3">
-                  <Package className="h-6 w-6 text-white" />
+                  <Package className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 lg:h-8 lg:w-8 text-white" />
                 </div>
               </div>
             </div>
@@ -257,14 +258,18 @@ export default function Dashboard() {
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-200">
                     {labs.map((lab) => (
-                      <tr key={lab.id} className="hover:bg-slate-50 transition-colors">
+                      <tr
+                        key={lab.id}
+                        className="hover:bg-slate-50 transition-colors cursor-pointer"
+                        onClick={() => navigate(`/inventory/laboratory?labId=${lab.id}&defectiveOnly=1`)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/inventory/laboratory?labId=${lab.id}&defectiveOnly=1`); }}
+                      >
                         <td className="px-4 py-3 text-sm">
-                          <Link 
-                            to={`/inventory/laboratory?labId=${lab.id}`} 
-                            className="font-medium text-slate-800 hover:text-slate-600 hover:underline"
-                          >
+                          <span className="font-medium text-slate-800 hover:text-slate-600 hover:underline">
                             {lab.label}
-                          </Link>
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-slate-700">
                           {lab.total}
