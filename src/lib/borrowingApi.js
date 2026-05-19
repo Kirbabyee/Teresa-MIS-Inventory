@@ -15,6 +15,7 @@ const mapBorrowingRecord = (record = {}) => ({
     inventorySectionId: item.inventory_section_id,
     label: item.item_label || "Item",
     details: Array.isArray(item.item_details) ? item.item_details : [],
+    returnCondition: item.return_condition || "working",
     returnRemarks: item.return_remarks || "",
     tab: "",
     section: "",
@@ -115,12 +116,19 @@ export const returnBorrowingRecord = async (id, returnRemarks = {}) => {
     return;
   }
 
-  const itemUpdates = Object.entries(returnRemarks).map(([itemId, remark]) =>
-    supabase
-      .from("borrowing_items")
-      .update({ return_remarks: remark || null })
-      .eq("id", itemId)
-  );
+  const itemUpdates = Object.entries(returnRemarks).map(([itemId, remark]) => {
+    const updatePayload =
+      remark && typeof remark === "object"
+        ? {
+            return_condition: String(remark.condition || "working").toLowerCase(),
+            return_remarks: remark.remarks ? String(remark.remarks).trim() : null,
+          }
+        : {
+            return_remarks: remark || null,
+          };
+
+    return supabase.from("borrowing_items").update(updatePayload).eq("id", itemId);
+  });
 
   const results = await Promise.all(itemUpdates);
   const updateError = results.find((result) => result.error)?.error;
