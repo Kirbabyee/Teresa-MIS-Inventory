@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 
 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -26,6 +26,16 @@ const formatValue = (value) => {
   }
   return String(value);
 };
+
+const formatChangeText = (oldVal, newVal) => `${formatValue(oldVal)} -> ${formatValue(newVal)}`;
+
+const renderChangeContent = (oldVal, newVal) => (
+  <div className="inline-flex items-center justify-center gap-1 whitespace-pre-wrap break-words text-center">
+    <span>{formatValue(oldVal)}</span>
+    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-[#4a1111]" aria-hidden="true" />
+    <span>{formatValue(newVal)}</span>
+  </div>
+);
 
 const extractChangedPair = (oldData, newData, action) => {
   const skipKeys = new Set(['id', 'lab_number_id', 'created_at', 'updated_at', 'change_ts', 'changed_by', 'action', 'component_type', 'computer_number', 'type']);
@@ -201,7 +211,6 @@ export default function InventoryHistoryView({ selectedLab, searchQuery = "" }) 
     () => [...labOptions].sort((left, right) => String(left.label).localeCompare(String(right.label))),
     [labOptions]
   );
-
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const displayedLogs = useMemo(() => {
     if (!normalizedSearchQuery) return logs;
@@ -214,13 +223,14 @@ export default function InventoryHistoryView({ selectedLab, searchQuery = "" }) 
         String(entry.computer_number ?? ""),
         String(entry.component_type || ""),
         String(changedBy || ""),
-        formatValue(oldVal),
-        formatValue(newVal),
+        formatChangeText(oldVal, newVal),
         formatDate(entry.change_ts),
       ].join(" ").toLowerCase();
       return combined.includes(normalizedSearchQuery);
     });
   }, [logs, userMap, normalizedSearchQuery]);
+
+  
 
   const totalPages = Math.ceil(displayedLogs.length / itemsPerPage);
   const startIdx = (currentPage - 1) * itemsPerPage;
@@ -240,58 +250,54 @@ export default function InventoryHistoryView({ selectedLab, searchQuery = "" }) 
     return Array.from({ length: maxVisible }, (_, index) => startPage + index);
   })();
 
+
   return (
-      <div>
-        {loading && <div className="p-4 text-sm text-slate-500">Loading history…</div>}
-        {error && <div className="p-4 text-sm text-rose-600">{error}</div>}
+    <div>
+      {loading && <div className="p-4 text-sm text-slate-500">Loading history…</div>}
+      {error && <div className="p-4 text-sm text-rose-600">{error}</div>}
 
-        {!loading && logs.length === 0 && <div className="p-4 text-sm text-slate-500">No history entries found.</div>}
+      {!loading && logs.length === 0 && <div className="p-4 text-sm text-slate-500">No history entries found.</div>}
 
-        {!loading && logs.length > 0 && normalizedSearchQuery && displayedLogs.length === 0 && (
-          <div className="p-4 text-sm text-slate-500">No logs match your search.</div>
-        )}
+      {!loading && logs.length > 0 && normalizedSearchQuery && displayedLogs.length === 0 && (
+        <div className="p-4 text-sm text-slate-500">No logs match your search.</div>
+      )}
 
-        {!loading && displayedLogs.length > 0 ? (
+      {!loading && displayedLogs.length > 0 ? (
+        <div>
           <div className="w-full overflow-x-auto rounded-2xl border border-border bg-card text-card-foreground shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
               <div className="text-sm font-medium text-slate-700">History</div>
             </div>
             <table className="min-w-full divide-y divide-slate-200 bg-white table-fixed">
-            <thead className="sticky top-0 z-20 bg-slate-100">
-              <tr>
-                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Action</th>
-                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Computer #</th>
-
-                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Component</th>
-                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Old Version</th>
-                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">New Version</th>
-                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Changed By</th>
-                <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700 cursor-pointer hover:bg-slate-200" onClick={() => setDateOrder(dateOrder === 'desc' ? 'asc' : 'desc')}>Date {dateOrder === 'desc' ? '↓' : '↑'}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 bg-white">
-            {paginatedLogs.map((entry, index) => {
-                const isGrayRow = index % 2 === 0;
-                const { oldVal, newVal } = extractChangedPair(entry.old_data, entry.new_data, entry.action);
-                const changedByKey = entry.changed_by || 'system';
-                const displayName = userMap[changedByKey] || entry.changed_by || 'system';
-                return (
-                  <tr key={entry.id}>
-                    <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-slate-700 text-center align-top">{entry.action || "-"}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 text-center align-top">{entry.computer_number ?? "-"}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 text-center align-top">{entry.component_type || "-"}</td>
-                    <td className="px-4 py-3 text-xs text-slate-600 align-top max-w-xs overflow-auto text-center">
-                      <div className="whitespace-pre-wrap break-words text-xs text-center">{formatValue(oldVal)}</div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-600 align-top max-w-xs overflow-auto text-center">
-                      <div className="whitespace-pre-wrap break-words text-xs text-center">{formatValue(newVal)}</div>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 text-center align-top">{displayName}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 text-center align-top">{formatDate(entry.change_ts)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
+              <thead className="sticky top-0 z-20 bg-slate-100">
+                <tr>
+                  <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Action</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Computer #</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Component</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Changes</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Changed By</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700 cursor-pointer hover:bg-slate-200" onClick={() => setDateOrder(dateOrder === 'desc' ? 'asc' : 'desc')}>Date {dateOrder === 'desc' ? '↓' : '↑'}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 bg-white">
+                {paginatedLogs.map((entry) => {
+                  const { oldVal, newVal } = extractChangedPair(entry.old_data, entry.new_data, entry.action);
+                  const changedByKey = entry.changed_by || 'system';
+                  const displayName = userMap[changedByKey] || entry.changed_by || 'system';
+                  return (
+                    <tr key={entry.id}>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-slate-700 text-center align-top">{entry.action || "-"}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 text-center align-top">{entry.computer_number ?? "-"}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 text-center align-top">{entry.component_type || "-"}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600 align-top max-w-xs overflow-auto text-center">
+                        <div className="text-xs text-center">{renderChangeContent(oldVal, newVal)}</div>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 text-center align-top">{displayName}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 text-center align-top">{formatDate(entry.change_ts)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
             </table>
             <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
               <div className="text-sm text-muted-foreground">
@@ -308,20 +314,19 @@ export default function InventoryHistoryView({ selectedLab, searchQuery = "" }) 
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
-                {visiblePageNumbers.map((pageNumber) => (
-                  <button
-                    key={pageNumber}
-                    type="button"
-                    onClick={() => setCurrentPage(pageNumber)}
-                    className={`rounded-md px-3 py-1 text-sm transition ${
-                      currentPage === pageNumber
-                        ? "bg-[#4a1111] text-primary-foreground"
-                        : "text-foreground hover:bg-accent hover:text-accent-foreground"
-                    }`}
-                  >
-                    {pageNumber}
-                  </button>
-                ))}
+                {visiblePageNumbers.map((pageNumber) => {
+                  const isActive = currentPage === pageNumber;
+                  return (
+                    <button
+                      key={pageNumber}
+                      type="button"
+                      onClick={() => setCurrentPage(pageNumber)}
+                      className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
+                    >
+                      {pageNumber}
+                    </button>
+                  );
+                })}
 
                 <button
                   type="button"
@@ -335,7 +340,10 @@ export default function InventoryHistoryView({ selectedLab, searchQuery = "" }) 
               </div>
             </div>
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : (
+        <div className="p-4 text-sm text-slate-500">No history entries to show.</div>
+      )}
+    </div>
   );
 }

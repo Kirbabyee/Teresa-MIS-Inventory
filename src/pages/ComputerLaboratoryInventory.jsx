@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Download, Plus, PencilLine, Trash2, Check, FileText, ChevronLeft, ChevronDown, Search, X } from "lucide-react";
 import ExcelJS from "exceljs";
@@ -6,6 +6,7 @@ import { saveAs } from "file-saver";
 import { supabase } from "@/api/supabaseClient";
 import arkLogoUrl from "@/assets/imgs/ark-logo.png";
 import InventoryHistoryView from "@/components/InventoryHistoryView";
+import ExportLogsPanel from "@/components/ExportLogsPanel";
 import { useAuth } from "@/lib/AuthContext";
 import { Input } from "@/components/ui/input";
 import {
@@ -87,6 +88,68 @@ const createHeaderSeparatorBase64 = () => {
     return canvas.toDataURL("image/png").split(",")[1];
 };
 
+const arrayBufferToBase64 = (buffer) => {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    const chunkSize = 0x8000;
+
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+    }
+
+    return btoa(binary);
+};
+
+const EXPORT_BUCKET = "export-logs";
+
+const createExportStoragePath = (filename) => {
+    const safeName = String(filename || "export.xlsx").replace(/[^a-zA-Z0-9._-]+/g, "_");
+    const uniqueId = typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    return `${new Date().toISOString().slice(0, 10)}/${uniqueId}-${safeName}`;
+};
+
+const ordinalSuffix = (n) => {
+    const j = n % 10,
+        k = n % 100;
+    if (k >= 11 && k <= 13) return `${n}th`;
+    if (j === 1) return `${n}st`;
+    if (j === 2) return `${n}nd`;
+    if (j === 3) return `${n}rd`;
+    return `${n}th`;
+};
+
+const validateAndFormatSchoolYear = (value) => {
+    if (!value) return "";
+    const v = String(value).trim();
+    const m = v.match(/^(\d{4})\s*[-–—]\s*(\d{4})$/);
+    if (m) return `${m[1]} - ${m[2]}`;
+    const m2 = v.match(/^(\d{4})(\d{4})$/);
+    if (m2) return `${m2[1]} - ${m2[2]}`;
+    return v;
+};
+
+const isValidSchoolYear = (value) => {
+    if (!value) return false;
+    return /^\s*\d{4}\s*[-–—]\s*\d{4}\s*$/.test(String(value));
+};
+
+const generateSchoolYearOptions = (back = 2, forward = 4) => {
+    const now = new Date();
+    const current = now.getFullYear();
+    const start = current - back;
+    const end = current + forward;
+    const opts = [];
+    for (let y = start; y <= end; y++) {
+        opts.push(`${y} - ${y + 1}`);
+    }
+    // sort descending so newest first
+    return opts.reverse();
+};
+
+const SEMESTER_OPTIONS = ["1st", "2nd", "Summer"];
+
 const applyExportHeader = (worksheet, titleText, exportDate, headerColor, logoImage, separatorImage, options = {}) => {
     for (let i = 1; i <= 5; i++) {
         worksheet.getRow(i).height = 25;
@@ -154,13 +217,24 @@ const applyExportHeader = (worksheet, titleText, exportDate, headerColor, logoIm
 
     worksheet.mergeCells("B8:M8");
     const dateCell = worksheet.getCell("B8");
-    dateCell.value = "AS OF " + new Intl.DateTimeFormat("en-US", {
+    const formattedDate = new Intl.DateTimeFormat("en-US", {
         month: "long",
         day: "numeric",
         year: "numeric",
     }).format(new Date(exportDate)).replace(/^[A-Za-z]+/, (month) => month.toUpperCase());
+    dateCell.value = "AS OF " + formattedDate;
     dateCell.alignment = { horizontal: "center", vertical: "middle" };
     dateCell.font = { bold: true, size: 11, color: headerColor, name: "Arial" };
+    worksheet.getRow(8).height = 18;
+
+    worksheet.mergeCells("B9:M9");
+    const syCell = worksheet.getCell("B9");
+    const schoolYearText = (options.schoolYear || "").toString().trim() || "____________________";
+    const semesterText = (options.semester || "").toString().trim() || "____________________";
+    syCell.value = `${semesterText} Semester | S.Y ${schoolYearText}`;
+    syCell.alignment = { horizontal: "center", vertical: "middle", wrapText: false };
+    syCell.font = { bold: true, size: 11, color: headerColor, name: "Arial" };
+    worksheet.getRow(9).height = 18;
 };
 
 export default function ComputerLaboratoryInventory() {
@@ -181,6 +255,9 @@ export default function ComputerLaboratoryInventory() {
     const [selectedExportColumns, setSelectedExportColumns] = useState(COMPONENT_TYPES.slice());
     const [showColumnOptions, setShowColumnOptions] = useState(false);
     const [exportDate, setExportDate] = useState(new Date().toISOString().slice(0, 10));
+    const [exportSchoolYear, setExportSchoolYear] = useState("");
+    const [exportSemester, setExportSemester] = useState("");
+    const [exportLogRefreshToken, setExportLogRefreshToken] = useState(0);
     const [preparedByName, setPreparedByName] = useState("");
     const [inspectedByName, setInspectedByName] = useState("");
     const [deleteConfirmLab, setDeleteConfirmLab] = useState(null);
@@ -826,6 +903,7 @@ export default function ComputerLaboratoryInventory() {
         separatorImage,
         preparedBy,
         inspectedBy,
+        options = {},
     ) => {
         const worksheet = workbook.addWorksheet(sheetName);
         const headerColor = { argb: "FF4A1111" }; // maroon
@@ -836,6 +914,7 @@ export default function ComputerLaboratoryInventory() {
             headerColor,
             logoImage,
             separatorImage,
+            options,
         );
 
         worksheet.addRow([]);
@@ -1076,6 +1155,7 @@ export default function ComputerLaboratoryInventory() {
                     separatorBuffer,
                     preparedByName,
                     inspectedByName,
+                    { schoolYear: exportSchoolYear, semester: exportSemester },
                 );
 
                 exportSummaries.push({
@@ -1092,13 +1172,35 @@ export default function ComputerLaboratoryInventory() {
                 separatorBuffer,
                 preparedByName,
                 inspectedByName,
-                { logoCol: 1.5 },
+                { logoCol: 1.5, schoolYear: exportSchoolYear, semester: exportSemester },
             );
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             const filename = `Computer_Lab_Inventory_${new Date().toISOString().slice(0, 10)}.xlsx`;
             saveAs(blob, filename);
+            const storagePath = createExportStoragePath(filename);
+
+            const { error: uploadError } = await supabase.storage
+                .from(EXPORT_BUCKET)
+                .upload(storagePath, blob, {
+                    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    upsert: false,
+                });
+
+            if (uploadError) throw uploadError;
+
+            const exportBy = (user?.displayName || [user?.first_name, user?.last_name].filter(Boolean).join(" ") || user?.email || "system").trim();
+            const { error: logError } = await supabase.from("export_logs").insert({
+                export_by: exportBy || "system",
+                file_name: filename,
+                export_date: exportDate,
+                file_path: storagePath,
+            });
+
+            if (logError) throw logError;
+
+            setExportLogRefreshToken((current) => current + 1);
             setShowExportModal(false);
         } catch (err) {
             console.error('Export failed:', err);
@@ -1416,6 +1518,12 @@ export default function ComputerLaboratoryInventory() {
                                 setSelectedExportLabs(selectedLab ? [selectedLab] : labOptions.map((l) => l.value));
                                 setSelectedExportColumns(COMPONENT_TYPES.slice());
                                 setExportDate(new Date().toISOString().slice(0, 10));
+                                const defaultSY = (() => {
+                                    const y = new Date().getFullYear();
+                                    return `${y} - ${y + 1}`;
+                                })();
+                                setExportSchoolYear(defaultSY);
+                                setExportSemester(SEMESTER_OPTIONS[0]);
                                 setPreparedByName("");
                                 setInspectedByName("");
                                 setShowExportModal(true);
@@ -1581,6 +1689,43 @@ export default function ComputerLaboratoryInventory() {
                                 />
                             </div>
 
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-500">School Year *</label>
+                                    <div className="relative mt-1">
+                                        <select
+                                            value={exportSchoolYear}
+                                            onChange={(e) => setExportSchoolYear(e.target.value)}
+                                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+                                        >
+                                            {generateSchoolYearOptions().map((opt) => (
+                                                <option key={opt} value={opt}>
+                                                    {opt}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 h-4 w-4" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-500">Semester *</label>
+                                    <div className="relative mt-1">
+                                        <select
+                                            value={exportSemester}
+                                            onChange={(e) => setExportSemester(e.target.value)}
+                                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+                                        >
+                                            {SEMESTER_OPTIONS.map((s) => (
+                                                <option key={s} value={s}>
+                                                    {s}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 h-4 w-4" />
+                                    </div>
+                                </div>
+                            </div>
+
                             <div>
                                 <label className="text-xs font-semibold text-slate-500">Prepared and submitted by</label>
                                 <input
@@ -1669,7 +1814,12 @@ export default function ComputerLaboratoryInventory() {
                             <button
                                 type="button"
                                 onClick={exportLab}
-                                disabled={exporting || selectedExportLabs.length === 0}
+                                disabled={
+                                    exporting ||
+                                    selectedExportLabs.length === 0 ||
+                                    !isValidSchoolYear(exportSchoolYear) ||
+                                    !String(exportSemester || "").trim()
+                                }
                                 className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
                             >
                                 {exporting ? 'Exporting...' : 'Export Selected'}
@@ -1678,7 +1828,7 @@ export default function ComputerLaboratoryInventory() {
                     </DialogContent>
                 </Dialog>
             )}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className={`${isHistoryOpen ? "" : "bg-white rounded-xl shadow-sm border border-slate-200"} overflow-hidden`}> 
                 <div className="min-w-0 overflow-hidden p-0">
                     {loading ? (
                         <div className="flex flex-col items-center justify-center gap-3 py-16">
@@ -1694,7 +1844,15 @@ export default function ComputerLaboratoryInventory() {
                             <p className="text-sm text-slate-500">No component records found for this laboratory.</p>
                         </div>
                     ) : isHistoryOpen ? (
-                        <InventoryHistoryView selectedLab={selectedLab} searchQuery={historySearchQuery} />
+                        <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+                            <div className="xl:col-span-3 p-4">
+                                <InventoryHistoryView selectedLab={selectedLab} searchQuery={historySearchQuery} />
+                            </div>
+
+                            <div className="xl:col-span-2 p-4">
+                                <ExportLogsPanel searchQuery={historySearchQuery} selectedLab={selectedLab} refreshToken={exportLogRefreshToken} />
+                            </div>
+                        </div>
                     ) : (
                         <div className="computer-lab-scrollbar h-[80vh] min-h-0 w-full max-w-full overflow-auto">
                             <table className="w-max min-w-full divide-y divide-slate-200 table-fixed">
@@ -1729,6 +1887,9 @@ export default function ComputerLaboratoryInventory() {
                                                 const remark = String(component?.remarks || "").toUpperCase();
                                                 return remark.includes("DEFECT") || remark.includes("BROKEN");
                                             });
+                                            const computerHasMissing = Object.values(row.components || {}).some((component) => {
+                                                return [component?.brand, component?.description, component?.remarks].some((val) => !val || val === '-' || String(val).trim() === '');
+                                            });
                                             const rowBg = shadedRow;
                                             const defectCellClass = computerHasDefect ? "border-l-4 border-rose-500" : "";
 
@@ -1740,9 +1901,13 @@ export default function ComputerLaboratoryInventory() {
                                                     {rowIndex === 0 && (
                                                         <td
                                                             rowSpan={COMPONENT_ROWS.length}
-                                                            className={`whitespace-nowrap px-4 py-3 text-center align-middle font-semibold text-slate-900 ${defectCellClass}`}
+                                                            className={`relative whitespace-nowrap pl-8 pr-4 py-3 text-center align-middle font-semibold text-slate-900`}
                                                         >
-                                                            {formatValue(row["COMPUTER #"])}
+                                                            <div className="absolute left-0 top-0 bottom-0 flex items-stretch">
+                                                                {computerHasDefect && <div className="w-1 bg-rose-500 h-full" />}
+                                                                {computerHasMissing && <div className="w-1 bg-amber-400 h-full" />}
+                                                            </div>
+                                                            {formatValue(row["COMPUTER #"]) }
                                                         </td>
                                                     )}
                                                     <td className="whitespace-nowrap border-r border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700">
@@ -1766,7 +1931,7 @@ export default function ComputerLaboratoryInventory() {
                                                         return (
                                                             <td
                                                                 key={`${row["COMPUTER #"]}-${componentType}-${field}`}
-                                                                className={`border-r border-slate-200 px-4 py-3 text-sm last:border-r-0 ${isIncompleteComponent ? "border-l-2 border-rose-300 bg-rose-50/60" : ""}`}
+                                                                className={`border-r border-slate-200 px-4 py-3 text-sm last:border-r-0 ${isIncompleteComponent ? "bg-amber-100" : ""}`}
                                                             >
                                                                 {isEditMode ? (
                                                                     isRemarksField ? (
