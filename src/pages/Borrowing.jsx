@@ -1066,7 +1066,7 @@ export default function Borrowing() {
                               {item.inventoryItemId ? (
                                 `${item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / ${item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}`
                               ) : (
-                                "custom item added outside logged inventory"
+                                "Custom Item"
                               )}
                             </div>
                             {item.details?.length > 0 && (
