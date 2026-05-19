@@ -63,9 +63,15 @@ export default function Employees() {
   const [assignmentEmployee, setAssignmentEmployee] = useState(null);
   const [accountToggleCandidate, setAccountToggleCandidate] = useState(null);
   const [togglingAccount, setTogglingAccount] = useState(false);
-  const [inviteInfoByEmployee, setInviteInfoByEmployee] = useState({});
+  const [inviteInfoByKey, setInviteInfoByKey] = useState({});
+  const [inviteUsedByKey, setInviteUsedByKey] = useState({});
+  const [inviteInfoByEmail, setInviteInfoByEmail] = useState({});
+  const [inviteUsedByEmail, setInviteUsedByEmail] = useState({});
+  const [accountsById, setAccountsById] = useState({});
+  const [accountsByEmail, setAccountsByEmail] = useState({});
   const [resendingInviteId, setResendingInviteId] = useState(null);
   const [supportsAccountActive, setSupportsAccountActive] = useState(false);
+  const [inviteSummary, setInviteSummary] = useState(null);
 
   const load = async () => {
     try {
@@ -110,25 +116,157 @@ export default function Employees() {
       setSupportsAccountActive(!accountActiveProbe.error);
 
       const employeeIds = (employeesResult.data || []).map((row) => row.id);
-      if (employeeIds.length > 0) {
-        const invitesResult = await supabase
-          .from("employee_auth_invites")
-          .select("employee_id, expires_at, used_at, created_at")
-          .in("employee_id", employeeIds)
-          .order("created_at", { ascending: false });
+      const authIds = (employeesResult.data || [])
+        .map((row) => row.auth_id)
+        .filter(Boolean);
+      const emails = (employeesResult.data || []).map((r) => r.email).filter(Boolean);
 
-        if (!invitesResult.error) {
-          const inviteMap = (invitesResult.data || []).reduce((acc, row) => {
-            const key = String(row.employee_id);
-            if (!acc[key]) acc[key] = row;
-            return acc;
-          }, {});
-          setInviteInfoByEmployee(inviteMap);
+      // Local account maps so we can use them immediately (state updates are async)
+      let acctByIdLocal = {};
+      let acctByEmailLocal = {};
+
+      // Load user_accounts for these employees (by id or email) so we can detect activated accounts
+      if (authIds.length > 0 || emails.length > 0) {
+        const byIdResult = authIds.length > 0
+          ? await supabase.from("user_accounts").select("id,email").in("id", authIds)
+          : { data: [], error: null };
+
+        const byEmailResult = emails.length > 0
+          ? await supabase.from("user_accounts").select("id,email").in("email", emails)
+          : { data: [], error: null };
+
+        acctByIdLocal = (byIdResult.data || []).reduce((acc, a) => {
+          acc[a.id] = a;
+          return acc;
+        }, {});
+        acctByEmailLocal = (byEmailResult.data || []).reduce((acc, a) => {
+          acc[String(a.email).toLowerCase()] = a;
+          return acc;
+        }, {});
+        setAccountsById(acctByIdLocal);
+        setAccountsByEmail(acctByEmailLocal);
+      } else {
+        acctByIdLocal = {};
+        acctByEmailLocal = {};
+        setAccountsById({});
+        setAccountsByEmail({});
+      }
+
+      // Include user account ids discovered from `user_accounts` when querying invites,
+      // and also query invites created with only an `email` field.
+      const acctIds = Object.keys(acctByIdLocal || {});
+      const idsToQuery = Array.from(new Set([...employeeIds, ...authIds, ...acctIds]));
+
+      if (idsToQuery.length > 0 || emails.length > 0) {
+        const inviteQueries = [];
+
+        // invites by employee_id
+        if (idsToQuery.length > 0) {
+          inviteQueries.push(
+            supabase
+              .from("user_auth_invites")
+              .select("employee_id, user_id, email, expires_at, used_at, created_at")
+              .in("employee_id", idsToQuery)
+              .order("created_at", { ascending: false })
+          );
+
+          // invites by user_id (may reference user_accounts.id)
+          inviteQueries.push(
+            supabase
+              .from("user_auth_invites")
+              .select("employee_id, user_id, email, expires_at, used_at, created_at")
+              .in("user_id", idsToQuery)
+              .order("created_at", { ascending: false })
+          );
+        }
+
+        // invites by email (covers invites created with only an email)
+        if (emails.length > 0) {
+          inviteQueries.push(
+            supabase
+              .from("user_auth_invites")
+              .select("employee_id, user_id, email, expires_at, used_at, created_at")
+              .in("email", emails)
+              .order("created_at", { ascending: false })
+          );
+        }
+
+        const inviteResults = await Promise.all(inviteQueries);
+
+        const allRows = inviteResults.flatMap((r) => r.data || []);
+
+        if (inviteResults.every((r) => !r.error)) {
+          const infoMap = {};
+          const usedMap = {};
+          const infoEmailMap = {};
+          const usedEmailMap = {};
+          allRows.forEach((row) => {
+            if (row.employee_id) infoMap[String(row.employee_id)] = row;
+            if (row.user_id) infoMap[String(row.user_id)] = row;
+            if (row.employee_id) usedMap[String(row.employee_id)] = usedMap[String(row.employee_id)] || Boolean(row.used_at);
+            if (row.user_id) usedMap[String(row.user_id)] = usedMap[String(row.user_id)] || Boolean(row.used_at);
+            if (row.email) {
+              const key = String(row.email).toLowerCase();
+              infoEmailMap[key] = row;
+              usedEmailMap[key] = usedEmailMap[key] || Boolean(row.used_at);
+            }
+          });
+
+          setInviteInfoByKey(infoMap);
+          setInviteUsedByKey(usedMap);
+          setInviteInfoByEmail(infoEmailMap);
+          setInviteUsedByEmail(usedEmailMap);
+
+          // Debug: optionally log mismatched invite rows vs loaded employees.
+          // Visit the page with `?debug=invites` to see the output in DevTools.
+          try {
+            if (typeof window !== "undefined" && window.location.search.includes("debug=invites")) {
+              const empIdSet = new Set((employeeIds || []).map(String));
+              const authIdSet = new Set((authIds || []).map(String));
+              const mismatched = (allRows || []).filter((r) => {
+                // if the invite references an employee_id that isn't in the employees table
+                if (r.employee_id && !empIdSet.has(String(r.employee_id))) return true;
+                // if the invite references a user_id that isn't an auth id or employee id
+                if (r.user_id && !authIdSet.has(String(r.user_id)) && !empIdSet.has(String(r.user_id))) return true;
+                return false;
+              });
+              console.log("Employees loaded ids:", employeeIds);
+              console.log("Auth ids from employees:", authIds);
+              console.log("Invite rows (allRows):", allRows);
+              console.log("Mismatched invite rows:", mismatched);
+            }
+            // Also support `?log=invites` to print a concise per-employee summary to console.
+            if (typeof window !== "undefined" && (window.location.search.includes("log=invites") || window.location.search.includes("debug=invites"))) {
+              try {
+                const summary = (employeesResult.data || []).map((emp) => {
+                  const emailKey = emp?.email ? String(emp.email).toLowerCase() : null;
+                  const invite = infoMap[String(emp.id)] || infoMap[String(emp.auth_id)] || (emailKey && infoEmailMap[emailKey]);
+                  return {
+                    id: emp.id,
+                    email: emp.email || null,
+                    auth_id: emp.auth_id || null,
+                    invite_used_at: invite ? invite.used_at || null : null,
+                    invite_present: Boolean(invite),
+                  };
+                });
+                console.log("Invite summary per employee:");
+                console.table(summary);
+                // also show on-page so you don't need DevTools
+                setInviteSummary(summary);
+              } catch (e) {
+                console.error("Failed to print invite summary:", e);
+              }
+            }
+          } catch (e) {
+            /* ignore debug logging errors */
+          }
         } else {
-          setInviteInfoByEmployee({});
+          setInviteInfoByKey({});
+          setInviteUsedByKey({});
         }
       } else {
-        setInviteInfoByEmployee({});
+        setInviteInfoByKey({});
+        setInviteUsedByKey({});
       }
 
       let positionLinkTable = null;
@@ -239,7 +377,30 @@ export default function Employees() {
   };
 
   const canShowResendInvite = (emp) => {
-    return !isAccountActivated(emp);
+    // Hide resend if any invite for this employee or linked user account has used_at.
+    const idKey = emp?.id ? String(emp.id) : null;
+    const authKey = emp?.auth_id ? String(emp.auth_id) : null;
+    const emailKey = emp?.email ? String(emp.email).toLowerCase() : null;
+
+    // If any invite row we loaded has a `used_at` timestamp, hide the resend.
+    if ((idKey && inviteUsedByKey[idKey]) || (authKey && inviteUsedByKey[authKey]) || (emailKey && inviteUsedByEmail[emailKey])) {
+      return false;
+    }
+
+    // Extra safety: sometimes inviteUsed maps may miss keys — check raw invite rows for used_at too.
+    if ((idKey && inviteInfoByKey[idKey] && inviteInfoByKey[idKey].used_at) ||
+        (authKey && inviteInfoByKey[authKey] && inviteInfoByKey[authKey].used_at) ||
+        (emailKey && inviteInfoByEmail[emailKey] && inviteInfoByEmail[emailKey].used_at)) {
+      return false;
+    }
+
+    // If the employee has an `auth_id` set, treat as activated and hide.
+    if (authKey) return false;
+
+    // If a user account exists for this auth id or email, hide.
+    if ((authKey && accountsById[authKey]) || (emailKey && accountsByEmail[emailKey])) return false;
+
+    return true;
   };
 
   const filtered = employees.filter((e) => {
@@ -298,6 +459,22 @@ export default function Employees() {
             {employees.length} total employees
           </p>
         </div>
+        {inviteSummary && (
+          <div className="ml-4 w-full max-w-xl">
+            <div className="rounded-md bg-amber-50 border border-amber-100 p-3 text-xs text-amber-800 overflow-auto">
+              <strong>Invite summary:</strong>
+              <div className="mt-2">
+                {inviteSummary.slice(0, 50).map((s) => (
+                  <div key={s.id} className="flex justify-between">
+                    <div>{s.id} — {s.email || 'no-email'}</div>
+                    <div>{s.invite_used_at ? `used at ${s.invite_used_at}` : s.invite_present ? 'invite present' : 'no invite'}</div>
+                  </div>
+                ))}
+                {inviteSummary.length > 50 && <div className="text-xs text-amber-700 mt-1">...and {inviteSummary.length - 50} more</div>}
+              </div>
+            </div>
+          </div>
+        )}
         {canAccessPage(isSuperAdmin, pageAccess, "/manage/accounts") && (
           <Button
             onClick={() => {
@@ -400,6 +577,14 @@ export default function Employees() {
                               {emp.email}
                             </p>
                           )}
+                          {(() => {
+                            const emailKey = emp?.email ? String(emp.email).toLowerCase() : null;
+                            const inviteRow = inviteInfoByKey[String(emp.id)] || inviteInfoByKey[String(emp.auth_id)] || (emailKey && inviteInfoByEmail[emailKey]);
+                            const usedAt = inviteRow ? inviteRow.used_at : null;
+                            if (usedAt) return <p className="text-xs text-red-500">Invite used: {String(usedAt)}</p>;
+                            if (inviteRow) return <p className="text-xs text-amber-600">Invite present</p>;
+                            return <p className="text-xs text-slate-400">No invite</p>;
+                          })()}
                         </div>
                       </div>
                     </td>

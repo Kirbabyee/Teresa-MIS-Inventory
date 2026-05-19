@@ -75,6 +75,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
 
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const initialSnapshotRef = useRef("");
   const [form, setForm] = useState({
     key: column?.key || "",
@@ -762,6 +763,7 @@ function TabModal({ tab, onClose, onSave }) {
   const [sectionToEdit, setSectionToEdit] = useState(null);
   const [columnToEdit, setColumnToEdit] = useState(null);
   const [isTabNameTouched, setIsTabNameTouched] = useState(false);
+  const [tabType, setTabType] = useState("legacy");
 
   const tabValidation = useMemo(() => {
     const errors = { name: "", columns: "", sections: "" };
@@ -995,11 +997,27 @@ function TabModal({ tab, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex h-full flex-col">
+      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <div className="flex flex-col min-h-full">
           <div className="flex items-center justify-between border-b border-slate-200 p-5">
             <div>
               <h3 className="text-lg font-semibold text-slate-900">{tab ? "Edit inventory tab" : "Add inventory tab"}</h3>
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTabType("legacy")}
+                  className={`rounded-md px-2 py-1 text-xs font-medium ${tabType === "legacy" ? "bg-slate-900 text-white" : "bg-white text-slate-700 border border-slate-200"}`}
+                >
+                  Legacy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTabType("dynamic")}
+                  className={`rounded-md px-2 py-1 text-xs font-medium ${tabType === "dynamic" ? "bg-slate-900 text-white" : "bg-white text-slate-700 border border-slate-200"}`}
+                >
+                  Dynamic
+                </button>
+              </div>
             </div>
             <button type="button" onClick={requestClose} className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
               <X className="h-5 w-5" />
@@ -1041,6 +1059,7 @@ function TabModal({ tab, onClose, onSave }) {
           </div>
         </div>
 
+        {tabType === "legacy" && (
         <div className="border-t border-slate-200 px-5 py-5">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -1101,7 +1120,9 @@ function TabModal({ tab, onClose, onSave }) {
             </table>
           </div>
         </div>
+        )}
 
+        {tabType === "legacy" && (
         <div className="border-t border-slate-200 px-5 py-5">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -1175,6 +1196,14 @@ function TabModal({ tab, onClose, onSave }) {
             </button>
           </div>
         </div>
+        )}
+
+        {tabType === "dynamic" && (
+          <div className="flex flex-col items-center justify-center flex-1 p-10">
+            <h4 className="text-lg font-semibold text-slate-900 mb-4">Dynamic Tab Creation (Coming Soon)</h4>
+            <p className="text-slate-600">This feature will allow you to create dynamic inventory tabs with advanced options.</p>
+          </div>
+        )}
 
         {isSaving && (
           <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm">

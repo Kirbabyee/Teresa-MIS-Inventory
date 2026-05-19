@@ -30,6 +30,8 @@ export default function UserAccounts() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [inviteUsedByAccountId, setInviteUsedByAccountId] = useState({});
+  const [inviteUsedByEmail, setInviteUsedByEmail] = useState({});
   const [search, setSearch] = useState("");
   const [accountTypeFilter, setAccountTypeFilter] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -49,6 +51,47 @@ export default function UserAccounts() {
 
       if (error) throw error;
       setAccounts(data || []);
+      // Load related invites so we can hide the Mail button when invite.used_at exists
+      try {
+        const accountIds = (data || []).map((a) => a.id).filter(Boolean);
+        const emails = (data || []).map((a) => a.email).filter(Boolean);
+        const inviteQueries = [];
+        if (accountIds.length > 0) {
+          inviteQueries.push(
+            supabase
+              .from("user_auth_invites")
+              .select("user_id, email, used_at")
+              .in("user_id", accountIds)
+          );
+        }
+        if (emails.length > 0) {
+          inviteQueries.push(
+            supabase
+              .from("user_auth_invites")
+              .select("user_id, email, used_at")
+              .in("email", emails)
+          );
+        }
+        if (inviteQueries.length > 0) {
+          const inviteResults = await Promise.all(inviteQueries);
+          const allInvites = inviteResults.flatMap((r) => r.data || []);
+          const usedById = {};
+          const usedByEmail = {};
+          allInvites.forEach((row) => {
+            if (row.user_id) usedById[String(row.user_id)] = usedById[String(row.user_id)] || Boolean(row.used_at);
+            if (row.email) usedByEmail[String(row.email).toLowerCase()] = usedByEmail[String(row.email).toLowerCase()] || Boolean(row.used_at);
+          });
+          setInviteUsedByAccountId(usedById);
+          setInviteUsedByEmail(usedByEmail);
+        } else {
+          setInviteUsedByAccountId({});
+          setInviteUsedByEmail({});
+        }
+      } catch (e) {
+        console.error("Failed to load invites for user accounts:", e?.message || e);
+        setInviteUsedByAccountId({});
+        setInviteUsedByEmail({});
+      }
     } catch (error) {
       console.error("Error loading user accounts:", error.message);
       setLoadError(error.message || "Failed to load user accounts.");
@@ -224,18 +267,23 @@ export default function UserAccounts() {
                         >
                           <Edit className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => {
-                            if (acc.email) {
-                              window.location.href = `mailto:${acc.email}`;
-                            }
-                          }}
-                          disabled={!acc.email}
-                          className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                          title="Send Email"
-                        >
-                          <Mail className="w-4 h-4" />
-                        </button>
+                        {(!inviteUsedByAccountId[String(acc.id)] && !(acc.email && inviteUsedByEmail[String(acc.email).toLowerCase()])) && (
+                          <button
+                            onClick={() => {
+                              if (acc.email) {
+                                window.location.href = `mailto:${acc.email}`;
+                              }
+                            }}
+                            disabled={!acc.email}
+                            className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="Send Email"
+                          >
+                            <Mail className="w-4 h-4" />
+                          </button>
+                        )}
+                        {(inviteUsedByAccountId[String(acc.id)] || (acc.email && inviteUsedByEmail[String(acc.email).toLowerCase()])) && (
+                          <></>
+                        )}
                         <button
                           onClick={() => setDeleteCandidate(acc)}
                           className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
