@@ -192,6 +192,8 @@ export default function Layout() {
 
   const sectionTitle = useMemo(() => {
     if (location.pathname === "/") return "Dashboard";
+    if (location.pathname.startsWith("/manage/accounts")) return "User Accounts";
+    if (location.pathname === "/manage/inventory") return "Inventory Manager";
     if (location.pathname === "/inventory/laboratory") {
       const params = new URLSearchParams(location.search);
       return params.get("view") === "logs" ? "Computer Lab Logs" : "Computer Lab Inventory";

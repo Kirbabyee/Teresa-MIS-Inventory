@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Package, Cpu, AlertCircle } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -291,10 +292,16 @@ export default function Dashboard() {
         {/* Right Side Placeholder */}
         <div className="md:w-1/2">
           <div className="h-full rounded-lg border border-dashed border-slate-300 bg-gradient-to-b from-slate-50 to-white p-6 flex items-center justify-center">
-            <div className="text-center max-w-sm">
+            <div className="text-center max-w-sm space-y-4">
               <Package className="mx-auto h-12 w-12 text-slate-300" />
-              <p className="mt-3 text-sm font-medium text-slate-600">Borrowing Management</p>
-              <p className="mt-1 text-xs text-slate-400">This feature is currently under development.</p>
+              <p className="text-sm font-medium text-slate-600">Borrowing Management</p>
+              <p className="text-xs text-slate-400">This feature is currently under development.</p>
+              <Button
+                onClick={() => navigate("/borrowing")}
+                className="mx-auto bg-[#4a1111] hover:bg-[#3f0f0f] text-white"
+              >
+                Open Borrowing
+              </Button>
             </div>
           </div>
         </div>

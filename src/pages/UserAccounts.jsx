@@ -214,16 +214,20 @@ export default function UserAccounts() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
+                        
+                        {/* Edit */}
                         <button
                           onClick={() => {
                             setEditAccount(acc);
                             setShowModal(true);
                           }}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          className="p-2 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-600 hover:text-white transition-all duration-200"
                           title="Edit Account"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
+
+                        {/* Email */}
                         <button
                           onClick={() => {
                             if (acc.email) {
@@ -231,18 +235,21 @@ export default function UserAccounts() {
                             }
                           }}
                           disabled={!acc.email}
-                          className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="p-2 rounded-lg bg-green-100 text-green-600 hover:bg-green-600 hover:text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
                           title="Send Email"
                         >
                           <Mail className="w-4 h-4" />
                         </button>
+
+                        {/* Delete */}
                         <button
                           onClick={() => setDeleteCandidate(acc)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                          className="p-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-600 hover:text-white transition-all duration-200"
                           title="Delete Account"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
+
                       </div>
                     </td>
                   </tr>

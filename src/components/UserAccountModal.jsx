@@ -242,7 +242,9 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
               {touched.firstName && fieldErrors.firstName && (
                 <p className="mt-1 text-xs text-red-600 font-medium">{fieldErrors.firstName}</p>
               )}
-              
+              {touched.firstName && !fieldErrors.firstName && (
+                <p className="mt-1 text-xs text-green-600 font-medium">✓ Valid</p>
+              )}
             </div>
 
             <div>

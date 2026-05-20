@@ -112,4 +112,22 @@
     width: 0;
     height: 0;
   }
+
+  button, .btn {
+    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50;
+    padding: 0.625rem 1.25rem;
+    min-height: 2.5rem;
+  }
+
+  .btn {
+    @apply bg-[#4a1111] text-white shadow-sm;
+  }
+
+  .btn:hover {
+    @apply bg-[#5a1717];
+  }
+
+  button:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
 }

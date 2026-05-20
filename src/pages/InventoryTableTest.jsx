@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, FlaskConical } from "lucide-react";
+import { Plus, Trash2, FlaskConical, Sparkles, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchSetting, callCreateInventoryTable, getInventoryCreateTableEndpoint } from "@/lib/inventoryApi";
@@ -181,8 +181,10 @@ export default function InventoryTableTest() {
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3">
-          <Button type="button" variant="outline" onClick={fillSample}>Generate Sample</Button>
-          <Button type="button" onClick={runTest} disabled={!canSubmit || loading}>
+          <Button type="button" variant="outline" onClick={fillSample} icon={Sparkles}>
+            Generate Sample
+          </Button>
+          <Button type="button" onClick={runTest} disabled={!canSubmit || loading} icon={Rocket}>
             {loading ? "Creating..." : "Run Table Creation Test"}
           </Button>
         </div>
