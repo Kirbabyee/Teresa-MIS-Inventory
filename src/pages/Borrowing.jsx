@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import { Download, History } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
+import { DayPicker } from "react-day-picker";
+import { format } from "date-fns";
+import "react-day-picker/dist/style.css";
 import {
   Dialog,
   DialogContent,
@@ -243,8 +246,11 @@ export default function Borrowing() {
   const [borrowingsError, setBorrowingsError] = useState("");
   const [savingBorrow, setSavingBorrow] = useState(false);
   const [returningBorrow, setReturningBorrow] = useState(false);
+  const [returnError, setReturnError] = useState("");
 
   const [statusFilter, setStatusFilter] = useState("borrowed");
+  const [dateRange, setDateRange] = useState({ from: undefined, to: undefined });
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [customItems, setCustomItems] = useState([]);
   const [customItemForm, setCustomItemForm] = useState({ name: "", description: "" });
   const [addingCustom, setAddingCustom] = useState(false);
@@ -286,8 +292,25 @@ export default function Borrowing() {
     return { tabNames, sectionNames };
   }, [tabs]);
 
+  const formatPickerLabel = (range) => {
+    if (!range?.from) return "Select date range";
+    if (range.from && !range.to) return `${format(range.from, "MMM d, yyyy")} —`;
+    return `${format(range.from, "MMM d, yyyy")} — ${format(range.to, "MMM d, yyyy")}`;
+  };
+
   const filteredData = data
-    .filter((d) => d.name.toLowerCase().includes(search.toLowerCase()))
+    .filter((d) => {
+      const searchLower = search.toLowerCase();
+      const matchesSearch =
+        d.name.toLowerCase().includes(searchLower) ||
+        (d.items || []).some((item) => String(item.label || "").toLowerCase().includes(searchLower));
+      const recordDate = new Date(d.date);
+      const minDate = dateRange.from ? new Date(`${dateRange.from.toISOString().slice(0, 10)}T00:00:00.000`) : null;
+      const maxDate = dateRange.to ? new Date(`${dateRange.to.toISOString().slice(0, 10)}T23:59:59.999`) : null;
+      const matchesStart = !minDate || recordDate >= minDate;
+      const matchesEnd = !maxDate || recordDate <= maxDate;
+      return matchesSearch && matchesStart && matchesEnd;
+    })
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
   const pageCount = Math.ceil(filteredData.length / pageSize);
@@ -442,9 +465,13 @@ export default function Borrowing() {
 
   const requestReturn = (record) => {
     setPendingReturn(record);
+    setReturnError("");
     setReturnRemarksByItem(
       (record.items || []).reduce((acc, item) => {
-        acc[item.id] = item.returnRemarks || "Working";
+        acc[item.id] = {
+          condition: item.returnCondition ? item.returnCondition : item.returnRemarks ? item.returnRemarks.toLowerCase() === "defective" ? "Defective" : "Working" : "Working",
+          remarks: item.returnRemarks || "",
+        };
         return acc;
       }, {})
     );
@@ -502,7 +529,7 @@ export default function Borrowing() {
       let currentRowIndex = headerRowIndex + 1;
       filteredData.forEach((record, recordIndex) => {
         const itemLabels = (record.items || []).map((item) => getExportItemLabel(item));
-        const itemRemarks = (record.items || []).map((item) => item.returnRemarks || "Working");
+        const itemRemarks = (record.items || []).map((item) => item.returnRemarks || item.returnCondition || "Working");
         const rowCount = Math.max(itemLabels.length, itemRemarks.length, 1);
         const rowFill = {
           type: "pattern",
@@ -569,7 +596,7 @@ export default function Borrowing() {
 
           if (column.key === "remark") {
             const remarkMax = (record.items || []).reduce(
-              (remarkMax, item) => Math.max(remarkMax, String(item.returnRemarks || "").length),
+              (remarkMax, item) => Math.max(remarkMax, String(item.returnRemarks || item.returnCondition || "").length),
               0
             );
             return Math.max(max, remarkMax);
@@ -626,7 +653,20 @@ export default function Borrowing() {
   const confirmReturn = async () => {
     if (!pendingReturn?.id || returningBorrow) return;
 
+    const defectiveItems = Object.entries(returnRemarksByItem).filter(
+      ([, data]) => String(data?.condition || "").toLowerCase() === "defective"
+    );
+    const missingDescriptions = defectiveItems.filter(
+      ([, data]) => !String(data?.remarks || "").trim()
+    );
+
+    if (missingDescriptions.length > 0) {
+      setReturnError("Please describe why the defective item is defective.");
+      return;
+    }
+
     setReturningBorrow(true);
+    setReturnError("");
     try {
       await returnBorrowingRecord(pendingReturn.id, returnRemarksByItem);
       await loadBorrowings();
@@ -770,19 +810,88 @@ export default function Borrowing() {
 
   return (
     <div className="max-h-screen py-10 px-6">
+      <style>{`
+        .rdp-sidebar-picker .rdp-day_selected,
+        .rdp-sidebar-picker .rdp-day_range_start,
+        .rdp-sidebar-picker .rdp-day_range_end,
+        .rdp-sidebar-picker .rdp-day_range_middle {
+          background-color: #2b0707 !important;
+          color: #ffffff !important;
+        }
+        .rdp-sidebar-picker .rdp-day_selected:hover,
+        .rdp-sidebar-picker .rdp-day_range_start:hover,
+        .rdp-sidebar-picker .rdp-day_range_end:hover,
+        .rdp-sidebar-picker .rdp-day_range_middle:hover {
+          background-color: #2b0707 !important;
+          color: #ffffff !important;
+        }
+        .rdp-sidebar-picker .rdp-day_today .rdp-button {
+          border-color: #2b0707 !important;
+        }
+      `}</style>
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-semibold text-slate-800">Borrowed Items</h1> 
+          <h1 className="text-2xl font-semibold text-slate-800">
+            {statusFilter === "borrowed" ? "Borrowed Items" : "Borrowing History"}
+          </h1>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 mb-8">
           <input
             type="text"
-            placeholder="Search..."
+            placeholder="Search borrower or item..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="min-w-[220px] flex-1 border rounded-full px-4 py-2 text-sm"
           />
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowDatePicker((current) => !current)}
+              className="w-64 flex items-center justify-between gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-left text-slate-700 hover:border-slate-300"
+            >
+              <span className="text-slate-500">{formatPickerLabel(dateRange)}</span>
+              <span className="text-xs text-slate-400">▼</span>
+            </button>
+            {showDatePicker && (
+              <div className="absolute left-0 z-20 mt-2 max-w-[22rem] rounded-2xl border border-slate-200 bg-white p-3 shadow-lg">
+                <DayPicker
+                  className="rdp-sidebar-picker text-sm"
+                  mode="range"
+                  selected={dateRange}
+                  numberOfMonths={1}
+                  onSelect={(range) => {
+                    setDateRange(range || { from: undefined, to: undefined });
+                  }}
+                  footer={
+                    dateRange.from && dateRange.to
+                      ? `${format(dateRange.from, "MMM d, yyyy")} — ${format(dateRange.to, "MMM d, yyyy")}`
+                      : "Select a date range"
+                  }
+                  fromDate={new Date("2000-01-01")}
+                  toDate={new Date("2100-12-31")}
+                />
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDateRange({ from: undefined, to: undefined });
+                    }}
+                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDatePicker(false)}
+                    className="rounded-full bg-[#2b0707] px-3 py-1 text-xs font-medium text-white hover:bg-[#3a0b0b]"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -907,20 +1016,23 @@ export default function Borrowing() {
             <table className="min-w-full text-sm border-separate border border-slate-100" style={{ borderSpacing: 0 }}>
               <thead className="bg-white text-xs uppercase tracking-[0.18em] text-slate-500">
               <tr>
-                <th className="px-4 py-3 align-middle border-b border-slate-100">Borrower</th>
-                <th className="px-4 py-3 align-middle border-b border-slate-100">Borrowed</th>
-                <th className="px-4 py-3 align-middle border-b border-slate-100">Status</th>
-                <th className="px-4 py-3 align-middle border-b border-slate-100">Items</th>
-                <th className="px-4 py-3 align-middle border-b border-slate-100">Remarks</th>
+                <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Borrower</th>
+                <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Borrowed</th>
+                <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Status</th>
+                <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Items</th>
+                <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Condition</th>
+                {statusFilter !== "borrowed" && (
+                  <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Remarks</th>
+                )}
                 {statusFilter === "borrowed" && (
-                  <th className="px-4 py-3 align-middle border-b border-slate-100">Action</th>
+                  <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Action</th>
                 )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {currentPageData.length === 0 ? (
                 <tr>
-                  <td colSpan={statusFilter === "borrowed" ? 6 : 5} className="px-4 py-12 text-center text-sm text-slate-500">
+                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500">
                     {statusFilter === "borrowed" ? "No borrowed items yet." : "No borrowing records found."}
                   </td>
                 </tr>
@@ -929,7 +1041,7 @@ export default function Borrowing() {
                   return (
                     <tr
                       key={record.id}
-                      className={record.status === "returned" ? "bg-white" : ""}
+                      className="group even:bg-slate-50"
                     >
                     <td className="px-4 py-4 align-middle border-b border-slate-100">
                       <p className="font-medium text-slate-800">{record.name}</p>
@@ -948,10 +1060,14 @@ export default function Borrowing() {
                     <td className="px-4 py-4 align-middle border-b border-slate-100">
                       <div className="grid gap-2 text-sm text-slate-700">
                         {record.items?.map((item) => (
-                          <div key={`${record.id}-${item.id}`} className="min-h-[60px] rounded-lg bg-white p-3 flex flex-col justify-center">
+                          <div key={`${record.id}-${item.id}`} className="min-h-[60px] rounded-lg bg-white group-even:bg-slate-50 p-3 flex flex-col justify-center">
                             <div className="font-medium text-slate-800">{item.label}</div>
                             <div className="mt-1 text-[11px] text-slate-500">
-                              {item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / {item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}
+                              {item.inventoryItemId ? (
+                                `${item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / ${item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}`
+                              ) : (
+                                "Custom Item"
+                              )}
                             </div>
                             {item.details?.length > 0 && (
                               <div className="mt-2 flex flex-wrap gap-1.5">
@@ -970,32 +1086,41 @@ export default function Borrowing() {
                       </div>
                     </td>
                     <td className="px-4 py-4 align-middle border-b border-slate-100 text-xs text-slate-600">
-                      {record.items?.length > 0 ? (
-                        <div className="grid gap-2">
-                          {record.items.map((item) => {
-                            const remark = item.returnRemarks?.trim().toLowerCase() || "working";
-                            return (
-                              <div
-                                key={`${record.id}-${item.id}-remark`}
-                                className="min-h-[60px] flex items-center justify-center rounded-lg bg-white px-3"
+                      <div className="grid gap-2">
+                        {record.items?.map((item) => {
+                          const condition = item.returnCondition?.trim().toLowerCase() || item.returnRemarks?.trim().toLowerCase() || "working";
+                          const label = condition === "defective" ? "Defective" : "Working";
+                          return (
+                            <div key={`${record.id}-${item.id}-condition`} className="min-h-[60px] flex items-center justify-center rounded-lg bg-white group-even:bg-slate-50 px-3">
+                              <span
+                                className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${
+                                  condition === "defective"
+                                    ? "bg-rose-100 text-rose-700"
+                                    : "bg-emerald-100 text-emerald-700"
+                                }`}
                               >
-                                <span
-                                  className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${
-                                    remark === "defective"
-                                      ? "bg-rose-100 text-rose-700"
-                                      : "bg-emerald-100 text-emerald-700"
-                                  }`}
-                                >
-                                  {remark}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        "-"
-                      )}
+                                {label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </td>
+                    {statusFilter !== "borrowed" && (
+                      <td className="px-4 py-4 align-middle border-b border-slate-100 text-xs text-slate-600">
+                        <div className="grid gap-2">
+                          {record.items?.map((item) => (
+                            <div key={`${record.id}-${item.id}-remarks`} className="min-h-[60px] rounded-lg bg-white group-even:bg-slate-50 px-3 py-3">
+                              {item.returnRemarks?.trim() ? (
+                                <p className="text-xs text-slate-700">{item.returnRemarks}</p>
+                              ) : (
+                                <span className="text-xs text-slate-400">—</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    )}
                     {statusFilter === "borrowed" && (
                       <td className="px-4 py-4 align-middle border-b border-slate-100">
                         <button
@@ -1410,11 +1535,14 @@ export default function Borrowing() {
                         </p>
                       </div>
                       <select
-                        value={returnRemarksByItem[item.id] || "Working"}
+                        value={returnRemarksByItem[item.id]?.condition || "Working"}
                         onChange={(e) =>
                           setReturnRemarksByItem((current) => ({
                             ...current,
-                            [item.id]: e.target.value,
+                            [item.id]: {
+                              ...(current[item.id] || {}),
+                              condition: e.target.value,
+                            },
                           }))
                         }
                         className="mt-2 w-full max-w-xs border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
@@ -1422,10 +1550,35 @@ export default function Borrowing() {
                         <option value="Working">Working</option>
                         <option value="Defective">Defective</option>
                       </select>
+                      {returnRemarksByItem[item.id]?.condition === "Defective" && (
+                        <div className="mt-3">
+                          <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            Describe defect
+                          </label>
+                          <textarea
+                            value={returnRemarksByItem[item.id]?.remarks || ""}
+                            onChange={(e) =>
+                              setReturnRemarksByItem((current) => ({
+                                ...current,
+                                [item.id]: {
+                                  ...(current[item.id] || {}),
+                                  remarks: e.target.value,
+                                },
+                              }))
+                            }
+                            rows={3}
+                            placeholder="Explain how the item became defective"
+                            className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                          />
+                        </div>
+                      )}
                     </div>
                   </li>
                 ))}
               </ul>
+            ) : null}
+            {returnError ? (
+              <p className="mt-4 text-sm text-rose-600">{returnError}</p>
             ) : null}
             <div className="mt-6 flex justify-end gap-3">
               <button

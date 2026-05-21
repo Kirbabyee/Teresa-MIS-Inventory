@@ -1529,11 +1529,11 @@ export default function ComputerLaboratoryInventory() {
                                 setShowExportModal(true);
                             }}
                             disabled={loading || rows.length === 0 || exporting}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300 icon-btn"
                             title={exporting ? "Exporting..." : "Export"}
                             aria-label={exporting ? "Exporting" : "Export"}
                         >
-                            <Download className="h-4 w-4" />
+                            <Download className="h-4 w-4 text-white" />
                         </button>
                     )}
 
@@ -1542,11 +1542,11 @@ export default function ComputerLaboratoryInventory() {
                             type="button"
                             onClick={() => setIsAddComponentOpen(true)}
                             disabled={!selectedLab || exporting}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300 icon-btn"
                             title="Add computer component"
                             aria-label="Add computer component"
                         >
-                            <Plus className="h-4 w-4" />
+                            <Plus className="h-4 w-4 text-white" />
                         </button>
                     )}
 
@@ -1567,14 +1567,14 @@ export default function ComputerLaboratoryInventory() {
                                     setHasEditChanges(false);
                                 }
                             }}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-white transition bg-[#4a1111] hover:bg-[#5a1717]"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-white transition bg-[#4a1111] hover:bg-[#5a1717] icon-btn"
                             title={isEditMode ? "Exit edit mode" : "Edit mode"}
                             aria-label={isEditMode ? "Exit edit mode" : "Edit mode"}
                         >
                             {isEditMode ? (
-                                <Check className="h-4 w-4" />
+                                <Check className="h-4 w-4 text-white" />
                             ) : (
-                                <PencilLine className="h-4 w-4" />
+                                <PencilLine className="h-4 w-4 text-white" />
                             )}
                         </button>
                     )}
@@ -1604,13 +1604,13 @@ export default function ComputerLaboratoryInventory() {
                             }}
                             title={isHistoryOpen ? "Return to inventory" : "View history"}
                             aria-label={isHistoryOpen ? "Return to inventory" : "View history"}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717]"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] icon-btn"
                         >
                             <span className="inline-flex items-center justify-center w-4 h-4">
                                 {isHistoryOpen ? (
-                                    <ChevronLeft className="h-4 w-4" />
+                                    <ChevronLeft className="h-4 w-4 text-white" />
                                 ) : (
-                                    <FileText className="h-4 w-4" />
+                                    <FileText className="h-4 w-4 text-white" />
                                 )}
                             </span>
                         </button>
