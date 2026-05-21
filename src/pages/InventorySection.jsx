@@ -952,6 +952,51 @@ export default function InventorySection() {
       ),
     [items, pageStartIndex, pageEndIndex]
   );
+
+  // Compute defective/missing status for each item
+  const itemStatusMap = useMemo(() => {
+    const map = {};
+    items.forEach((item) => {
+      const values = Object.values(item || {});
+      const stringValues = values.map((v) => String(v || "").toUpperCase());
+
+      // Check for defective (status contains DEFECT, BROKEN, etc.)
+      const hasDefect = stringValues.some(
+        (v) => v.includes("DEFECT") || v.includes("BROKEN")
+      );
+
+      // Check for missing (brand, description, or status is empty)
+      const hasMissing =
+        !item?.brand ||
+        !item?.description ||
+        !item?.status ||
+        String(item?.brand || "").trim() === "" ||
+        String(item?.description || "").trim() === "" ||
+        String(item?.status || "").trim() === "";
+
+      // Also check dynamic columns for missing
+      if (templateColumns && templateColumns.length > 0) {
+        templateColumns.forEach((col) => {
+          const colKey = col.key;
+          if (
+            colKey.toLowerCase().includes("brand") ||
+            colKey.toLowerCase().includes("description") ||
+            colKey.toLowerCase().includes("status")
+          ) {
+            const val = item?.[colKey];
+            if (!val || String(val).trim() === "") {
+              // eslint-disable-next-line no-param-reassign
+              item[colKey] = null;
+            }
+          }
+        });
+      }
+
+      map[item.id] = { hasDefect, hasMissing };
+    });
+    return map;
+  }, [items, templateColumns]);
+
   const sortedItems = useMemo(() => {
     if (!sortConfig.key) return items;
 
@@ -1481,8 +1526,12 @@ export default function InventorySection() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 bg-white">
-                    {paginatedItems.map((item, rowIndex) => (
-                      <tr key={item.id} className={rowIndex % 2 === 0 ? "bg-slate-50" : "bg-white"}>
+                    {paginatedItems.map((item, rowIndex) => {
+                      const itemStatus = itemStatusMap[item.id] || { hasDefect: false, hasMissing: false };
+                      return (
+                      <tr key={item.id} className={`${rowIndex % 2 === 0 ? "bg-slate-50" : "bg-white"} ${itemStatus.hasDefect || itemStatus.hasMissing ? "relative" : ""}`}>
+                        {itemStatus.hasDefect && <div className="absolute left-0 top-0 bottom-0 w-1 bg-rose-500" />}
+                        {itemStatus.hasMissing && <div className={`absolute left-0 top-0 bottom-0 w-1 bg-amber-400 ${itemStatus.hasDefect ? "left-1" : ""}`} />}
                         {usesTemplateColumns &&
                           templateColumns.map((column) => {
                             const columnKey = column.key;
@@ -1558,7 +1607,7 @@ export default function InventorySection() {
                                               />
                                             )
                                           ) : (
-                                            <div className="font-medium text-slate-900">
+                                            <div className={`font-medium ${String(fieldValue || "").toUpperCase().includes("DEFECT") || String(fieldValue || "").toUpperCase().includes("BROKEN") ? "text-red-600" : "text-slate-900"}`}>
                                               {formatCellValue(fieldValue)}
                                             </div>
                                           )}
@@ -1617,7 +1666,9 @@ export default function InventorySection() {
                                     />
                                   )
                                 ) : (
-                                  <span>{formatCellValue(columnValue)}</span>
+                                  <span className={String(columnValue || "").toUpperCase().includes("DEFECT") || String(columnValue || "").toUpperCase().includes("BROKEN") ? "text-red-600" : ""}>
+                                    {formatCellValue(columnValue)}
+                                  </span>
                                 )}
                               </td>
                             );
@@ -1637,7 +1688,7 @@ export default function InventorySection() {
                           </td>
                         )}
                       </tr>
-                    ))}
+                    );})}
                   </tbody>
                 </table>
               </div>

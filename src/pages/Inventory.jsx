@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
-import { Edit, FolderOpen, Plus, Trash2, X } from "lucide-react";
+import { Edit, FolderOpen, Plus, Trash2, X, Monitor, Armchair, Wrench, FileText, Box, Layers, Tv, Cable } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,6 +28,81 @@ const iconButtonClass =
 
 const sanitizeNameInput = (value = "") => String(value).replace(/[^a-zA-Z0-9 ]/g, "");
 const hasOnlyLettersNumbers = (value = "") => /^(?=.*[a-zA-Z0-9])[a-zA-Z0-9 ]+$/.test(String(value));
+
+// Pre-built templates for common inventory types
+const INVENTORY_TEMPLATES = [
+  {
+    id: "computer-lab",
+    name: "Computer Lab",
+    description: "Track computers and peripherals in a lab setting",
+    icon: Monitor,
+    sections: [
+      { name: "Desktops", description: "Desktop computers" },
+      { name: "Laptops", description: "Portable computers" },
+      { name: "Peripherals", description: "Monitors, keyboards, mice" },
+    ],
+    columns: [
+      { key: "computer_number", label: "Computer #", data_type: "int" },
+      { key: "type", label: "Type", data_type: "text", options: ["Desktop", "Laptop", "All-in-One"] },
+      { key: "brand", label: "Brand", data_type: "text" },
+      { key: "model", label: "Model", data_type: "text" },
+      { key: "serial_number", label: "Serial Number", data_type: "text" },
+      { key: "processor", label: "Processor", data_type: "text" },
+      { key: "ram", label: "RAM", data_type: "text" },
+      { key: "storage", label: "Storage", data_type: "text" },
+      { key: "status", label: "Status", data_type: "text", options: ["Working", "Defective", "For Repair", "Disposed"] },
+    ],
+  },
+  {
+    id: "furniture",
+    name: "Furniture",
+    description: "Office and classroom furniture inventory",
+    icon: Armchair,
+    sections: [
+      { name: "Chairs", description: "Seating furniture" },
+      { name: "Tables", description: "Desks and tables" },
+      { name: "Storage", description: "Cabinets and shelves" },
+    ],
+    columns: [
+      { key: "item_number", label: "Item #", data_type: "int" },
+      { key: "type", label: "Type", data_type: "text", options: ["Chair", "Table", "Desk", "Cabinet", "Shelf"] },
+      { key: "brand", label: "Brand", data_type: "text" },
+      { key: "description", label: "Description", data_type: "text" },
+      { key: "quantity", label: "Quantity", data_type: "int" },
+      { key: "remarks", label: "Remarks", data_type: "text", options: ["Working", "Defective", "For Repair", "Disposed"] },
+      { key: "location", label: "Location", data_type: "text" },
+    ],
+  },
+  {
+    id: "equipment",
+    name: "Equipment",
+    description: "General equipment and tools",
+    icon: Wrench,
+    sections: [
+      { name: "Electronics", description: "Electronic devices" },
+      { name: "Tools", description: "Hand and power tools" },
+      { name: "Sports", description: "Sports equipment" },
+    ],
+    columns: [
+      { key: "item_number", label: "Item #", data_type: "int" },
+      { key: "name", label: "Name", data_type: "text" },
+      { key: "brand", label: "Brand", data_type: "text" },
+      { key: "model", label: "Model", data_type: "text" },
+      { key: "serial_number", label: "Serial Number", data_type: "text" },
+      { key: "quantity", label: "Quantity", data_type: "int" },
+      { key: "remarks", label: "Remarks", data_type: "text", options: ["Working", "Defective", "For Repair", "Disposed"] },
+      { key: "acquisition_date", label: "Acquisition Date", data_type: "date" },
+    ],
+  },
+  {
+    id: "custom",
+    name: "Custom",
+    description: "Start from scratch with your own fields",
+    icon: FileText,
+    sections: [],
+    columns: [],
+  },
+];
 
 const normalizeColumnConfig = (column) => ({
   key: String(column?.key || "").trim(),
@@ -765,6 +840,68 @@ function TabModal({ tab, onClose, onSave }) {
   const [isTabNameTouched, setIsTabNameTouched] = useState(false);
   const [tabType, setTabType] = useState("legacy");
 
+  // Wizard step state for new tabs
+  const [wizardStep, setWizardStep] = useState(tab?.id ? 4 : 1);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+
+  const isNewTab = !tab?.id;
+  const STEPS = isNewTab
+    ? [
+        { num: 1, label: "Choose Template" },
+        { num: 2, label: "Basic Info" },
+        { num: 3, label: "Sections" },
+        { num: 4, label: "Columns" },
+        { num: 5, label: "Review" },
+      ]
+    : [
+        { num: 1, label: "Basic Info" },
+        { num: 2, label: "Sections" },
+        { num: 3, label: "Columns" },
+        { num: 4, label: "Review" },
+      ];
+
+  const canProceed = () => {
+    const currentStep = wizardStep;
+    if (currentStep === 1) {
+      return selectedTemplate !== null;
+    }
+    if (currentStep === 2) {
+      const name = tabForm.name.trim();
+      return name && hasOnlyLettersNumbers(name);
+    }
+    if (currentStep === 3) {
+      return sections.length > 0;
+    }
+    if (currentStep === 4 && isNewTab) {
+      return columns.length > 0;
+    }
+    return true;
+  };
+
+  const handleTemplateSelect = (template) => {
+    setSelectedTemplate(template);
+    if (template.id === "custom") {
+      setSections([]);
+      setColumns([]);
+    } else {
+      setSections(template.sections.map((s, i) => ({ ...s, sort_order: i + 1 })));
+      setColumns(template.columns);
+    }
+    setWizardStep(2);
+  };
+
+  const handleNext = () => {
+    if (wizardStep < STEPS.length) {
+      setWizardStep((s) => s + 1);
+    }
+  };
+
+  const handlePrev = () => {
+    if (wizardStep > 1) {
+      setWizardStep((s) => s - 1);
+    }
+  };
+
   const tabValidation = useMemo(() => {
     const errors = { name: "", columns: "", sections: "" };
     const trimmedName = tabForm.name.trim();
@@ -997,27 +1134,62 @@ function TabModal({ tab, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
-        <div className="flex flex-col min-h-full">
+      <div className="relative flex flex-col w-full max-w-3xl max-h-[90vh] rounded-2xl bg-white shadow-2xl">
+        <div className="flex-1 overflow-y-auto">
+          {/* Wizard Stepper */}
+          {isNewTab && (
+            <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+              <div className="flex items-center justify-between">
+                {STEPS.map((step, idx) => (
+                  <div key={step.num} className="flex items-center">
+                    <div
+                      className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
+                        wizardStep > step.num
+                          ? "bg-emerald-600 text-white"
+                          : wizardStep === step.num
+                          ? "bg-[#4a1111] text-white"
+                          : "bg-slate-200 text-slate-500"
+                      }`}
+                    >
+                      {wizardStep > step.num ? "✓" : step.num}
+                    </div>
+                    <span
+                      className={`ml-2 hidden text-sm font-medium sm:block ${
+                        wizardStep === step.num ? "text-slate-900" : "text-slate-500"
+                      }`}
+                    >
+                      {step.label}
+                    </span>
+                    {idx < STEPS.length - 1 && (
+                      <div className={`ml-3 h-0.5 w-8 ${wizardStep > step.num ? "bg-emerald-600" : "bg-slate-200"}`} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between border-b border-slate-200 p-5">
             <div>
-              <h3 className="text-lg font-semibold text-slate-900">{tab ? "Edit inventory tab" : "Add inventory tab"}</h3>
-              <div className="mt-2 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setTabType("legacy")}
-                  className={`rounded-md px-2 py-1 text-xs font-medium ${tabType === "legacy" ? "bg-slate-900 text-white" : "bg-white text-slate-700 border border-slate-200"}`}
-                >
-                  Legacy
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTabType("dynamic")}
-                  className={`rounded-md px-2 py-1 text-xs font-medium ${tabType === "dynamic" ? "bg-slate-900 text-white" : "bg-white text-slate-700 border border-slate-200"}`}
-                >
-                  Dynamic
-                </button>
-              </div>
+              <h3 className="text-lg font-semibold text-slate-900">
+                {tab
+                  ? `Edit: ${tab.name}`
+                  : wizardStep === 1
+                  ? "Create New Inventory"
+                  : `Step ${wizardStep}: ${STEPS[wizardStep - 1]?.label || ""}`}
+              </h3>
+              {!tab && (
+                <p className="mt-1 text-sm text-slate-500">
+                  {wizardStep === 1
+                    ? "Choose a template or start from scratch"
+                    : wizardStep === 2
+                    ? "Give your inventory a name"
+                    : wizardStep === 3
+                    ? "Organize items into sections"
+                    : wizardStep === 4
+                    ? "Define what information to track"
+                    : "Review and save your inventory"}
+                </p>
+              )}
             </div>
             <button type="button" onClick={requestClose} className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
               <X className="h-5 w-5" />
@@ -1025,6 +1197,36 @@ function TabModal({ tab, onClose, onSave }) {
           </div>
 
           <div className="flex-1 overflow-y-auto">
+            {/* Wizard Step Content */}
+            {isNewTab && wizardStep === 1 && (
+              <div className="p-5">
+                <p className="mb-4 text-sm text-slate-600">Select a template to get started quickly, or choose Custom to build from scratch.</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {INVENTORY_TEMPLATES.map((template) => (
+                    <button
+                      key={template.id}
+                      type="button"
+                      onClick={() => handleTemplateSelect(template)}
+                      className={`group relative flex flex-col items-start rounded-xl border-2 p-4 text-left transition-all hover:border-[#4a1111] ${
+                        selectedTemplate?.id === template.id ? "border-[#4a1111] bg-rose-50" : "border-slate-200 bg-white hover:bg-slate-50"
+                      }`}
+                    >
+                      {template.icon && <template.icon className="mb-2 h-8 w-8 text-slate-600" />}
+                      <h4 className="font-semibold text-slate-900">{template.name}</h4>
+                      <p className="mt-1 text-sm text-slate-500">{template.description}</p>
+                      {template.id !== "custom" && (
+                        <span className="mt-3 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+                          {template.sections.length} sections, {template.columns.length} columns
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: Basic Info (for new tabs) or default form */}
+            {((isNewTab && wizardStep === 2) || !isNewTab) && (
             <div className="grid gap-4 px-5 py-5 md:grid-cols-2">
           <div className="md:col-span-2">
             <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Tab name</label>
@@ -1058,8 +1260,48 @@ function TabModal({ tab, onClose, onSave }) {
             />
           </div>
         </div>
+            )}
 
-        {tabType === "legacy" && (
+        {/* Navigation Footer - Always visible */}
+          <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4">
+            <div>
+              {isNewTab && wizardStep > 1 && wizardStep < STEPS.length && (
+                <button
+                  type="button"
+                  onClick={handlePrev}
+                  className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  ← Previous
+                </button>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={requestClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                Cancel
+              </button>
+              {isNewTab && wizardStep < STEPS.length ? (
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  disabled={!canProceed()}
+                  className="rounded-lg bg-[#4a1111] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Continue →
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={requestSave}
+                  disabled={isSaveDisabled}
+                  className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Save Tab
+                </button>
+              )}
+            </div>
+          </div>
+
+        {((isNewTab && wizardStep >= 3) || !isNewTab) && tabType === "legacy" && (
         <div className="border-t border-slate-200 px-5 py-5">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -1122,7 +1364,7 @@ function TabModal({ tab, onClose, onSave }) {
         </div>
         )}
 
-        {tabType === "legacy" && (
+        {((isNewTab && wizardStep >= 4) || !isNewTab) && tabType === "legacy" && (
         <div className="border-t border-slate-200 px-5 py-5">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -1180,20 +1422,6 @@ function TabModal({ tab, onClose, onSave }) {
                 )}
               </tbody>
             </table>
-          </div>
-
-          <div className="sticky bottom-0 z-10 flex justify-end gap-3 border-t border-slate-200 bg-white px-5 py-4">
-            <button type="button" onClick={requestClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={requestSave}
-              disabled={isSaveDisabled}
-              className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Save Tab
-            </button>
           </div>
         </div>
         )}
