@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/api/supabaseClient";
 import { createEmployeeInviteAndSendEmail } from "@/lib/employeeInvites";
-import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -198,20 +197,15 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
         onClick={onClose}
       />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="flex h-full w-full max-w-2xl max-h-[85vh] flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl ring-1 ring-slate-200">
-        <div className="flex items-center justify-between rounded-t-[28px] border-b border-slate-100 bg-slate-50 px-6 py-5">
-            <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">User account</p>
-              <h2 className="mt-1 text-lg font-semibold text-slate-900">
-                {account ? "Edit User Account" : "Add User Account"}
-              </h2>
+        <div className="flex h-full w-full max-w-2xl max-h-[85vh] flex-col overflow-hidden rounded-[32px] bg-white shadow-2xl">
+          <div className="bg-slate-50 px-6 py-5 text-white sm:px-8">
+            <p className="text-lg font-semibold text-slate-900">
+            
+              {account ? "Edit User Account" : "Add User Account"}
+            </p>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              
             </div>
-            <button
-              onClick={onClose}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-100 hover:text-slate-700"
-            >
-              <X className="h-5 w-5" />
-            </button>
           </div>
 
           <div className="flex-1 min-h-0 px-6 py-6 space-y-4 overflow-y-auto">
@@ -338,19 +332,19 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 rounded-b-[28px] border-t border-slate-100 bg-slate-50 px-6 py-4">
+          <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4 sm:px-8">
             <Button
               variant="outline"
               onClick={onClose}
               disabled={saving}
-              className="rounded-full border-slate-200 text-slate-700 hover:bg-slate-100"
+              className="rounded-full border-slate-200 px-5 text-slate-700 hover:bg-slate-100"
             >
               Cancel
             </Button>
             <button
               onClick={() => setShowConfirm(true)}
               disabled={saving || !isValid()}
-              className="rounded-full bg-[#4a1111] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#3f0f0f] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded-full bg-[#4a1111] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? "Saving..." : account ? "Update Account" : "Create Account"}
             </button>

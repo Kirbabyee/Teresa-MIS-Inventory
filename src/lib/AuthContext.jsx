@@ -99,6 +99,17 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(false);
       } else {
         const accountRow = await fetchUserProfileFromAccount(sessionUser);
+        if (accountRow?.is_active === false) {
+          setUser(null);
+          setIsAuthenticated(false);
+          setAuthError({ type: "account_inactive", message: "This account has been deactivated. Contact an administrator to restore access." });
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem(SESSION_KEY);
+            window.dispatchEvent(new Event(SESSION_EVENT));
+          }
+          await supabase.auth.signOut();
+          return;
+        }
         setUser(buildAuthUser(sessionUser, accountRow));
         setIsAuthenticated(true);
         // persist lightweight session for layout and other components
@@ -161,6 +172,13 @@ export const AuthProvider = ({ children }) => {
       }
 
       const accountRow = await fetchUserProfileFromAccount(sessionUser);
+      if (accountRow?.is_active === false) {
+        await supabase.auth.signOut();
+        return {
+          success: false,
+          message: "This account has been deactivated. Contact an administrator to restore access.",
+        };
+      }
       setUser(buildAuthUser(sessionUser, accountRow));
       setIsAuthenticated(true);
       setAuthError(null);

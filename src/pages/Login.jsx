@@ -9,33 +9,33 @@ import { supabase } from "@/api/supabaseClient";
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
 
-const fetchAccountTypeForUser = async (user) => {
+const fetchAccountForUser = async (user) => {
   const normalizedUserId = String(user?.id || "").trim();
   const normalizedEmail = String(user?.email || "").trim().toLowerCase();
 
   if (normalizedUserId) {
     const byId = await supabase
       .from("user_accounts")
-      .select("account_type")
+      .select("account_type, is_active")
       .eq("id", normalizedUserId)
       .maybeSingle();
 
-    if (!byId.error && byId.data?.account_type) {
-      return byId.data.account_type;
+    if (!byId.error && byId.data) {
+      return byId.data;
     }
   }
 
   if (normalizedEmail) {
     const byEmail = await supabase
       .from("user_accounts")
-      .select("account_type")
+      .select("account_type, is_active")
       .ilike("email", normalizedEmail)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (!byEmail.error && byEmail.data?.account_type) {
-      return byEmail.data.account_type;
+    if (!byEmail.error && byEmail.data) {
+      return byEmail.data;
     }
   }
 
@@ -91,7 +91,14 @@ export default function Login() {
 
       if (typeof window !== "undefined") {
         const now = Date.now();
-        const accountType = await fetchAccountTypeForUser(user);
+        const accountRow = await fetchAccountForUser(user);
+        if (accountRow?.is_active === false) {
+          await supabase.auth.signOut();
+          setError("This account has been deactivated. Contact an administrator to restore access.");
+          return;
+        }
+
+        const accountType = accountRow?.account_type || null;
         const role = accountType || user.user_metadata?.role || user.app_metadata?.role || "employee";
         const displayName = user.user_metadata?.name || user.user_metadata?.full_name || user.email || "User";
         const expiresAt = session.expires_at ? Number(session.expires_at) * 1000 : now + 8 * 60 * 60 * 1000;

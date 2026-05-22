@@ -1,14 +1,22 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/api/supabaseClient";
+import { createEmployeeInviteAndSendEmail } from "@/lib/employeeInvites";
 import {
   Plus,
   Search,
   Edit,
   Mail,
   Trash2,
+  UserCheck,
+  UserX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,8 +30,28 @@ import {
 import UserAccountModal from "@/components/UserAccountModal";
 
 const accountTypeColors = {
-  staff: "bg-blue-100 text-blue-700 border-blue-200",
-  admin: "bg-red-100 text-red-700 border-red-200",
+  staff: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  admin: "bg-blue-100 text-blue-700 border-blue-200",
+};
+
+const accountStatusColors = {
+  true: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  false: "bg-slate-100 text-slate-700 border-slate-200",
+};
+
+const sortAccountsByStatus = (items) => {
+  return [...items].sort((left, right) => {
+    const leftInactive = left?.is_active === false ? 1 : 0;
+    const rightInactive = right?.is_active === false ? 1 : 0;
+
+    if (leftInactive !== rightInactive) {
+      return leftInactive - rightInactive;
+    }
+
+    const leftDate = left?.created_at ? new Date(left.created_at).getTime() : 0;
+    const rightDate = right?.created_at ? new Date(right.created_at).getTime() : 0;
+    return rightDate - leftDate;
+  });
 };
 
 export default function UserAccounts() {
@@ -36,8 +64,129 @@ export default function UserAccounts() {
   const [accountTypeFilter, setAccountTypeFilter] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editAccount, setEditAccount] = useState(null);
-  const [deleteCandidate, setDeleteCandidate] = useState(null);
-  const [deleting, setDeleting] = useState(false);
+  const [statusCandidate, setStatusCandidate] = useState(null);
+  const [statusChanging, setStatusChanging] = useState(false);
+  const [inviteActionCandidate, setInviteActionCandidate] = useState(null);
+  const [inviteActionLoading, setInviteActionLoading] = useState("");
+
+  const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+
+  const revokeExistingInvites = async (account) => {
+    const expiryTime = new Date().toISOString();
+    const normalizedEmail = normalizeEmail(account?.email);
+    const requests = [];
+
+    if (account?.id) {
+      requests.push(
+        supabase
+          .from("user_auth_invites")
+          .update({ expires_at: expiryTime })
+          .eq("employee_id", account.id),
+      );
+      requests.push(
+        supabase
+          .from("user_auth_invites")
+          .update({ expires_at: expiryTime })
+          .eq("user_id", account.id),
+      );
+    }
+
+    if (normalizedEmail) {
+      requests.push(
+        supabase
+          .from("user_auth_invites")
+          .update({ expires_at: expiryTime })
+          .ilike("email", normalizedEmail),
+      );
+    }
+
+    if (requests.length === 0) return;
+
+    const results = await Promise.all(requests);
+    const failure = results.find((result) => result.error)?.error;
+    if (failure) throw failure;
+  };
+
+  const removeAccountInvites = async (account) => {
+    const normalizedEmail = normalizeEmail(account?.email);
+    const requests = [];
+
+    if (account?.id) {
+      requests.push(
+        supabase.from("user_auth_invites").delete().eq("employee_id", account.id),
+      );
+      requests.push(
+        supabase.from("user_auth_invites").delete().eq("user_id", account.id),
+      );
+    }
+
+    if (normalizedEmail) {
+      requests.push(
+        supabase.from("user_auth_invites").delete().ilike("email", normalizedEmail),
+      );
+    }
+
+    if (requests.length === 0) return;
+
+    const results = await Promise.all(requests);
+    const failure = results.find((result) => result.error)?.error;
+    if (failure) throw failure;
+  };
+
+  const handleResendInvite = async (account) => {
+    if (!account?.id) return;
+    if (!account.email) {
+      alert("This account needs an email before an invitation can be sent.");
+      return;
+    }
+
+    try {
+      setInviteActionLoading("resend");
+      await revokeExistingInvites(account);
+
+      await createEmployeeInviteAndSendEmail({
+        employeeId: account.id,
+        email: account.email,
+        toName: `${account.first_name || ""} ${account.last_name || ""}`.trim() || "User",
+        role: account.account_type || "staff",
+      });
+
+      setInviteActionCandidate(null);
+      await load();
+      alert("A fresh activation invitation has been sent.");
+    } catch (error) {
+      console.error("Resend invite failed:", error.message);
+      alert(`Failed to resend invitation: ${error.message}`);
+    } finally {
+      setInviteActionLoading("");
+    }
+  };
+
+  const handleCancelInvite = async (account) => {
+    if (!account?.id) return;
+
+    try {
+      setInviteActionLoading("cancel");
+      await revokeExistingInvites(account);
+      await removeAccountInvites(account);
+
+      const { error } = await supabase
+        .from("user_accounts")
+        .delete()
+        .eq("id", account.id);
+
+      if (error) throw error;
+
+      setInviteActionCandidate(null);
+      await load();
+      alert("Invitation canceled and the account was removed.");
+    } catch (error) {
+      console.error("Cancel invite failed:", error.message);
+      alert(`Failed to cancel invitation: ${error.message}`);
+    } finally {
+      setInviteActionLoading("");
+    }
+  };
 
   const load = async () => {
     try {
@@ -50,7 +199,7 @@ export default function UserAccounts() {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setAccounts(data || []);
+      setAccounts(sortAccountsByStatus(data || []));
       // Load related invites so we can hide the Mail button when invite.used_at exists
       try {
         const accountIds = (data || []).map((a) => a.id).filter(Boolean);
@@ -104,24 +253,24 @@ export default function UserAccounts() {
     load();
   }, []);
 
-  const handleDelete = async () => {
-    if (!deleteCandidate?.id) return;
+  const handleToggleAccountStatus = async () => {
+    if (!statusCandidate?.id) return;
 
     try {
-      setDeleting(true);
+      setStatusChanging(true);
       const { error } = await supabase
         .from("user_accounts")
-        .delete()
-        .eq("id", deleteCandidate.id);
+        .update({ is_active: !Boolean(statusCandidate.is_active) })
+        .eq("id", statusCandidate.id);
 
       if (error) throw error;
-      setDeleteCandidate(null);
+      setStatusCandidate(null);
       await load();
     } catch (error) {
-      console.error("Delete failed:", error.message);
-      alert(`Failed to delete account: ${error.message}`);
+      console.error("Account status update failed:", error.message);
+      alert(`Failed to update account status: ${error.message}`);
     } finally {
-      setDeleting(false);
+      setStatusChanging(false);
     }
   };
 
@@ -134,6 +283,8 @@ export default function UserAccounts() {
     const matchType = !accountTypeFilter || acc.account_type === accountTypeFilter;
     return matchSearch && matchType;
   });
+
+  const sortedFiltered = sortAccountsByStatus(filtered);
 
   const uniqueAccountTypes = [...new Set(accounts.map(a => a.account_type).filter(Boolean))];
 
@@ -195,7 +346,7 @@ export default function UserAccounts() {
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : sortedFiltered.length === 0 ? (
           <div className="text-center py-16 text-slate-400">
             <p>No accounts found.</p>
           </div>
@@ -208,6 +359,7 @@ export default function UserAccounts() {
                     "Name",
                     "Email",
                     "Account Type",
+                    "Status",
                     "Created",
                     "Actions",
                   ].map((h) => (
@@ -221,36 +373,43 @@ export default function UserAccounts() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map((acc) => (
+                {sortedFiltered.map((acc) => (
                   <tr
                     key={acc.id}
-                    className="hover:bg-slate-50 transition-colors"
+                    className={`transition-colors ${acc.is_active === false ? "bg-slate-100 text-slate-400 opacity-75 grayscale" : "hover:bg-slate-50"}`}
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-300 flex items-center justify-center text-slate-700 font-semibold text-xs shrink-0">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs shrink-0 ${acc.is_active === false ? "bg-slate-200 text-slate-400" : "bg-slate-300 text-slate-700"}`}>
                           {acc.first_name?.[0]}
                           {acc.last_name?.[0]}
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-slate-900">
+                          <p className={`text-sm font-medium ${acc.is_active === false ? "text-slate-500" : "text-slate-900"}`}>
                             {acc.first_name} {acc.middle_name ? `${acc.middle_name} ` : ""}{acc.last_name}
                             {acc.suffix ? ` ${acc.suffix}` : ""}
                           </p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">
+                    <td className={`px-4 py-3 text-sm ${acc.is_active === false ? "text-slate-400" : "text-slate-600"}`}>
                       {acc.email || "—"}
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className={`text-xs font-medium px-2 py-1 rounded-full border ${accountTypeColors[acc.account_type] || "bg-gray-100 text-gray-700 border-gray-200"}`}
+                        className={`inline-flex min-w-[84px] justify-center text-xs font-medium px-2 py-1 rounded-full border ${accountTypeColors[acc.account_type] || "bg-gray-100 text-gray-700 border-gray-200"}`}
                       >
                         {acc.account_type ? acc.account_type.charAt(0).toUpperCase() + acc.account_type.slice(1) : "—"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex min-w-[84px] justify-center text-xs font-medium px-2 py-1 rounded-full border ${accountStatusColors[String(acc.is_active !== false)]}`}
+                      >
+                        {acc.is_active === false ? "Inactive" : "Active"}
+                      </span>
+                    </td>
+                    <td className={`px-4 py-3 text-sm ${acc.is_active === false ? "text-slate-400" : "text-slate-600"}`}>
                       {acc.created_at
                         ? new Date(acc.created_at).toLocaleDateString()
                         : "—"}
@@ -264,35 +423,37 @@ export default function UserAccounts() {
                             setEditAccount(acc);
                             setShowModal(true);
                           }}
-                          className="p-2 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-600 hover:text-white transition-all duration-200"
+                          className={`p-2 rounded-lg transition-all duration-200 ${acc.is_active === false ? "bg-slate-200 text-slate-400 hover:bg-slate-300 hover:text-slate-600" : "bg-blue-100 text-blue-600 hover:bg-blue-600 hover:text-white"}`}
                           title="Edit Account"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
 
-                        {/* Email */}
+                        {/* Invite actions */}
                         {(!inviteUsedByAccountId[String(acc.id)] && !(acc.email && inviteUsedByEmail[String(acc.email).toLowerCase()])) && (
                           <button
                             onClick={() => {
-                              if (acc.email) {
-                                window.location.href = `mailto:${acc.email}`;
-                              }
+                              setInviteActionCandidate(acc);
                             }}
                             disabled={!acc.email}
-                            className="p-2 rounded-lg bg-green-100 text-green-600 hover:bg-green-600 hover:text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                            title="Send Email"
+                            className={`p-2 rounded-lg transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed ${acc.is_active === false ? "bg-slate-200 text-slate-400 hover:bg-slate-300 hover:text-slate-600" : "bg-green-100 text-green-600 hover:bg-green-600 hover:text-white"}`}
+                            title="Invitation actions"
                           >
                             <Mail className="w-4 h-4" />
                           </button>
                         )}
 
-                        {/* Delete */}
+                        {/* Deactivate / Reactivate */}
                         <button
-                          onClick={() => setDeleteCandidate(acc)}
-                          className="p-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-600 hover:text-white transition-all duration-200"
-                          title="Delete Account"
+                          onClick={() => setStatusCandidate(acc)}
+                          className={`p-2 rounded-lg transition-all duration-200 ${acc.is_active === false ? "bg-emerald-100 text-emerald-600 hover:bg-emerald-600 hover:text-white" : "bg-amber-100 text-amber-700 hover:bg-amber-600 hover:text-white"}`}
+                          title={acc.is_active === false ? "Reactivate Account" : "Deactivate Account"}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          {acc.is_active === false ? (
+                            <UserCheck className="w-4 h-4" />
+                          ) : (
+                            <UserX className="w-4 h-4" />
+                          )}
                         </button>
 
                       </div>
@@ -317,32 +478,130 @@ export default function UserAccounts() {
       )}
 
       <AlertDialog
-        open={Boolean(deleteCandidate)}
+        open={Boolean(statusCandidate)}
         onOpenChange={(open) => {
-          if (!open && !deleting) setDeleteCandidate(null);
+          if (!open && !statusChanging) setStatusCandidate(null);
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Account</AlertDialogTitle>
+            <AlertDialogTitle>
+              {statusCandidate?.is_active === false ? "Reactivate Account" : "Deactivate Account"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteCandidate
-                ? `Are you sure you want to delete ${deleteCandidate.first_name || ""} ${deleteCandidate.last_name || ""}'s account? This action cannot be undone.`
-                : "Delete account?"}
+              {statusCandidate
+                ? statusCandidate.is_active === false
+                  ? `Reactivate ${statusCandidate.first_name || ""} ${statusCandidate.last_name || ""}'s account so they can log in again.`
+                  : `Deactivate ${statusCandidate.first_name || ""} ${statusCandidate.last_name || ""}'s account? They will no longer be able to log in until reactivated.`
+                : "Update account status?"}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={statusChanging}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDelete}
-              disabled={deleting}
-              className="bg-red-600 hover:bg-red-700"
+              onClick={handleToggleAccountStatus}
+              disabled={statusChanging}
+              className={statusCandidate?.is_active === false ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700"}
             >
-              {deleting ? "Deleting..." : "Delete"}
+              {statusChanging
+                ? statusCandidate?.is_active === false
+                  ? "Reactivating..."
+                  : "Deactivating..."
+                : statusCandidate?.is_active === false
+                  ? "Reactivate"
+                  : "Deactivate"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={Boolean(inviteActionCandidate)}
+        onOpenChange={(open) => {
+          if (!open && !inviteActionLoading) setInviteActionCandidate(null);
+        }}
+      >
+        <DialogContent className="max-w-lg overflow-hidden border-0 bg-white p-0 shadow-2xl sm:rounded-3xl">
+          <div className="bg-slate-50 px-6 py-5 text-white sm:px-8">
+            <p className="text-lg font-semibold text-slate-900">
+              Account invitation
+            </p>
+            
+          </div>
+
+          <div className="space-y-4 px-6 py-6">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-[#4a1111] text-sm font-semibold text-white">
+                  {inviteActionCandidate?.first_name?.[0] || inviteActionCandidate?.email?.[0] || "U"}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {inviteActionCandidate
+                      ? `${inviteActionCandidate.first_name || ""} ${inviteActionCandidate.last_name || ""}`.trim() || inviteActionCandidate.email || "User"
+                      : "User"}
+                  </p>
+                  <p className="mt-1 break-all text-xs text-slate-500">
+                    {inviteActionCandidate?.email || "No email available"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-3">
+              <button
+                type="button"
+                onClick={() => handleResendInvite(inviteActionCandidate)}
+                disabled={!inviteActionCandidate?.email || inviteActionLoading === "resend" || inviteActionLoading === "cancel"}
+                className="group flex w-full items-start gap-4 rounded-2xl border border-emerald-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <div className="mt-0.5 flex h-11 w-11 flex-none items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 transition group-hover:bg-emerald-600 group-hover:text-white">
+                  <Mail className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {inviteActionLoading === "resend" ? "Sending invitation..." : "Resend email invitation"}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    Send a fresh activation email with a new link and invalidate the previous invite.
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleCancelInvite(inviteActionCandidate)}
+                disabled={inviteActionLoading === "resend" || inviteActionLoading === "cancel"}
+                className="group flex w-full items-start gap-4 rounded-2xl border border-rose-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-rose-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <div className="mt-0.5 flex h-11 w-11 flex-none items-center justify-center rounded-2xl bg-rose-100 text-rose-700 transition group-hover:bg-rose-600 group-hover:text-white">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {inviteActionLoading === "cancel" ? "Canceling invitation..." : "Cancel invitation"}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    Expire the invite, delete the pending account record, and remove it from the list.
+                  </p>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end border-t border-slate-200 bg-slate-50 px-6 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setInviteActionCandidate(null)}
+              disabled={inviteActionLoading === "resend" || inviteActionLoading === "cancel"}
+              className="rounded-xl border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
