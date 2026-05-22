@@ -181,16 +181,16 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {/* Total PCs Card */}
             <div className="group rounded-xl bg-gradient-to-r from-white to-slate-50 p-6 shadow-lg border border-transparent hover:shadow-xl transition">
-              <div className="flex items-start justify-between gap-4">
-                <div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <p className="text-xs font-semibold text-slate-500">Total PCs</p>
                   <p className="mt-2 text-3xl font-extrabold text-slate-900">
                     {overall.total.toLocaleString()}
                   </p>
                   <p className="mt-2 text-xs text-slate-400">Across all labs</p>
                 </div>
-                <div className="flex flex-col items-center justify-center bg-[#4a1111] rounded-full p-3">
-                  <Cpu className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 lg:h-8 lg:w-8 text-white" />
+                <div className="flex h-11 w-11 flex-none items-center justify-center self-start overflow-hidden rounded-full bg-[#4a1111] sm:h-12 sm:w-12 sm:self-auto">
+                  <Cpu className="block h-5 w-5 shrink-0 text-white sm:h-6 sm:w-6 md:h-6 md:w-6 lg:h-6 lg:w-6" />
                 </div>
               </div>
               {overall.total > 0 && (
@@ -208,32 +208,32 @@ export default function Dashboard() {
 
             {/* Defective Components Card */}
             <div className="group rounded-xl bg-white p-6 shadow-lg border border-transparent hover:shadow-xl transition">
-              <div className="flex items-start justify-between gap-4">
-                <div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <p className="text-xs font-semibold text-slate-500">Defective Components</p>
                   <p className="mt-2 text-3xl font-extrabold text-rose-600">
                     {overall.defective.toLocaleString()}
                   </p>
                   <p className="mt-2 text-xs text-slate-400">Total defective parts</p>
                 </div>
-                <div className="flex flex-col items-center justify-center bg-rose-500 rounded-full p-3">
-                  <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 lg:h-8 lg:w-8 text-white" />
+                <div className="flex h-11 w-11 flex-none items-center justify-center self-start overflow-hidden rounded-full bg-rose-500 sm:h-12 sm:w-12 sm:self-auto">
+                  <AlertCircle className="block h-5 w-5 shrink-0 text-white sm:h-6 sm:w-6 md:h-6 md:w-6 lg:h-6 lg:w-6" />
                 </div>
               </div>
             </div>
 
             {/* Labs Card */}
             <div className="group rounded-xl bg-white p-6 shadow-lg border border-transparent hover:shadow-xl transition">
-              <div className="flex items-start justify-between gap-4">
-                <div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <p className="text-xs font-semibold text-slate-500">Sections/Labs</p>
                   <p className="mt-2 text-3xl font-extrabold text-slate-900">
                     {labs.length.toLocaleString()}
                   </p>
                   <p className="mt-2 text-xs text-slate-400">Active sections</p>
                 </div>
-                <div className="flex flex-col items-center justify-center bg-slate-700 rounded-full p-3">
-                  <Package className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 lg:h-8 lg:w-8 text-white" />
+                <div className="flex h-11 w-11 flex-none items-center justify-center self-start overflow-hidden rounded-full bg-slate-700 sm:h-12 sm:w-12 sm:self-auto">
+                  <Package className="block h-5 w-5 shrink-0 text-white sm:h-6 sm:w-6 md:h-6 md:w-6 lg:h-6 lg:w-6" />
                 </div>
               </div>
             </div>
