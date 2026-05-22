@@ -104,6 +104,64 @@ const formatCellValue = (value) => {
 
 const isDropdownField = (field) => String(field?.fieldType || "").toLowerCase() === "dropdown";
 
+const IDENTIFIER_FIELD_KEYS = new Set(["item_number", "computer_number"]);
+
+const CANONICAL_TEMPLATE_ORDERS = [
+  ["computer_number", "type", "brand", "model", "serial_number", "processor", "ram", "storage", "status"],
+  ["item_number", "type", "brand", "description", "quantity", "remarks", "location"],
+  ["item_number", "name", "brand", "model", "serial_number", "quantity", "remarks", "acquisition_date"],
+];
+
+const getCanonicalTemplateOrder = (columns = []) => {
+  const normalizedKeys = new Set((Array.isArray(columns) ? columns : []).map((column) => String(column?.key || "").trim()));
+  const matchedOrder = CANONICAL_TEMPLATE_ORDERS.find((order) => order.every((key) => normalizedKeys.has(key)));
+
+  return matchedOrder || [];
+};
+
+const isIdentifierField = (fieldKey = "") => IDENTIFIER_FIELD_KEYS.has(String(fieldKey || "").trim());
+
+const orderTemplateColumns = (columns = []) => {
+  const ordered = Array.isArray(columns) ? [...columns] : [];
+  const canonicalOrder = getCanonicalTemplateOrder(ordered);
+
+  if (canonicalOrder.length > 0) {
+    return ordered.sort((left, right) => {
+      const leftIndex = canonicalOrder.indexOf(String(left?.key || "").trim());
+      const rightIndex = canonicalOrder.indexOf(String(right?.key || "").trim());
+
+      if (leftIndex !== -1 || rightIndex !== -1) {
+        if (leftIndex === -1) return 1;
+        if (rightIndex === -1) return -1;
+        return leftIndex - rightIndex;
+      }
+
+      return 0;
+    });
+  }
+
+  return ordered.sort((left, right) => {
+    const leftIsIdentifier = isIdentifierField(left?.key) ? 0 : 1;
+    const rightIsIdentifier = isIdentifierField(right?.key) ? 0 : 1;
+    if (leftIsIdentifier !== rightIsIdentifier) {
+      return leftIsIdentifier - rightIsIdentifier;
+    }
+    return 0;
+  });
+};
+
+const getNextIdentifierValue = (rows = [], fieldKey = "") => {
+  const numericValues = (Array.isArray(rows) ? rows : [])
+    .map((row) => Number.parseInt(String(row?.[fieldKey] ?? "").trim(), 10))
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  if (numericValues.length === 0) {
+    return 1;
+  }
+
+  return Math.max(...numericValues) + 1;
+};
+
 const getEditorType = (fieldConfig) => {
   if (isDropdownField(fieldConfig)) return "dropdown";
   const dataType = String(fieldConfig?.data_type || "text").toLowerCase();
@@ -142,6 +200,29 @@ const modalCloseButtonClass =
 const sanitizeSheetName = (value) =>
   String(value || "Inventory Section").replace(/[\\/:*?"<>|]/g, "").slice(0, 31);
 
+const SEMESTER_OPTIONS = ["1st", "2nd", "Summer"];
+
+const getCurrentSchoolYear = (referenceDate = new Date()) => {
+  const month = referenceDate.getMonth();
+  const year = referenceDate.getFullYear();
+  const startYear = month >= 5 ? year : year - 1;
+  return `${startYear} - ${startYear + 1}`;
+};
+
+const generateSchoolYearOptions = (back = 3, forward = 3, referenceDate = new Date()) => {
+  const currentSchoolYear = getCurrentSchoolYear(referenceDate);
+  const currentStartYear = Number(currentSchoolYear.slice(0, 4));
+  const start = currentStartYear - back;
+  const end = currentStartYear + forward;
+  const options = [];
+
+  for (let year = start; year <= end; year += 1) {
+    options.push(`${year} - ${year + 1}`);
+  }
+
+  return options.reverse();
+};
+
 const getColumnLetter = (columnNumber) => {
   let value = columnNumber;
   let letters = "";
@@ -170,7 +251,7 @@ const createHeaderSeparatorBase64 = () => {
   return canvas.toDataURL("image/png").split(",")[1];
 };
 
-const applyExportHeader = (worksheet, titleText, exportDate, logoImage, separatorImage, totalColumns) => {
+const applyExportHeader = (worksheet, titleText, exportDate, logoImage, separatorImage, totalColumns, options = {}) => {
   const headerColor = { argb: "FF4A1111" };
   const endColumnNumber = Math.max(13, totalColumns + 1);
   const endColumnLetter = getColumnLetter(endColumnNumber);
@@ -254,11 +335,20 @@ const applyExportHeader = (worksheet, titleText, exportDate, logoImage, separato
       .replace(/^[A-Za-z]+/, (month) => month.toUpperCase());
   dateCell.alignment = { horizontal: "center", vertical: "middle" };
   dateCell.font = { bold: true, size: 11, color: headerColor, name: "Arial" };
+
+  worksheet.mergeCells(`B9:${endColumnLetter}9`);
+  const schoolYearCell = worksheet.getCell("B9");
+  const schoolYearText = (options.schoolYear || "").toString().trim() || "____________________";
+  const semesterText = (options.semester || "").toString().trim() || "____________________";
+  schoolYearCell.value = `${semesterText} Semester | S.Y ${schoolYearText}`;
+  schoolYearCell.alignment = { horizontal: "center", vertical: "middle", wrapText: false };
+  schoolYearCell.font = { bold: true, size: 11, color: headerColor, name: "Arial" };
 };
 
 // Item Modal Component
-function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns }) {
+function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns, items }) {
   const useTemplate = Array.isArray(templateColumns) && templateColumns.length > 0;
+  const orderedTemplateColumns = useMemo(() => orderTemplateColumns(templateColumns), [templateColumns]);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const createInitialSubFieldGroups = (columns) =>
@@ -269,7 +359,7 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
       return accumulator;
     }, {});
   const [openSubFieldGroups, setOpenSubFieldGroups] = useState(() =>
-    createInitialSubFieldGroups(templateColumns)
+    createInitialSubFieldGroups(orderedTemplateColumns)
   );
   const initialSnapshotRef = useRef("");
   const [legacyForm, setLegacyForm] = useState(() => ({
@@ -358,17 +448,29 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
   useEffect(() => {
     if (useTemplate) {
       const nextForm = {};
-      for (const column of templateColumns) {
+      for (const column of orderedTemplateColumns) {
         if (column.subColumns && column.subColumns.length > 0) {
           for (const subColumn of column.subColumns) {
-            nextForm[subColumn.physicalKey] = item?.[subColumn.physicalKey] ?? "";
+            const existingValue = item?.[subColumn.physicalKey];
+            nextForm[subColumn.physicalKey] =
+              existingValue !== undefined && existingValue !== null && existingValue !== ""
+                ? existingValue
+                : isIdentifierField(subColumn.key)
+                  ? getNextIdentifierValue(items, subColumn.physicalKey)
+                  : "";
           }
         } else {
-          nextForm[column.key] = item?.[column.key] ?? "";
+          const existingValue = item?.[column.key];
+          nextForm[column.key] =
+            existingValue !== undefined && existingValue !== null && existingValue !== ""
+              ? existingValue
+              : isIdentifierField(column.key)
+                ? getNextIdentifierValue(items, column.key)
+                : "";
         }
       }
       setDynamicForm(nextForm);
-      setOpenSubFieldGroups(createInitialSubFieldGroups(templateColumns));
+      setOpenSubFieldGroups(createInitialSubFieldGroups(orderedTemplateColumns));
       initialSnapshotRef.current = buildTemplateSnapshot(nextForm);
       setShowDiscardConfirm(false);
       setShowSaveConfirm(false);
@@ -387,7 +489,7 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
     initialSnapshotRef.current = buildLegacySnapshot(nextLegacyForm);
     setShowDiscardConfirm(false);
     setShowSaveConfirm(false);
-  }, [item, templateColumns, useTemplate]);
+  }, [item, items, orderedTemplateColumns, useTemplate]);
 
   useEffect(() => {
     if (!showDiscardConfirm && !showSaveConfirm) {
@@ -445,7 +547,7 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
       }
 
       const recordData = {};
-      for (const column of templateColumns) {
+      for (const column of orderedTemplateColumns) {
         if (column.subColumns && column.subColumns.length > 0) {
           for (const subColumn of column.subColumns) {
             recordData[subColumn.physicalKey] = castValueByType(
@@ -508,7 +610,8 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
         <div className="flex-1 overflow-y-auto">
           <div className="space-y-4 px-5 py-5">
           {useTemplate ? (
-            templateColumns.map((column) =>
+            <div className="grid gap-4 md:grid-cols-2">
+              {orderedTemplateColumns.map((column) =>
               column.subColumns && column.subColumns.length > 0 ? (
                 <div
                   key={column.key}
@@ -537,7 +640,7 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
                     </div>
                   )}
                   {(column.subColumns.length <= 1 || openSubFieldGroups[column.key] !== false) && (
-                    <div className="grid gap-3 border-t border-slate-200 p-3 md:grid-cols-3">
+                        <div className={`grid gap-3 border-t border-slate-200 p-3 ${isIdentifierField(column.key) ? "md:grid-cols-1" : "md:grid-cols-3"}`}>
                       {column.subColumns.map((subColumn) => (
                         <div key={subColumn.physicalKey}>
                           <label className="text-xs font-medium text-slate-600">
@@ -593,7 +696,8 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
                   )}
                 </div>
               )
-            )
+            )}
+            </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               <div>
@@ -772,6 +876,8 @@ export default function InventorySection() {
   const [selectedExportColumns, setSelectedExportColumns] = useState([]);
   const [selectedExportSections, setSelectedExportSections] = useState([]);
   const [exportDate, setExportDate] = useState(new Date().toISOString().slice(0, 10));
+  const [exportSchoolYear, setExportSchoolYear] = useState("");
+  const [exportSemester, setExportSemester] = useState("");
   const [preparedByName, setPreparedByName] = useState("");
   const [inspectedByName, setInspectedByName] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -934,7 +1040,13 @@ export default function InventorySection() {
     [tab, selectedSectionSlug]
   );
   const sections = tab?.sections || [];
+  const orderedTemplateColumns = useMemo(() => orderTemplateColumns(templateColumns), [templateColumns]);
   const usesTemplateColumns = templateColumns.length > 0;
+  const displayTemplateColumns = orderedTemplateColumns;
+  const hasItemNumberColumn = useMemo(
+    () => displayTemplateColumns.some((column) => String(column?.key || "").trim() === "item_number"),
+    [displayTemplateColumns]
+  );
   const exportColumnOptions = useMemo(
     () =>
       usesTemplateColumns
@@ -955,16 +1067,33 @@ export default function InventorySection() {
           ],
     [templateColumns, usesTemplateColumns]
   );
-  const tableColSpan = templateColumns.length + 1;
+  const tableColSpan = displayTemplateColumns.length + 1;
   const totalPages = Math.ceil(items.length / itemsPerPage);
   const pageStartIndex = (page - 1) * itemsPerPage;
   const pageEndIndex = pageStartIndex + itemsPerPage;
+  const displayItems = useMemo(() => {
+    if (!hasItemNumberColumn) {
+      return items;
+    }
+
+    return [...items].sort((leftItem, rightItem) => {
+      const leftValue = Number.parseInt(String(leftItem?.item_number ?? "").trim(), 10);
+      const rightValue = Number.parseInt(String(rightItem?.item_number ?? "").trim(), 10);
+      const leftMissing = !Number.isFinite(leftValue);
+      const rightMissing = !Number.isFinite(rightValue);
+
+      if (leftMissing && rightMissing) return 0;
+      if (leftMissing) return 1;
+      if (rightMissing) return -1;
+      return leftValue - rightValue;
+    });
+  }, [hasItemNumberColumn, items]);
   const paginatedItems = useMemo(
     () =>
-      items.filter(
+      displayItems.filter(
         (_, index) => index >= pageStartIndex && index < pageEndIndex
       ),
-    [items, pageStartIndex, pageEndIndex]
+    [displayItems, pageStartIndex, pageEndIndex]
   );
 
   // Compute defective/missing status for each item
@@ -1189,6 +1318,8 @@ export default function InventorySection() {
     setSelectedExportSections(selectedSection ? [selectedSection.slug] : []);
     setShowColumnOptions(false);
     setExportDate(new Date().toISOString().slice(0, 10));
+    setExportSchoolYear(getCurrentSchoolYear());
+    setExportSemester(SEMESTER_OPTIONS[0]);
     setPreparedByName("");
     setInspectedByName("");
     setShowExportModal(true);
@@ -1249,7 +1380,8 @@ export default function InventorySection() {
           exportDate,
           logoBuffer,
           separatorBuffer,
-          columnsToExport.length + 1
+          columnsToExport.length + 1,
+          { schoolYear: exportSchoolYear, semester: exportSemester }
         );
 
         worksheet.addRow([]);
@@ -1524,7 +1656,7 @@ export default function InventorySection() {
                   <thead className="bg-slate-100">
                     <tr>
                       {usesTemplateColumns &&
-                        templateColumns.map((column) => (
+                        displayTemplateColumns.map((column) => (
                           <th
                             key={column.key}
                             className="whitespace-nowrap border-r border-slate-300 px-4 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-700 last:border-r-0"
@@ -1542,12 +1674,21 @@ export default function InventorySection() {
                   <tbody className="divide-y divide-slate-200 bg-white">
                     {paginatedItems.map((item, rowIndex) => {
                       const itemStatus = itemStatusMap[item.id] || { hasDefect: false, hasMissing: false };
+                      const rowIndicatorStyle = itemStatus.hasDefect && itemStatus.hasMissing
+                        ? { boxShadow: "inset 4px 0 0 #f43f5e, inset 8px 0 0 #f59e0b" }
+                        : itemStatus.hasDefect
+                          ? { boxShadow: "inset 4px 0 0 #f43f5e" }
+                          : itemStatus.hasMissing
+                            ? { boxShadow: "inset 4px 0 0 #f59e0b" }
+                            : undefined;
                       return (
-                      <tr key={item.id} className={`${rowIndex % 2 === 0 ? "bg-slate-50" : "bg-white"} ${itemStatus.hasDefect || itemStatus.hasMissing ? "relative" : ""}`}>
-                        {itemStatus.hasDefect && <div className="absolute left-0 top-0 bottom-0 w-1 bg-rose-500" />}
-                        {itemStatus.hasMissing && <div className={`absolute left-0 top-0 bottom-0 w-1 bg-amber-400 ${itemStatus.hasDefect ? "left-1" : ""}`} />}
+                      <tr
+                        key={item.id}
+                        style={rowIndicatorStyle}
+                        className={`${rowIndex % 2 === 0 ? "bg-slate-50" : "bg-white"}`}
+                      >
                         {usesTemplateColumns &&
-                          templateColumns.map((column) => {
+                          displayTemplateColumns.map((column) => {
                             const columnKey = column.key;
                             const columnEditorType = getEditorType(column);
                             const columnValue = item?.[columnKey];
@@ -1760,6 +1901,7 @@ export default function InventorySection() {
           item={editingItem}
           tableName={tabTableName}
           templateColumns={templateColumns}
+            items={items}
           onClose={() => setShowModal(false)}
           onSaved={handleSaved}
         />
@@ -1783,6 +1925,43 @@ export default function InventorySection() {
                   onChange={(event) => setExportDate(event.target.value)}
                   className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500">School Year *</label>
+                  <div className="relative mt-1">
+                    <select
+                      value={exportSchoolYear}
+                      onChange={(event) => setExportSchoolYear(event.target.value)}
+                      className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+                    >
+                      {generateSchoolYearOptions().map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500">Semester *</label>
+                  <div className="relative mt-1">
+                    <select
+                      value={exportSemester}
+                      onChange={(event) => setExportSemester(event.target.value)}
+                      className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+                    >
+                      {SEMESTER_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -1879,7 +2058,7 @@ export default function InventorySection() {
               <button
                 type="button"
                 onClick={handleExportSection}
-                disabled={exporting || selectedExportColumns.length === 0}
+                disabled={exporting || selectedExportColumns.length === 0 || !exportSchoolYear || !exportSemester}
                 className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 {exporting ? "Exporting..." : "Export Selected"}
