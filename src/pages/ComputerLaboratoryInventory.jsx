@@ -135,16 +135,22 @@ const isValidSchoolYear = (value) => {
     return /^\s*\d{4}\s*[-–—]\s*\d{4}\s*$/.test(String(value));
 };
 
-const generateSchoolYearOptions = (back = 2, forward = 4) => {
-    const now = new Date();
-    const current = now.getFullYear();
-    const start = current - back;
-    const end = current + forward;
+const getCurrentSchoolYear = (referenceDate = new Date()) => {
+    const month = referenceDate.getMonth();
+    const year = referenceDate.getFullYear();
+    const startYear = month >= 5 ? year : year - 1;
+    return `${startYear} - ${startYear + 1}`;
+};
+
+const generateSchoolYearOptions = (back = 3, forward = 3, referenceDate = new Date()) => {
+    const currentSchoolYear = getCurrentSchoolYear(referenceDate);
+    const currentStartYear = Number(currentSchoolYear.slice(0, 4));
+    const start = currentStartYear - back;
+    const end = currentStartYear + forward;
     const opts = [];
     for (let y = start; y <= end; y++) {
         opts.push(`${y} - ${y + 1}`);
     }
-    // sort descending so newest first
     return opts.reverse();
 };
 
@@ -322,6 +328,8 @@ export default function ComputerLaboratoryInventory() {
         const role = String(user?.role || "").toLowerCase();
         return role === "superadmin" || role === "admin";
     }, [user?.role]);
+    const currentSchoolYear = useMemo(() => getCurrentSchoolYear(), []);
+    const schoolYearOptions = useMemo(() => generateSchoolYearOptions(3, 3), []);
 
     const getCellDraftKey = (computerNumber, componentType, field) =>
         `${computerNumber}__${componentType}__${field}`;
@@ -1518,11 +1526,7 @@ export default function ComputerLaboratoryInventory() {
                                 setSelectedExportLabs(selectedLab ? [selectedLab] : labOptions.map((l) => l.value));
                                 setSelectedExportColumns(COMPONENT_TYPES.slice());
                                 setExportDate(new Date().toISOString().slice(0, 10));
-                                const defaultSY = (() => {
-                                    const y = new Date().getFullYear();
-                                    return `${y} - ${y + 1}`;
-                                })();
-                                setExportSchoolYear(defaultSY);
+                                setExportSchoolYear(currentSchoolYear);
                                 setExportSemester(SEMESTER_OPTIONS[0]);
                                 setPreparedByName("");
                                 setInspectedByName("");
@@ -1698,7 +1702,7 @@ export default function ComputerLaboratoryInventory() {
                                             onChange={(e) => setExportSchoolYear(e.target.value)}
                                             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
                                         >
-                                            {generateSchoolYearOptions().map((opt) => (
+                                            {schoolYearOptions.map((opt) => (
                                                 <option key={opt} value={opt}>
                                                     {opt}
                                                 </option>
