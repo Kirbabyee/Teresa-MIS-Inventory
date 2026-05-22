@@ -69,7 +69,7 @@ const INVENTORY_TEMPLATES = [
       { key: "brand", label: "Brand", data_type: "text" },
       { key: "description", label: "Description", data_type: "text" },
       { key: "quantity", label: "Quantity", data_type: "int" },
-      { key: "remarks", label: "Remarks", data_type: "text", options: ["Working", "Defective", "For Repair", "Disposed"] },
+      { key: "remarks", label: "Remarks", data_type: "text", fieldType: "dropdown", options: ["Working", "Defective", "For Repair", "Disposed"] },
       { key: "location", label: "Location", data_type: "text" },
     ],
   },
@@ -90,7 +90,7 @@ const INVENTORY_TEMPLATES = [
       { key: "model", label: "Model", data_type: "text" },
       { key: "serial_number", label: "Serial Number", data_type: "text" },
       { key: "quantity", label: "Quantity", data_type: "int" },
-      { key: "remarks", label: "Remarks", data_type: "text", options: ["Working", "Defective", "For Repair", "Disposed"] },
+      { key: "remarks", label: "Remarks", data_type: "text", fieldType: "dropdown", options: ["Working", "Defective", "For Repair", "Disposed"] },
       { key: "acquisition_date", label: "Acquisition Date", data_type: "date" },
     ],
   },
@@ -356,7 +356,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
                       }));
                     }
                   }}
-                  className="rounded-md bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-700"
+                  className="rounded-md bg-[#4a1111] px-3 py-2 text-xs font-medium text-white hover:bg-[#3f0f0f]"
                 >
                   Add
                 </button>
@@ -409,7 +409,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
                     <button
                       type="button"
                       onClick={() => addSubColumn()}
-                      className="rounded-md bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-700"
+                      className="rounded-md bg-[#4a1111] px-3 py-2 text-xs font-medium text-white hover:bg-[#3f0f0f]"
                     >
                       Add
                     </button>
@@ -548,7 +548,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
             type="button"
             onClick={requestSave}
             disabled={isSaving}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#4a1111] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving && (
               <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
@@ -597,7 +597,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
               <button type="button" onClick={cancelSave} disabled={isSaving} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50">
                 Cancel
               </button>
-              <button type="button" onClick={confirmSave} disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" onClick={confirmSave} disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded-md bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50">
                 {isSaving && (
                   <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
                 )}
@@ -755,7 +755,7 @@ function SectionModal({ section, onClose, onSave }) {
             type="button"
             onClick={requestSave}
             disabled={isSectionSaveDisabled || isSaving}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#4a1111] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving && (
               <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
@@ -804,7 +804,7 @@ function SectionModal({ section, onClose, onSave }) {
               <button type="button" onClick={cancelSave} disabled={isSaving} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50">
                 Cancel
               </button>
-              <button type="button" onClick={confirmSave} disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" onClick={confirmSave} disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded-md bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50">
                 {isSaving && (
                   <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
                 )}
@@ -1145,7 +1145,7 @@ function TabModal({ tab, onClose, onSave }) {
                     <div
                       className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
                         wizardStep > step.num
-                          ? "bg-emerald-600 text-white"
+                          ? "bg-[#4a1111] text-white"
                           : wizardStep === step.num
                           ? "bg-[#4a1111] text-white"
                           : "bg-slate-200 text-slate-500"
@@ -1161,7 +1161,7 @@ function TabModal({ tab, onClose, onSave }) {
                       {step.label}
                     </span>
                     {idx < STEPS.length - 1 && (
-                      <div className={`ml-3 h-0.5 w-8 ${wizardStep > step.num ? "bg-emerald-600" : "bg-slate-200"}`} />
+                      <div className={`ml-3 h-0.5 w-8 ${wizardStep > step.num ? "bg-[#4a1111]" : "bg-slate-200"}`} />
                     )}
                   </div>
                 ))}
@@ -1196,7 +1196,7 @@ function TabModal({ tab, onClose, onSave }) {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
             {/* Wizard Step Content */}
             {isNewTab && wizardStep === 1 && (
               <div className="p-5">
@@ -1262,8 +1262,141 @@ function TabModal({ tab, onClose, onSave }) {
         </div>
             )}
 
-        {/* Navigation Footer - Always visible */}
-          <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4">
+            {((isNewTab && wizardStep >= 3) || !isNewTab) && tabType === "legacy" && (
+            <div className="border-t border-slate-200 px-5 py-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-900">Sections</h4>
+                  {hasUserInteracted && tabValidation.sections ? (
+                    <p className="mt-1 text-sm text-rose-600">{tabValidation.sections}</p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSectionToEdit(null);
+                    setEditingSectionIndex(null);
+                    setShowSectionModal(true);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Section
+                </button>
+              </div>
+
+              <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Section Name</th>
+                      <th className="px-4 py-3">Description</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {sections.length === 0 ? (
+                      <tr>
+                        <td className="px-4 py-8 text-center text-slate-500" colSpan={3}>
+                          Add atleast one or more sections.
+                        </td>
+                      </tr>
+                    ) : (
+                      sections.map((currentSection, index) => (
+                        <tr key={currentSection.id || currentSection.slug || index} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-medium text-slate-900">{currentSection.name}</td>
+                          <td className="px-4 py-3 text-slate-600">{currentSection.description || "—"}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex justify-end gap-2">
+                              <button type="button" onClick={() => editSection(index)} className={iconButtonClass} title="Edit Section">
+                                <Edit className="h-4 w-4" />
+                              </button>
+                              <button type="button" onClick={() => deleteSection(index)} className={iconButtonClass} title="Delete Section">
+                                <Trash2 className="h-4 w-4 text-rose-500" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            )}
+
+            {((isNewTab && wizardStep >= 4) || !isNewTab) && tabType === "legacy" && (
+            <div className="border-t border-slate-200 px-5 py-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
+                  {hasUserInteracted && tabValidation.columns ? (
+                    <p className="mt-1 text-sm text-rose-600">{tabValidation.columns}</p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setColumnToEdit(null);
+                    setEditingColumnIndex(null);
+                    setShowColumnModal(true);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Column
+                </button>
+              </div>
+
+              <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    <tr>
+
+                      <th className="px-4 py-3">Name</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {columns.length === 0 ? (
+                      <tr>
+                        <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
+                           Add at least one column.
+                        </td>
+                      </tr>
+                    ) : (
+                      columns.map((currentColumn, index) => (
+                        <tr key={currentColumn.id || currentColumn.key || index} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 text-slate-600">{currentColumn.label}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex justify-end gap-2">
+                              <button type="button" onClick={() => editColumn(index)} className={iconButtonClass} title="Edit Column">
+                                <Edit className="h-4 w-4" />
+                              </button>
+                              <button type="button" onClick={() => deleteColumn(index)} className={iconButtonClass} title="Delete Column">
+                                <Trash2 className="h-4 w-4 text-rose-500" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            )}
+
+            {tabType === "dynamic" && (
+              <div className="flex flex-col items-center justify-center flex-1 p-10">
+                <h4 className="text-lg font-semibold text-slate-900 mb-4">Dynamic Tab Creation (Coming Soon)</h4>
+                <p className="text-slate-600">This feature will allow you to create dynamic inventory tabs with advanced options.</p>
+              </div>
+            )}
+          </div>
+
+        {/* Navigation Footer with Add Buttons */}
+          <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4">
             <div>
               {isNewTab && wizardStep > 1 && wizardStep < STEPS.length && (
                 <button
@@ -1293,145 +1426,13 @@ function TabModal({ tab, onClose, onSave }) {
                   type="button"
                   onClick={requestSave}
                   disabled={isSaveDisabled}
-                  className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-[#4a1111] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Save Tab
                 </button>
               )}
             </div>
           </div>
-
-        {((isNewTab && wizardStep >= 3) || !isNewTab) && tabType === "legacy" && (
-        <div className="border-t border-slate-200 px-5 py-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h4 className="text-sm font-semibold text-slate-900">Sections</h4>
-              {hasUserInteracted && tabValidation.sections ? (
-                <p className="mt-1 text-sm text-rose-600">{tabValidation.sections}</p>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setSectionToEdit(null);
-                setEditingSectionIndex(null);
-                setShowSectionModal(true);
-              }}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
-            >
-              <Plus className="h-4 w-4" />
-              Add Section
-            </button>
-          </div>
-
-          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                <tr>
-                  <th className="px-4 py-3">Section Name</th>
-                  <th className="px-4 py-3">Description</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {sections.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-slate-500" colSpan={3}>
-                      Add atleast one or more sections.
-                    </td>
-                  </tr>
-                ) : (
-                  sections.map((currentSection, index) => (
-                    <tr key={currentSection.id || currentSection.slug || index} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 font-medium text-slate-900">{currentSection.name}</td>
-                      <td className="px-4 py-3 text-slate-600">{currentSection.description || "—"}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex justify-end gap-2">
-                          <button type="button" onClick={() => editSection(index)} className={iconButtonClass} title="Edit Section">
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button type="button" onClick={() => deleteSection(index)} className={iconButtonClass} title="Delete Section">
-                            <Trash2 className="h-4 w-4 text-rose-500" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        )}
-
-        {((isNewTab && wizardStep >= 4) || !isNewTab) && tabType === "legacy" && (
-        <div className="border-t border-slate-200 px-5 py-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
-              {hasUserInteracted && tabValidation.columns ? (
-                <p className="mt-1 text-sm text-rose-600">{tabValidation.columns}</p>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setColumnToEdit(null);
-                setEditingColumnIndex(null);
-                setShowColumnModal(true);
-              }}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
-            >
-              <Plus className="h-4 w-4" />
-              Add Column
-            </button>
-          </div>
-
-          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                <tr>
-                 
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {columns.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
-                       Add at least one column.
-                    </td>
-                  </tr>
-                ) : (
-                  columns.map((currentColumn, index) => (
-                    <tr key={currentColumn.id || currentColumn.key || index} className="hover:bg-slate-50">          
-                      <td className="px-4 py-3 text-slate-600">{currentColumn.label}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex justify-end gap-2">
-                          <button type="button" onClick={() => editColumn(index)} className={iconButtonClass} title="Edit Column">
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button type="button" onClick={() => deleteColumn(index)} className={iconButtonClass} title="Delete Column">
-                            <Trash2 className="h-4 w-4 text-rose-500" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        )}
-
-        {tabType === "dynamic" && (
-          <div className="flex flex-col items-center justify-center flex-1 p-10">
-            <h4 className="text-lg font-semibold text-slate-900 mb-4">Dynamic Tab Creation (Coming Soon)</h4>
-            <p className="text-slate-600">This feature will allow you to create dynamic inventory tabs with advanced options.</p>
-          </div>
-        )}
 
         {isSaving && (
           <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm">
@@ -1477,7 +1478,7 @@ function TabModal({ tab, onClose, onSave }) {
                 type="button"
                 onClick={confirmSave}
                 disabled={isSaving}
-                className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSaving && (
                   <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
@@ -1609,7 +1610,6 @@ function TabModal({ tab, onClose, onSave }) {
       )}
     </div>
   </div>
-</div>
   );
 }
 
