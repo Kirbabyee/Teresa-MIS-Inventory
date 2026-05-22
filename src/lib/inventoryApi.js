@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/api/supabaseClient";
 
 export const INVENTORY_CATALOG_CHANGED_EVENT = "inventory-catalog-changed";
+export const INVENTORY_ITEMS_CHANGED_EVENT = "inventory-items-changed";
 
 const DEFAULT_CREATE_TABLE_ENDPOINT = "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/create-inventory-table";
 const DEFAULT_MODIFY_TABLE_ENDPOINT = "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/modify-inventory-table";
@@ -102,6 +103,11 @@ export const fetchInventoryCatalog = async () => {
 export const notifyInventoryCatalogChanged = () => {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(INVENTORY_CATALOG_CHANGED_EVENT));
+};
+
+export const notifyInventoryItemsChanged = () => {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(INVENTORY_ITEMS_CHANGED_EVENT));
 };
 
 export const useInventoryCatalog = () => {
@@ -393,6 +399,123 @@ export const upsertInventoryItem = async ({ id, sectionId, computerNumber, type,
     .single();
   if (error) throw error;
   return data;
+};
+
+export const updateInventoryItemQuantity = async ({
+  id,
+  sectionId,
+  tableName = null,
+  quantity,
+}) => {
+  if (!id) throw new Error("Inventory item is required.");
+  if (!sectionId) throw new Error("Inventory section is required.");
+
+  const nextQuantity = Number(quantity);
+  if (!Number.isFinite(nextQuantity) || nextQuantity < 0) {
+    throw new Error("Inventory quantity must be a valid non-negative number.");
+  }
+
+  if (tableName) {
+    const { data, error } = await supabase
+      .from(tableName)
+      .update({
+        quantity: nextQuantity,
+      })
+      .eq("id", id)
+      .eq("section_id", sectionId)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+    notifyInventoryItemsChanged();
+    return data;
+  }
+
+  const { data: existingItem, error: existingError } = await supabase
+    .from("inventory_items")
+    .select("data")
+    .eq("id", id)
+    .eq("section_id", sectionId)
+    .single();
+
+  if (existingError) throw existingError;
+
+  const { data, error } = await supabase
+    .from("inventory_items")
+    .update({
+      data: {
+        ...(existingItem?.data && typeof existingItem.data === "object" ? existingItem.data : {}),
+        quantity: nextQuantity,
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("section_id", sectionId)
+    .select("id, section_id, computer_number, type, brand, description, status, data, sort_order, created_at, updated_at")
+    .single();
+
+  if (error) throw error;
+  notifyInventoryItemsChanged();
+  return data;
+};
+
+export const adjustInventoryItemQuantity = async ({
+  id,
+  sectionId,
+  tableName = null,
+  delta,
+}) => {
+  if (!id) throw new Error("Inventory item is required.");
+  if (!sectionId) throw new Error("Inventory section is required.");
+
+  const quantityDelta = Number(delta);
+  if (!Number.isFinite(quantityDelta)) {
+    throw new Error("Inventory quantity adjustment must be a valid number.");
+  }
+
+  if (tableName) {
+    const { data: existingItem, error: existingError } = await supabase
+      .from(tableName)
+      .select("quantity")
+      .eq("id", id)
+      .eq("section_id", sectionId)
+      .single();
+
+    if (existingError) throw existingError;
+
+    const currentQuantity = Number(existingItem?.quantity ?? 0);
+    if (!Number.isFinite(currentQuantity)) {
+      throw new Error("Current inventory quantity is invalid.");
+    }
+
+    return updateInventoryItemQuantity({
+      id,
+      sectionId,
+      tableName,
+      quantity: Math.max(0, currentQuantity + quantityDelta),
+    });
+  }
+
+  const { data: existingItem, error: existingError } = await supabase
+    .from("inventory_items")
+    .select("data")
+    .eq("id", id)
+    .eq("section_id", sectionId)
+    .single();
+
+  if (existingError) throw existingError;
+
+  const currentQuantity = Number(existingItem?.data?.quantity ?? 0);
+  if (!Number.isFinite(currentQuantity)) {
+    throw new Error("Current inventory quantity is invalid.");
+  }
+
+  return updateInventoryItemQuantity({
+    id,
+    sectionId,
+    tableName,
+    quantity: Math.max(0, currentQuantity + quantityDelta),
+  });
 };
 
 export const deleteInventoryItem = async (id, tableName = null) => {

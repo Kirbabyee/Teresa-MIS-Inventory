@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import arkLogoUrl from "@/assets/imgs/ark-logo.png";
 import {
+  INVENTORY_ITEMS_CHANGED_EVENT,
   deleteInventoryItem,
   fetchInventoryItems,
   getTabTableConfig,
@@ -861,6 +862,19 @@ export default function InventorySection() {
       setSavingCellKey(null);
     }
   }, [gridEditMode, selectedSectionSlug]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const handleInventoryItemsChanged = () => {
+      setRefreshKey((current) => current + 1);
+    };
+
+    window.addEventListener(INVENTORY_ITEMS_CHANGED_EVENT, handleInventoryItemsChanged);
+    return () => {
+      window.removeEventListener(INVENTORY_ITEMS_CHANGED_EVENT, handleInventoryItemsChanged);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

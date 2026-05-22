@@ -15,13 +15,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  adjustInventoryItemQuantity,
   fetchInventoryItems,
   getTabTableConfig,
+  updateInventoryItemQuantity,
   useInventoryCatalog,
 } from "@/lib/inventoryApi";
 import {
   createBorrowingRecord,
   fetchBorrowingRecords,
+  markOverdueBorrowingRecords,
   returnBorrowingRecord,
 } from "@/lib/borrowingApi";
 
@@ -111,6 +114,52 @@ const getExportItemLabel = (item = {}) => {
 
   if (namedValue) return String(namedValue);
   return "";
+};
+
+const getItemQuantity = (item = {}) => {
+  if (item.quantity !== null && item.quantity !== undefined && String(item.quantity).trim() !== "") {
+    return String(item.quantity);
+  }
+
+  if (
+    item.data?.quantity !== null &&
+    item.data?.quantity !== undefined &&
+    String(item.data.quantity).trim() !== ""
+  ) {
+    return String(item.data.quantity);
+  }
+
+  const quantityDetail = (item.details || []).find(
+    (detail) =>
+      String(detail.key || "").toLowerCase() === "quantity" ||
+      String(detail.label || "").toLowerCase() === "quantity"
+  );
+
+  return quantityDetail?.value ? String(quantityDetail.value) : "";
+};
+
+const getBorrowedQuantity = (item = {}) => {
+  const rawQuantity =
+    item.quantity ??
+    item.details?.find((detail) => String(detail.key || "").toLowerCase() === "quantity")?.value ??
+    item.details?.find((detail) => String(detail.label || "").toLowerCase() === "quantity")?.value ??
+    1;
+  const quantity = Number(rawQuantity);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+};
+
+const formatBorrowingStatus = (status = "borrowed") => {
+  const normalizedStatus = String(status || "borrowed").toLowerCase();
+  if (normalizedStatus === "returned") return "Returned";
+  if (normalizedStatus === "not_returned") return "Not Returned";
+  return "Borrowed";
+};
+
+const getBorrowingStatusClass = (status = "borrowed") => {
+  const normalizedStatus = String(status || "borrowed").toLowerCase();
+  if (normalizedStatus === "returned") return "bg-emerald-100 text-emerald-700";
+  if (normalizedStatus === "not_returned") return "bg-rose-100 text-rose-700";
+  return "bg-sky-100 text-sky-700";
 };
 
 const formatExportDate = (value) => {
@@ -235,6 +284,7 @@ export default function Borrowing() {
   const [selectedTabId, setSelectedTabId] = useState("");
   const [selectedSectionId, setSelectedSectionId] = useState("");
   const [selectedItemIds, setSelectedItemIds] = useState([]);
+  const [selectedItemQuantities, setSelectedItemQuantities] = useState({});
   const [inventoryItems, setInventoryItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState("");
@@ -252,13 +302,20 @@ export default function Borrowing() {
   const [dateRange, setDateRange] = useState({ from: undefined, to: undefined });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [customItems, setCustomItems] = useState([]);
-  const [customItemForm, setCustomItemForm] = useState({ name: "", description: "" });
+  const [customItemForm, setCustomItemForm] = useState({
+    name: "",
+    brand: "",
+    quantity: "",
+    condition: "Working",
+    remarks: "",
+  });
   const [addingCustom, setAddingCustom] = useState(false);
   const [returnRemarksByItem, setReturnRemarksByItem] = useState({});
   const [page, setPage] = useState(0);
   const pageSize = 5;
 
   const [data, setData] = useState([]);
+  const [depletedItems, setDepletedItems] = useState(new Set());
   const [showExportModal, setShowExportModal] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportDate, setExportDate] = useState(new Date().toISOString().slice(0, 10));
@@ -275,8 +332,14 @@ export default function Borrowing() {
     [sections, selectedSectionId]
   );
   const selectedItems = useMemo(
-    () => inventoryItems.filter((item) => selectedItemIds.includes(String(item.id))),
-    [inventoryItems, selectedItemIds]
+    () =>
+      inventoryItems
+        .filter((item) => selectedItemIds.includes(String(item.id)))
+        .map((item) => ({
+          ...item,
+          selectedQuantity: Number(selectedItemQuantities[String(item.id)] || 1),
+        })),
+    [inventoryItems, selectedItemIds, selectedItemQuantities]
   );
   const inventoryNameLookup = useMemo(() => {
     const tabNames = {};
@@ -321,6 +384,9 @@ export default function Borrowing() {
     setBorrowingsError("");
 
     try {
+      if (statusFilter === "borrowed") {
+        await markOverdueBorrowingRecords({ days: 3 });
+      }
       const records = await fetchBorrowingRecords({ status: statusFilter === "all" ? null : "borrowed" });
       if (!cancelToken.current) {
         setData(records);
@@ -384,6 +450,7 @@ export default function Borrowing() {
     if (!selectedSectionId) {
       setInventoryItems([]);
       setSelectedItemIds([]);
+      setSelectedItemQuantities({});
       return;
     }
 
@@ -427,9 +494,16 @@ export default function Borrowing() {
     setSelectedTabId("");
     setSelectedSectionId("");
     setSelectedItemIds([]);
+    setSelectedItemQuantities({});
     setInventoryItems([]);
     setCustomItems([]);
-    setCustomItemForm({ name: "", description: "" });
+    setCustomItemForm({
+      name: "",
+      brand: "",
+      quantity: "",
+      condition: "Working",
+      remarks: "",
+    });
     setItemsError("");
     setFormError("");
     setFormErrors({});
@@ -543,7 +617,7 @@ export default function Borrowing() {
             record.name,
             record.studentId,
             record.role,
-            record.status || statusFilter,
+            formatBorrowingStatus(record.status || statusFilter),
             formatExportDate(record.date),
             itemLabels[itemIndex] || "",
             itemRemarks[itemIndex] || "",
@@ -668,12 +742,26 @@ export default function Borrowing() {
     setReturningBorrow(true);
     setReturnError("");
     try {
+      await Promise.all(
+        (pendingReturn.items || [])
+          .filter((item) => item.inventoryItemId && item.inventorySectionId)
+          .map((item) =>
+            adjustInventoryItemQuantity({
+              id: item.inventoryItemId,
+              sectionId: item.inventorySectionId,
+              tableName: item.tableName || "",
+              delta: getBorrowedQuantity(item),
+            })
+          )
+      );
       await returnBorrowingRecord(pendingReturn.id, returnRemarksByItem);
       await loadBorrowings();
       setSuccessMessage("Borrowed item returned.");
       setPendingReturn(null);
     } catch (error) {
-      setBorrowingsError(error?.message || "Failed to return borrowed item.");
+      const message = error?.message || "Failed to return borrowed item.";
+      setReturnError(message);
+      setBorrowingsError(message);
     } finally {
       setReturningBorrow(false);
     }
@@ -691,11 +779,22 @@ export default function Borrowing() {
 
   const toggleItem = (itemId) => {
     const normalizedId = String(itemId);
-    setSelectedItemIds((current) =>
-      current.includes(normalizedId)
-        ? current.filter((id) => id !== normalizedId)
-        : [...current, normalizedId]
-    );
+    const isSelected = selectedItemIds.includes(normalizedId);
+
+    if (isSelected) {
+      setSelectedItemIds((current) => current.filter((id) => id !== normalizedId));
+      setSelectedItemQuantities((current) => {
+        const { [normalizedId]: _, ...next } = current;
+        return next;
+      });
+    } else {
+      setSelectedItemIds((current) => [...current, normalizedId]);
+      setSelectedItemQuantities((current) => ({
+        ...current,
+        [normalizedId]: 1,
+      }));
+    }
+
     setFormErrors((current) => ({ ...current, items: "" }));
     setFormError("");
   };
@@ -718,19 +817,39 @@ export default function Borrowing() {
       return;
     }
 
+    const invalidQuantity = selectedItems.some((item) => {
+      const chosen = Number(selectedItemQuantities[String(item.id)] || 0);
+      const maxAllowed = Number(item.quantity ?? item.data?.quantity ?? 1);
+      return !Number.isInteger(chosen) || chosen <= 0 || chosen > maxAllowed;
+    });
+
+    if (invalidQuantity) {
+      setFormError("One or more selected item quantities are invalid or exceed available stock.");
+      return;
+    }
+
     if (pendingCustomItemName) {
+      const quantityValue = customItemForm.quantity.trim();
+      if (!quantityValue || !/^\d+$/.test(quantityValue) || Number(quantityValue) <= 0) {
+        setFormError("Custom item quantity is required and must be a number.");
+        return;
+      }
+
+      const details = [];
+
+      if (customItemForm.brand.trim()) {
+        details.push({ key: "brand", label: "Brand", value: customItemForm.brand.trim() });
+      }
+      details.push({ key: "quantity", label: "Quantity", value: quantityValue });
+      details.push({ key: "condition", label: "Condition", value: customItemForm.condition });
+      if (customItemForm.remarks.trim()) {
+        details.push({ key: "remarks", label: "Remarks", value: customItemForm.remarks.trim() });
+      }
+
       const newCustomItem = {
         id: `custom-${Date.now()}`,
         label: pendingCustomItemName,
-        details: customItemForm.description.trim()
-          ? [
-              {
-                key: "description",
-                label: "Description",
-                value: customItemForm.description.trim(),
-              },
-            ]
-          : [],
+        details,
         inventoryItemId: null,
         inventoryTabId: null,
         inventorySectionId: null,
@@ -738,7 +857,13 @@ export default function Borrowing() {
       };
 
       setCustomItems((current) => [...current, newCustomItem]);
-      setCustomItemForm({ name: "", description: "" });
+      setCustomItemForm({
+        name: "",
+        brand: "",
+        quantity: "",
+        condition: "Working",
+        remarks: "",
+      });
     }
 
     setShowConfirm(true);
@@ -749,57 +874,144 @@ export default function Borrowing() {
 
     setSavingBorrow(true);
     try {
+      const inventoryQuantityUpdates = selectedItems.map((item) => {
+        const currentQuantity = Number(item.quantity ?? item.data?.quantity ?? 0);
+        const borrowedQuantity = Number(item.selectedQuantity || 1);
+        const remainingQuantity = Math.max(0, currentQuantity - borrowedQuantity);
+
+        return {
+          item,
+          currentQuantity,
+          borrowedQuantity,
+          remainingQuantity,
+        };
+      });
+
+      const invalidInventoryQuantity = inventoryQuantityUpdates.some(
+        ({ currentQuantity, borrowedQuantity }) =>
+          !Number.isFinite(currentQuantity) ||
+          !Number.isInteger(borrowedQuantity) ||
+          borrowedQuantity <= 0 ||
+          borrowedQuantity > currentQuantity
+      );
+
+      if (invalidInventoryQuantity) {
+        throw new Error("One or more selected item quantities are invalid or exceed available stock.");
+      }
+
+      await Promise.all(
+        inventoryQuantityUpdates.map(({ item, remainingQuantity }) =>
+          updateInventoryItemQuantity({
+            id: item.id,
+            sectionId: selectedSection?.id,
+            tableName: tabTableNames[selectedTabId] || null,
+            quantity: remainingQuantity,
+          })
+        )
+      );
+
       const savedRecord = await createBorrowingRecord({
         borrowerName: form.name.trim(),
         borrowerIdNumber: form.studentId.trim(),
         borrowerRole: form.role,
-        items: [...selectedItems.map((item) => ({
-          inventoryItemId: item.id,
-          inventoryTabId: selectedTab?.id || null,
-          inventoryTabName: selectedTab?.name || "",
-          inventorySectionId: selectedSection?.id || null,
-          inventorySectionName: selectedSection?.name || "",
-          inventoryTableName: tabTableNames[selectedTabId] || "",
-          label: getItemLabel(item),
-          details: getItemDetails(item),
-        })), ...customItems.map((item) => ({
-          inventoryItemId: null,
-          inventoryTabId: null,
-          inventoryTabName: "",
-          inventorySectionId: null,
-          inventorySectionName: "",
-          inventoryTableName: "",
-          label: item.label,
-          details: item.details,
-        }))],
+        items: [...selectedItems.map((item) => {
+          const details = getItemDetails(item).filter((detail) => detail.key !== "quantity");
+          details.unshift({
+            key: "quantity",
+            label: "Quantity",
+            value: String(item.selectedQuantity || 1),
+          });
+
+          return {
+            inventoryItemId: item.id,
+            inventoryTabId: selectedTab?.id || null,
+            inventoryTabName: selectedTab?.name || "",
+            inventorySectionId: selectedSection?.id || null,
+            inventorySectionName: selectedSection?.name || "",
+            inventoryTableName: tabTableNames[selectedTabId] || "",
+            label: getItemLabel(item),
+            details,
+            quantity: item.selectedQuantity || 1,
+          };
+        }), ...customItems.map((item) => {
+          const quantity = Number(
+            item.details?.find((detail) => detail.key === "quantity")?.value || 1
+          );
+          return {
+            inventoryItemId: null,
+            inventoryTabId: null,
+            inventoryTabName: "",
+            inventorySectionId: null,
+            inventorySectionName: "",
+            inventoryTableName: "",
+            label: item.label,
+            details: item.details,
+            quantity,
+          };
+        })],
       });
 
       const newEntry = {
         ...savedRecord,
-        items: [...selectedItems.map((item) => ({
-          id: item.id,
-          inventoryItemId: item.id,
-          inventoryTabId: selectedTab?.id || null,
-          inventorySectionId: selectedSection?.id || null,
-          label: getItemLabel(item),
-          details: getItemDetails(item),
-          tab: selectedTab?.name || "",
-          section: selectedSection?.name || "",
-        })), ...customItems.map((item) => ({
-          id: item.id,
-          inventoryItemId: null,
-          inventoryTabId: null,
-          inventorySectionId: null,
-          label: item.label,
-          details: item.details,
-          tab: "",
-          section: "",
-        }))],
+        items: [...selectedItems.map((item) => {
+          const details = getItemDetails(item).filter((detail) => detail.key !== "quantity");
+          details.unshift({
+            key: "quantity",
+            label: "Quantity",
+            value: String(item.selectedQuantity || 1),
+          });
+
+          return {
+            id: item.id,
+            inventoryItemId: item.id,
+            inventoryTabId: selectedTab?.id || null,
+            inventorySectionId: selectedSection?.id || null,
+            label: getItemLabel(item),
+            details,
+            quantity: item.selectedQuantity || 1,
+            tab: selectedTab?.name || "",
+            section: selectedSection?.name || "",
+          };
+        }), ...customItems.map((item) => {
+          const quantity = Number(
+            item.details?.find((detail) => detail.key === "quantity")?.value || 1
+          );
+          return {
+            id: item.id,
+            inventoryItemId: null,
+            inventoryTabId: null,
+            inventorySectionId: null,
+            inventoryTabName: "",
+            inventorySectionName: "",
+            label: item.label,
+            details: item.details,
+            quantity,
+            tab: "",
+            section: "",
+          };
+        })],
       };
 
       setData((prev) => [newEntry, ...prev]);
+      setInventoryItems((currentItems) =>
+        currentItems.map((item) => {
+          const update = inventoryQuantityUpdates.find(
+            ({ item: updatedItem }) => String(updatedItem.id) === String(item.id)
+          );
+
+          return update ? { ...item, quantity: update.remainingQuantity } : item;
+        })
+      );
       setSuccessMessage("Borrowing record added successfully.");
       closeBorrowModal();
+
+      setDepletedItems(
+        new Set(
+          inventoryQuantityUpdates
+            .filter(({ remainingQuantity }) => remainingQuantity <= 0)
+            .map(({ item }) => item.id)
+        )
+      );
     } catch (error) {
       setFormError(error?.message || "Failed to save borrowing record.");
       setShowConfirm(false);
@@ -1020,6 +1232,7 @@ export default function Borrowing() {
                 <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Borrowed</th>
                 <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Status</th>
                 <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Items</th>
+                <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Quantity</th>
                 <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Condition</th>
                 {statusFilter !== "borrowed" && (
                   <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Remarks</th>
@@ -1032,7 +1245,7 @@ export default function Borrowing() {
             <tbody className="divide-y divide-slate-200">
               {currentPageData.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500">
+                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-slate-500">
                     {statusFilter === "borrowed" ? "No borrowed items yet." : "No borrowing records found."}
                   </td>
                 </tr>
@@ -1054,8 +1267,12 @@ export default function Borrowing() {
                         <div>Returned: {new Date(record.returnedAt).toLocaleString()}</div>
                       )}
                     </td>
-                    <td className="px-4 py-4 align-middle border-b border-slate-100 text-xs font-semibold text-slate-700">
-                      {record.status === "returned" ? "Returned" : "Borrowed"}
+                    <td className="px-4 py-4 align-middle border-b border-slate-100 text-xs font-semibold">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getBorrowingStatusClass(record.status)}`}
+                      >
+                        {formatBorrowingStatus(record.status)}
+                      </span>
                     </td>
                     <td className="px-4 py-4 align-middle border-b border-slate-100">
                       <div className="grid gap-2 text-sm text-slate-700">
@@ -1083,6 +1300,23 @@ export default function Borrowing() {
                             )}
                           </div>
                         ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 align-middle border-b border-slate-100 text-xs text-slate-600">
+                      <div className="grid gap-2">
+                        {record.items?.map((item) => {
+                          const isZero = item.inventoryItemId && depletedItems.has(item.inventoryItemId);
+                          return (
+                            <div
+                              key={`${record.id}-${item.id}-qty`}
+                              className={`min-h-[60px] flex items-center justify-center rounded-lg bg-white group-even:bg-slate-50 px-3 text-sm font-semibold ${
+                                isZero ? "text-rose-700" : "text-slate-600"
+                              }`}
+                            >
+                              {getItemQuantity(item) || "—"}
+                            </div>
+                          );
+                        })}
                       </div>
                     </td>
                     <td className="px-4 py-4 align-middle border-b border-slate-100 text-xs text-slate-600">
@@ -1315,6 +1549,8 @@ export default function Borrowing() {
                       const itemId = String(item.id);
                       const checked = selectedItemIds.includes(itemId);
                       const details = getItemDetails(item);
+                      const maxQuantity = Number(item.quantity ?? item.data?.quantity ?? 1);
+                      const selectedQuantity = selectedItemQuantities[itemId] ?? 1;
 
                       return (
                         <label
@@ -1327,7 +1563,7 @@ export default function Borrowing() {
                             onChange={() => toggleItem(itemId)}
                             className="mt-1"
                           />
-                          <span>
+                          <span className="flex-1">
                             <span className="block text-sm font-medium text-slate-800">
                               {getItemLabel(item)}
                             </span>
@@ -1349,6 +1585,29 @@ export default function Borrowing() {
                                 ))}
                               </span>
                             ) : null}
+                            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                              <span>Available: {maxQuantity}</span>
+                              {checked && (
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-slate-700">Qty</span>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max={maxQuantity}
+                                    value={selectedQuantity}
+                                    onChange={(e) => {
+                                      const value = Number(e.target.value);
+                                      if (Number.isNaN(value)) return;
+                                      setSelectedItemQuantities((current) => ({
+                                        ...current,
+                                        [itemId]: Math.max(1, Math.min(maxQuantity, value)),
+                                      }));
+                                    }}
+                                    className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                                  />
+                                </div>
+                              )}
+                            </div>
                           </span>
                         </label>
                       );
@@ -1361,7 +1620,7 @@ export default function Borrowing() {
                 <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-[#4a1111] mb-2">
                   Or Add Custom Item (Outside Inventory)
                 </h4>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid gap-2 sm:grid-cols-2">
                   <input
                     type="text"
                     placeholder="Item name"
@@ -1371,29 +1630,75 @@ export default function Borrowing() {
                   />
                   <input
                     type="text"
-                    placeholder="Description (optional)"
-                    value={customItemForm.description}
-                    onChange={(e) => setCustomItemForm({ ...customItemForm, description: e.target.value })}
+                    placeholder="Brand (optional)"
+                    value={customItemForm.brand}
+                    onChange={(e) => setCustomItemForm({ ...customItemForm, brand: e.target.value })}
                     className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
                   />
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Quantity"
+                    value={customItemForm.quantity}
+                    onChange={(e) => setCustomItemForm({ ...customItemForm, quantity: e.target.value })}
+                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                  />
+                  <select
+                    value={customItemForm.condition}
+                    onChange={(e) => setCustomItemForm({ ...customItemForm, condition: e.target.value })}
+                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                  >
+                    <option value="Working">Working</option>
+                    <option value="Defective">Defective</option>
+                  </select>
                 </div>
+                <textarea
+                  placeholder="Remarks (optional)"
+                  value={customItemForm.remarks}
+                  onChange={(e) => setCustomItemForm({ ...customItemForm, remarks: e.target.value })}
+                  rows={3}
+                  className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                />
                 <button
                   type="button"
                   onClick={() => {
-                    if (customItemForm.name.trim()) {
-                      const newItem = {
-                        id: `custom-${Date.now()}`,
-                        label: customItemForm.name.trim(),
-                        details: customItemForm.description.trim() ? [{ key: "description", label: "Description", value: customItemForm.description.trim() }] : [],
-                        inventoryItemId: null,
-                        inventoryTabId: null,
-                        inventorySectionId: null,
-                        inventoryTableName: "",
-                      };
-                      setCustomItems([...customItems, newItem]);
-                    setCustomItemForm({ name: "", description: "" });
-                    setFormErrors((current) => ({ ...current, items: "" }));
+                    if (!customItemForm.name.trim()) return;
+
+                    const quantityValue = customItemForm.quantity.trim();
+                    if (!quantityValue || !/^\d+$/.test(quantityValue) || Number(quantityValue) <= 0) {
+                      setFormError("Custom item quantity is required and must be a number.");
+                      return;
                     }
+
+                    const details = [];
+                    if (customItemForm.brand.trim()) {
+                      details.push({ key: "brand", label: "Brand", value: customItemForm.brand.trim() });
+                    }
+                    details.push({ key: "quantity", label: "Quantity", value: quantityValue });
+                    details.push({ key: "condition", label: "Condition", value: customItemForm.condition });
+                    if (customItemForm.remarks.trim()) {
+                      details.push({ key: "remarks", label: "Remarks", value: customItemForm.remarks.trim() });
+                    }
+
+                    const newItem = {
+                      id: `custom-${Date.now()}`,
+                      label: customItemForm.name.trim(),
+                      details,
+                      inventoryItemId: null,
+                      inventoryTabId: null,
+                      inventorySectionId: null,
+                      inventoryTableName: "",
+                    };
+                    setCustomItems([...customItems, newItem]);
+                    setCustomItemForm({
+                      name: "",
+                      brand: "",
+                      quantity: "",
+                      condition: "Working",
+                      remarks: "",
+                    });
+                    setFormErrors((current) => ({ ...current, items: "" }));
+                    setFormError("");
                   }}
                   className="mt-2 px-4 py-1 bg-[#4a1111] text-white text-sm rounded hover:opacity-90"
                 >
@@ -1409,7 +1714,9 @@ export default function Borrowing() {
                   <div className="space-y-2">
                     {selectedItems.map((item) => (
                       <div key={item.id} className="flex justify-between items-center">
-                        <span className="text-sm">{getItemLabel(item)}</span>
+                        <span className="text-sm">
+                          {getItemLabel(item)}{item.selectedQuantity ? ` (Qty: ${item.selectedQuantity})` : ""}
+                        </span>
                         <button
                           type="button"
                           onClick={() => toggleItem(String(item.id))}
@@ -1468,14 +1775,33 @@ export default function Borrowing() {
             </p>
             <ul className="mt-4 space-y-2 text-sm">
               {[...selectedItems, ...customItems].map((item) => {
-                const details = item.inventoryItemId ? getItemDetails(item) : item.details || [];
+                const details = item.details ? item.details : getItemDetails(item);
+                const borrowedQuantity =
+                  item.selectedQuantity ||
+                  details.find((detail) => detail.key === "quantity")?.value ||
+                  1;
+                const remarks =
+                  item.remarks ||
+                  details.find((detail) => detail.key === "remarks")?.value ||
+                  details.find((detail) => detail.key === "condition")?.value ||
+                  "";
+                const confirmDetails = [
+                  ...(remarks
+                    ? [{ key: "remarks", label: "Remarks", value: remarks }]
+                    : []),
+                  {
+                    key: "quantity",
+                    label: "Quantity",
+                    value: String(borrowedQuantity),
+                  },
+                ];
 
                 return (
                   <li key={item.id} className="rounded-lg bg-slate-50 px-3 py-2">
                     <span className="font-medium text-slate-800">{item.label || getItemLabel(item)}</span>
-                    {details.length > 0 ? (
+                    {confirmDetails.length > 0 ? (
                       <span className="mt-2 flex flex-wrap gap-1.5">
-                        {details.map((detail) => (
+                        {confirmDetails.map((detail) => (
                           <span
                             key={`${item.id}-${detail.key}`}
                             className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600"

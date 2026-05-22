@@ -32,7 +32,9 @@ export const fetchBorrowingRecords = async ({ status = "borrowed" } = {}) => {
     )
     .order("borrowed_at", { ascending: false });
 
-  if (status) {
+  if (status === "borrowed") {
+    query = query.in("status", ["borrowed", "not_returned"]);
+  } else if (status) {
     query = query.eq("status", status);
   }
 
@@ -40,6 +42,24 @@ export const fetchBorrowingRecords = async ({ status = "borrowed" } = {}) => {
   if (error) throw error;
 
   return (data || []).map(mapBorrowingRecord);
+};
+
+export const markOverdueBorrowingRecords = async ({ days = 3 } = {}) => {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+
+  const { data, error } = await supabase
+    .from("borrowing_records")
+    .update({
+      status: "not_returned",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("status", "borrowed")
+    .lte("borrowed_at", cutoff.toISOString())
+    .select("id");
+
+  if (error) throw error;
+  return data || [];
 };
 
 export const createBorrowingRecord = async ({
