@@ -194,7 +194,7 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm"
+        className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm !m-0 !p-0"
         onClick={onClose}
       />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
