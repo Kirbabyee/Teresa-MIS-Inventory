@@ -1200,7 +1200,6 @@ function TabModal({ tab, onClose, onSave }) {
             {/* Wizard Step Content */}
             {isNewTab && wizardStep === 1 && (
               <div className="p-5">
-                <p className="mb-4 text-sm text-slate-600">Select a template to get started quickly, or choose Custom to build from scratch.</p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {INVENTORY_TEMPLATES.map((template) => (
                     <button
@@ -1262,7 +1261,7 @@ function TabModal({ tab, onClose, onSave }) {
         </div>
             )}
 
-            {((isNewTab && wizardStep >= 3) || !isNewTab) && tabType === "legacy" && (
+            {((!isNewTab) || wizardStep === 3 || wizardStep === 5) && tabType === "legacy" && (
             <div className="border-t border-slate-200 px-5 py-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -1385,6 +1384,43 @@ function TabModal({ tab, onClose, onSave }) {
                 </table>
               </div>
             </div>
+            )}
+
+            {isNewTab && wizardStep === 5 && (
+              <div className="border-t border-slate-200 px-5 py-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-900">Review</h4>
+                    <p className="mt-1 text-sm text-slate-500">Check your sections and columns before saving.</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <h5 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Sections</h5>
+                    <div className="mt-3 space-y-2">
+                      {sections.map((currentSection, index) => (
+                        <div key={currentSection.id || currentSection.slug || index} className="rounded-lg bg-slate-50 px-3 py-2">
+                          <p className="text-sm font-medium text-slate-900">{currentSection.name}</p>
+                          <p className="text-xs text-slate-500">{currentSection.description || "No description"}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <h5 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Columns</h5>
+                    <div className="mt-3 space-y-2">
+                      {columns.map((currentColumn, index) => (
+                        <div key={currentColumn.id || currentColumn.key || index} className="rounded-lg bg-slate-50 px-3 py-2">
+                          <p className="text-sm font-medium text-slate-900">{currentColumn.label}</p>
+                          <p className="text-xs text-slate-500">{currentColumn.fieldType || currentColumn.data_type || "text"}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
 
             {tabType === "dynamic" && (
