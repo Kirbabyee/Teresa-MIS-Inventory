@@ -230,6 +230,8 @@ export const upsertInventoryTab = async ({ id, name, slug, description = "", sor
       .select("id, name, slug, description, sort_order, created_at, updated_at")
       .single();
     if (error) throw error;
+
+    notifyInventoryCatalogChanged();
     return data;
   }
 
@@ -239,6 +241,8 @@ export const upsertInventoryTab = async ({ id, name, slug, description = "", sor
     .select("id, name, slug, description, sort_order, created_at, updated_at")
     .single();
   if (error) throw error;
+
+  notifyInventoryCatalogChanged();
   return data;
 };
 
@@ -313,6 +317,8 @@ export const deleteInventoryTab = async (id) => {
   // Delete the tab itself
   const { error } = await supabase.from("inventory_tabs").delete().eq("id", id);
   if (error) throw error;
+
+  notifyInventoryCatalogChanged();
 };
 
 export const upsertInventorySection = async ({ id, tabId, name, slug, description = "", sort_order = 0 }) => {
@@ -332,6 +338,8 @@ export const upsertInventorySection = async ({ id, tabId, name, slug, descriptio
       .select("id, tab_id, name, slug, description, sort_order, created_at, updated_at")
       .single();
     if (error) throw error;
+
+    notifyInventoryCatalogChanged();
     return data;
   }
 
@@ -341,6 +349,8 @@ export const upsertInventorySection = async ({ id, tabId, name, slug, descriptio
     .select("id, tab_id, name, slug, description, sort_order, created_at, updated_at")
     .single();
   if (error) throw error;
+
+  notifyInventoryCatalogChanged();
   return data;
 };
 
@@ -355,6 +365,8 @@ export const deleteInventorySection = async (id) => {
   // Delete the section itself
   const { error } = await supabase.from("inventory_sections").delete().eq("id", id);
   if (error) throw error;
+
+  notifyInventoryCatalogChanged();
 };
 
 export const upsertInventoryItem = async ({ id, sectionId, computerNumber, type, brand, description, status, sort_order, tableName = null, recordData = null }) => {
