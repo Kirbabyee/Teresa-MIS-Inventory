@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { Download, History } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
@@ -148,9 +148,31 @@ const getBorrowedQuantity = (item = {}) => {
   return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
 };
 
+const getBorrowingItemCondition = (item = {}) => {
+  const explicitCondition = String(item.returnCondition || "").trim();
+  if (explicitCondition) return explicitCondition.toLowerCase();
+
+  const detailCondition = (item.details || []).find((detail) => {
+    const key = String(detail.key || "").toLowerCase();
+    const label = String(detail.label || "").toLowerCase();
+    return (
+      key === "condition" ||
+      key === "status" ||
+      key === "remarks" ||
+      label === "condition" ||
+      label === "status" ||
+      label === "remarks"
+    );
+  });
+
+  const condition = String(detailCondition?.value || "").trim().toLowerCase();
+  return condition.includes("defect") ? "defective" : "working";
+};
+
 const formatBorrowingStatus = (status = "borrowed") => {
   const normalizedStatus = String(status || "borrowed").toLowerCase();
   if (normalizedStatus === "returned") return "Returned";
+  if (normalizedStatus === "returned_late") return "Returned Late";
   if (normalizedStatus === "not_returned") return "Not Returned";
   return "Borrowed";
 };
@@ -158,6 +180,7 @@ const formatBorrowingStatus = (status = "borrowed") => {
 const getBorrowingStatusClass = (status = "borrowed") => {
   const normalizedStatus = String(status || "borrowed").toLowerCase();
   if (normalizedStatus === "returned") return "bg-emerald-100 text-emerald-700";
+  if (normalizedStatus === "returned_late") return "bg-amber-100 text-amber-700";
   if (normalizedStatus === "not_returned") return "bg-rose-100 text-rose-700";
   return "bg-sky-100 text-sky-700";
 };
@@ -275,6 +298,7 @@ const applyExportHeader = (worksheet, titleText, exportDate, separatorImage, tot
 };
 
 export default function Borrowing() {
+  const [searchParams] = useSearchParams();
   const { tabs, loading: inventoryLoading, error: inventoryError } = useInventoryCatalog();
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -298,7 +322,9 @@ export default function Borrowing() {
   const [returningBorrow, setReturningBorrow] = useState(false);
   const [returnError, setReturnError] = useState("");
 
-  const [statusFilter, setStatusFilter] = useState("borrowed");
+  const [statusFilter, setStatusFilter] = useState(() =>
+    searchParams.get("view") === "history" ? "all" : "borrowed"
+  );
   const [dateRange, setDateRange] = useState({ from: undefined, to: undefined });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [customItems, setCustomItems] = useState([]);
@@ -388,8 +414,12 @@ export default function Borrowing() {
         await markOverdueBorrowingRecords({ days: 3 });
       }
       const records = await fetchBorrowingRecords({ status: statusFilter === "all" ? null : "borrowed" });
+      const visibleRecords =
+        statusFilter === "all"
+          ? records.filter((record) => !["borrowed", "not_returned"].includes(String(record.status || "").toLowerCase()))
+          : records;
       if (!cancelToken.current) {
-        setData(records);
+        setData(visibleRecords);
       }
     } catch (error) {
       if (!cancelToken.current) {
@@ -542,8 +572,9 @@ export default function Borrowing() {
     setReturnError("");
     setReturnRemarksByItem(
       (record.items || []).reduce((acc, item) => {
+        const condition = getBorrowingItemCondition(item);
         acc[item.id] = {
-          condition: item.returnCondition ? item.returnCondition : item.returnRemarks ? item.returnRemarks.toLowerCase() === "defective" ? "Defective" : "Working" : "Working",
+          condition: condition === "defective" ? "Defective" : "Working",
           remarks: item.returnRemarks || "",
         };
         return acc;
@@ -603,7 +634,10 @@ export default function Borrowing() {
       let currentRowIndex = headerRowIndex + 1;
       filteredData.forEach((record, recordIndex) => {
         const itemLabels = (record.items || []).map((item) => getExportItemLabel(item));
-        const itemRemarks = (record.items || []).map((item) => item.returnRemarks || item.returnCondition || "Working");
+        const itemRemarks = (record.items || []).map((item) => {
+          const condition = getBorrowingItemCondition(item);
+          return item.returnRemarks || (condition === "defective" ? "Defective" : "Working");
+        });
         const rowCount = Math.max(itemLabels.length, itemRemarks.length, 1);
         const rowFill = {
           type: "pattern",
@@ -670,7 +704,11 @@ export default function Borrowing() {
 
           if (column.key === "remark") {
             const remarkMax = (record.items || []).reduce(
-              (remarkMax, item) => Math.max(remarkMax, String(item.returnRemarks || item.returnCondition || "").length),
+              (remarkMax, item) => {
+                const condition = getBorrowingItemCondition(item);
+                const value = item.returnRemarks || (condition === "defective" ? "Defective" : "Working");
+                return Math.max(remarkMax, String(value).length);
+              },
               0
             );
             return Math.max(max, remarkMax);
@@ -1230,7 +1268,7 @@ export default function Borrowing() {
               <tr>
                 <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Borrower</th>
                 <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Borrowed</th>
-                <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Status</th>
+                <th className="sticky top-0 bg-white z-10 w-32 min-w-32 px-4 py-3 text-center align-middle border-b border-slate-100">Status</th>
                 <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Items</th>
                 <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Quantity</th>
                 <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Condition</th>
@@ -1267,9 +1305,9 @@ export default function Borrowing() {
                         <div>Returned: {new Date(record.returnedAt).toLocaleString()}</div>
                       )}
                     </td>
-                    <td className="px-4 py-4 align-middle border-b border-slate-100 text-xs font-semibold">
+                    <td className="w-32 min-w-32 px-4 py-4 text-center align-middle border-b border-slate-100 text-xs font-semibold">
                       <span
-                        className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${getBorrowingStatusClass(record.status)}`}
+                        className={`inline-flex justify-center whitespace-nowrap rounded-full px-3 py-1 text-[11px] font-semibold ${getBorrowingStatusClass(record.status)}`}
                       >
                         {formatBorrowingStatus(record.status)}
                       </span>
@@ -1322,7 +1360,7 @@ export default function Borrowing() {
                     <td className="px-4 py-4 align-middle border-b border-slate-100 text-xs text-slate-600">
                       <div className="grid gap-2">
                         {record.items?.map((item) => {
-                          const condition = item.returnCondition?.trim().toLowerCase() || item.returnRemarks?.trim().toLowerCase() || "working";
+                          const condition = getBorrowingItemCondition(item);
                           const label = condition === "defective" ? "Defective" : "Working";
                           return (
                             <div key={`${record.id}-${item.id}-condition`} className="min-h-[60px] flex items-center justify-center rounded-lg bg-white group-even:bg-slate-50 px-3">

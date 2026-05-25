@@ -15,7 +15,7 @@ const mapBorrowingRecord = (record = {}) => ({
     inventorySectionId: item.inventory_section_id,
     label: item.item_label || "Item",
     details: Array.isArray(item.item_details) ? item.item_details : [],
-    returnCondition: item.return_condition || "working",
+    returnCondition: item.return_condition || "",
     returnRemarks: item.return_remarks || "",
     tab: "",
     section: "",
@@ -113,10 +113,20 @@ export const createBorrowingRecord = async ({
 };
 
 export const returnBorrowingRecord = async (id, returnRemarks = {}) => {
+  const { data: borrowingRecord, error: fetchError } = await supabase
+    .from("borrowing_records")
+    .select("status")
+    .eq("id", id)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const nextStatus = borrowingRecord?.status === "not_returned" ? "returned_late" : "returned";
+
   const { error: recordError } = await supabase
     .from("borrowing_records")
     .update({
-      status: "returned",
+      status: nextStatus,
       returned_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })

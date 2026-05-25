@@ -1,13 +1,102 @@
 import { useEffect, useState } from "react";
-import { Package, Cpu, AlertCircle } from "lucide-react";
+import { AlertCircle, ClipboardList, Cpu, Package, RotateCcw, Trophy } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { fetchBorrowingRecords, markOverdueBorrowingRecords } from "@/lib/borrowingApi";
+
+const defaultBorrowingStats = {
+  borrowedToday: 0,
+  unreturned: 0,
+  defectiveReturned: [],
+  mostBorrowedItem: null,
+};
+
+const getBorrowedQuantity = (item = {}) => {
+  const quantityDetail = (item.details || []).find((detail) => {
+    const key = String(detail.key || "").toLowerCase();
+    const label = String(detail.label || "").toLowerCase();
+    return key === "quantity" || label === "quantity";
+  });
+  const quantity = Number(quantityDetail?.value ?? item.quantity ?? 1);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+};
+
+const isSameLocalDay = (value, date = new Date()) => {
+  if (!value) return false;
+  const target = new Date(value);
+  if (Number.isNaN(target.getTime())) return false;
+
+  return (
+    target.getFullYear() === date.getFullYear() &&
+    target.getMonth() === date.getMonth() &&
+    target.getDate() === date.getDate()
+  );
+};
+
+const isDefectiveBorrowingItem = (item = {}) => {
+  const values = [
+    item.returnCondition,
+    item.returnRemarks,
+    ...(item.details || []).map((detail) => detail.value),
+  ];
+
+  return values.some((value) => String(value || "").toLowerCase().includes("defect"));
+};
+
+const summarizeBorrowingRecords = (records = []) => {
+  const borrowedToday = records.reduce((total, record) => {
+    if (!isSameLocalDay(record.date)) return total;
+    return total + (record.items || []).reduce((sum, item) => sum + getBorrowedQuantity(item), 0);
+  }, 0);
+
+  const unreturned = records.reduce((total, record) => {
+    const status = String(record.status || "").toLowerCase();
+    if (!["borrowed", "not_returned"].includes(status)) return total;
+    return total + (record.items || []).reduce((sum, item) => sum + getBorrowedQuantity(item), 0);
+  }, 0);
+
+  const defectiveReturned = records.flatMap((record) => {
+    const status = String(record.status || "").toLowerCase();
+    if (!["returned", "returned_late"].includes(status)) return [];
+
+    return (record.items || [])
+      .filter(isDefectiveBorrowingItem)
+      .map((item) => ({
+        id: `${record.id}-${item.id}`,
+        item: item.label || "Item",
+        borrower: record.name || "Unknown borrower",
+        returnedAt: record.returnedAt,
+        remarks: item.returnRemarks || "Defective",
+      }));
+  });
+
+  const itemCounts = new Map();
+  records.forEach((record) => {
+    (record.items || []).forEach((item) => {
+      const label = item.label || "Item";
+      const quantity = getBorrowedQuantity(item);
+      itemCounts.set(label, (itemCounts.get(label) || 0) + quantity);
+    });
+  });
+
+  const mostBorrowedItem = [...itemCounts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((left, right) => right.count - left.count)[0] || null;
+
+  return {
+    borrowedToday,
+    unreturned,
+    defectiveReturned,
+    mostBorrowedItem,
+  };
+};
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [labs, setLabs] = useState([]);
   const [overall, setOverall] = useState({ total: 0, defective: 0 });
+  const [borrowingStats, setBorrowingStats] = useState(defaultBorrowingStats);
   const [error, setError] = useState("");
 
   const defectiveRate = overall.total
@@ -22,6 +111,10 @@ export default function Dashboard() {
       setError("");
 
       try {
+        await markOverdueBorrowingRecords({ days: 3 });
+        const borrowingRecords = await fetchBorrowingRecords({ status: null });
+        const borrowingSummary = summarizeBorrowingRecords(borrowingRecords);
+
         // 1. Fetch all laboratories
         const { data: labRows, error: labErr } = await supabase
           .from("lab_numbers")
@@ -31,9 +124,12 @@ export default function Dashboard() {
         if (labErr) throw labErr;
 
         if (!labRows || labRows.length === 0) {
-          setLabs([]);
-          setOverall({ total: 0, defective: 0 });
-          setLoading(false);
+          if (!cancelled) {
+            setLabs([]);
+            setOverall({ total: 0, defective: 0 });
+            setBorrowingStats(borrowingSummary);
+            setLoading(false);
+          }
           return;
         }
 
@@ -141,6 +237,7 @@ export default function Dashboard() {
             total: overallTotal,
             defective: totalDefectiveCount, 
           });
+          setBorrowingStats(borrowingSummary);
         }
 
       } catch (err) {
@@ -288,13 +385,123 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Right Side Placeholder */}
+        {/* Borrowing Overview */}
         <div className="md:w-1/2">
-          <div className="h-full rounded-lg border border-dashed border-slate-300 bg-gradient-to-b from-slate-50 to-white p-6 flex items-center justify-center">
-            <div className="text-center max-w-sm">
-              <Package className="mx-auto h-12 w-12 text-slate-300" />
-              <p className="mt-3 text-sm font-medium text-slate-600">Borrowing Management</p>
-              <p className="mt-1 text-xs text-slate-400">This feature is currently under development.</p>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div
+                className="rounded-xl bg-white p-5 shadow-lg border border-transparent transition hover:shadow-xl cursor-pointer"
+                onClick={() => navigate("/borrowing")}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate("/borrowing"); }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">Borrowed Today</p>
+                    <p className="mt-2 text-3xl font-extrabold text-slate-900">
+                      {borrowingStats.borrowedToday.toLocaleString()}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-400">Total items</p>
+                  </div>
+                  <div className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-[#4a1111]">
+                    <ClipboardList className="h-5 w-5 text-white" />
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className="rounded-xl bg-white p-5 shadow-lg border border-transparent transition hover:shadow-xl cursor-pointer"
+                onClick={() => navigate("/borrowing")}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate("/borrowing"); }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">Unreturned</p>
+                    <p className="mt-2 text-3xl font-extrabold text-rose-600">
+                      {borrowingStats.unreturned.toLocaleString()}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-400">Still borrowed</p>
+                  </div>
+                  <div className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-rose-500">
+                    <RotateCcw className="h-5 w-5 text-white" />
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className="rounded-xl bg-white p-5 shadow-lg border border-transparent transition hover:shadow-xl cursor-pointer"
+                onClick={() => navigate("/borrowing")}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate("/borrowing"); }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-slate-500">Most Borrowed</p>
+                    <p className="mt-2 truncate text-lg font-extrabold text-slate-900">
+                      {borrowingStats.mostBorrowedItem?.label || "No items yet"}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-400">
+                      {borrowingStats.mostBorrowedItem
+                        ? `${borrowingStats.mostBorrowedItem.count.toLocaleString()} borrowed`
+                        : "No borrowing records"}
+                    </p>
+                  </div>
+                  <div className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-amber-500">
+                    <Trophy className="h-5 w-5 text-white" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="overflow-hidden rounded-lg border border-slate-100 bg-white shadow-lg transition hover:shadow-xl cursor-pointer"
+              onClick={() => navigate("/borrowing?view=history")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate("/borrowing?view=history"); }}
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">Defective Items Returned</p>
+                  <p className="text-xs text-slate-400">Items marked defective during return</p>
+                </div>
+                <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-600">
+                  {borrowingStats.defectiveReturned.length.toLocaleString()}
+                </span>
+              </div>
+
+              {borrowingStats.defectiveReturned.length === 0 ? (
+                <div className="p-8 text-center">
+                  <AlertCircle className="mx-auto h-10 w-10 text-slate-300" />
+                  <p className="mt-2 text-sm text-slate-500">No defective returned items</p>
+                </div>
+              ) : (
+                <div className="max-h-[360px] overflow-y-auto divide-y divide-slate-100">
+                  {borrowingStats.defectiveReturned.map((item) => (
+                    <div key={item.id} className="px-5 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-800">{item.item}</p>
+                          <p className="mt-1 text-xs text-slate-500">Borrower: {item.borrower}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Returned: {item.returnedAt ? new Date(item.returnedAt).toLocaleString() : "N/A"}
+                          </p>
+                        </div>
+                        <span className="flex-none rounded-full bg-rose-100 px-2 py-1 text-[11px] font-semibold text-rose-700">
+                          Defective
+                        </span>
+                      </div>
+                      {item.remarks ? (
+                        <p className="mt-2 text-xs text-slate-600">{item.remarks}</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
