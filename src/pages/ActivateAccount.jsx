@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { hashInviteToken } from "@/lib/employeeInvites";
 import arkLogo from "@/assets/imgs/ark-logo.png";
+//ive edited this file again
 
 function evaluatePassword(password) {
   const value = String(password || "");

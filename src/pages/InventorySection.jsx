@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, ChevronsUpDown, Check, ChevronDown, Download, PencilLine, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown, Check, ChevronLeft, ChevronDown, Download, FileText, PencilLine, Plus, Search, Trash2, X } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
+import { supabase } from "@/api/supabaseClient";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -14,6 +15,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import arkLogoUrl from "@/assets/imgs/ark-logo.png";
+import InventorySectionHistoryView from "@/components/InventorySectionHistoryView";
+import InventorySectionExportPanel from "@/components/InventorySectionExportPanel";
 import {
   INVENTORY_ITEMS_CHANGED_EVENT,
   deleteInventoryItem,
@@ -22,6 +25,10 @@ import {
   isCurrentUserAdmin,
   upsertInventoryItem,
   useInventoryCatalog,
+  callCreateInventoryLogsTable,
+  callDropInventoryLogsTable,
+  getInventoryLogsTableEndpoint,
+  getInventoryDropLogsTableEndpoint,
 } from "@/lib/inventoryApi";
 
 // Utility functions
@@ -871,6 +878,7 @@ export default function InventorySection() {
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [historySearchQuery, setHistorySearchQuery] = useState("");
   const [confirmExitEditMode, setConfirmExitEditMode] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [selectedExportColumns, setSelectedExportColumns] = useState([]);
@@ -882,8 +890,28 @@ export default function InventorySection() {
   const [inspectedByName, setInspectedByName] = useState("");
   const [exporting, setExporting] = useState(false);
   const [showColumnOptions, setShowColumnOptions] = useState(true);
+  const [exportLogRefreshToken, setExportLogRefreshToken] = useState(0);
   const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" });
-  const isHistoryOpen = false;
+  const [isHistoryOpen, setIsHistoryOpen] = useState(() => searchParams.get("view") === "logs");
+  const [pendingAction, setPendingAction] = useState("");
+
+  const updateHistoryView = (isOpen) => {
+    setIsHistoryOpen(isOpen);
+    // Update URL params to reflect the view
+    if (isOpen) {
+      setSearchParams((current) => {
+        const params = new URLSearchParams(current);
+        params.set("view", "logs");
+        return params;
+      }, { replace: true });
+    } else {
+      setSearchParams((current) => {
+        const params = new URLSearchParams(current);
+        params.delete("view");
+        return params;
+      }, { replace: true });
+    }
+  };
 
   const handleDelete = async (itemId) => {
     setPendingDeleteId(itemId);
@@ -1005,7 +1033,7 @@ export default function InventorySection() {
     if (!pendingDeleteId) return;
     setShowDeleteConfirm(false);
     setDeletingId(pendingDeleteId);
-    await deleteInventoryItem(pendingDeleteId, tabTableName || null);
+    await deleteInventoryItem(pendingDeleteId, tabTableName || null, selectedSection?.id || null);
     setDeletingId(null);
     setPendingDeleteId(null);
     setRefreshKey((current) => current + 1);
@@ -1021,8 +1049,27 @@ export default function InventorySection() {
   };
 
   const confirmExitEditing = () => {
+    const nextAction = pendingAction;
+
     setGridEditMode(false);
+    setPendingAction("");
     setConfirmExitEditMode(false);
+
+    if (nextAction === "switchHistory") {
+      setIsHistoryOpen(true);
+      setSearchParams((current) => {
+        const params = new URLSearchParams(current);
+        params.set("view", "logs");
+        return params;
+      }, { replace: true });
+    } else if (nextAction === "exitHistory") {
+      setIsHistoryOpen(false);
+      setSearchParams((current) => {
+        const params = new URLSearchParams(current);
+        params.delete("view");
+        return params;
+      }, { replace: true });
+    }
   };
 
   const cancelExitEditing = () => {
@@ -1246,7 +1293,11 @@ export default function InventorySection() {
       : fallbackSection;
 
     if (nextSection && nextSection !== sectionQuery) {
-      setSearchParams({ section: nextSection }, { replace: true });
+      setSearchParams((current) => {
+        const params = new URLSearchParams(current);
+        params.set("section", nextSection);
+        return params;
+      }, { replace: true });
     }
 
     if (nextSection !== selectedSectionSlug) {
@@ -1469,8 +1520,83 @@ export default function InventorySection() {
       const blob = new Blob([buffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       });
-      saveAs(blob, `${tab?.slug || "inventory"}_sections_export.xlsx`);
+
+      // Generate filename and save locally
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      const filename = `${tab?.slug || "inventory"}_sections_export-${timestamp}.xlsx`;
+      saveAs(blob, filename);
+
+      // Upload to storage and log export to dynamic shared table (fallback to inventory_section_exports)
+      try {
+        const EXPORT_BUCKET = "export-logs";
+        const storagePath = `section-exports/${tabTableName || 'sections'}/${selectedSection?.id || 'unknown'}/${filename}`;
+        const { error: uploadError } = await supabase.storage.from(EXPORT_BUCKET).upload(storagePath, blob, {
+          contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          upsert: false,
+        });
+
+        if (uploadError) {
+          console.warn('Failed to upload section export to storage:', uploadError);
+        }
+
+        // determine exported_by from auth if available
+        let exportedBy = 'system';
+        try {
+          const userResult = await supabase.auth.getUser();
+          const user = userResult?.data?.user;
+          exportedBy = (user?.user_metadata?.full_name || user?.email || user?.id || 'system').trim();
+        } catch (e) {
+          // ignore
+        }
+
+        // try dynamic shared table first
+        let wroteRecord = false;
+        try {
+          const { data: dynData, error: dynErr } = await supabase.from('dynamic_inventory_export_logs').insert({
+            exported_by: exportedBy || 'system',
+            file_name: filename,
+            export_date: exportDate,
+            file_path: storagePath,
+            tab_id: tab?.id || null,
+            inventory_uuid: selectedSection?.id || null,
+            table_name: tabTableName || null,
+            metadata: { section_slug: selectedSection?.slug } || null,
+          }).select();
+          console.debug('[InventorySection] dynamic_inventory_export_logs insert result:', { dynData, dynErr });
+          if (!dynErr) {
+            wroteRecord = true;
+          }
+        } catch (e) {
+          console.warn('[InventorySection] dynamic insert threw:', e);
+        }
+
+        if (!wroteRecord) {
+          // fallback to per-section shared table
+          try {
+            try {
+              const { data: fbData, error: fallbackErr } = await supabase.from('inventory_section_exports').insert({
+                exported_by: exportedBy || 'system',
+                file_name: filename,
+                export_date: exportDate,
+                file_path: storagePath,
+                section_id: selectedSection?.id || null,
+                tab_id: tab?.id || null,
+              }).select();
+              console.debug('[InventorySection] inventory_section_exports insert result:', { fbData, fallbackErr });
+              if (!fallbackErr) wroteRecord = true;
+            } catch (e) {
+              console.warn('[InventorySection] fallback insert threw:', e);
+            }
+          } catch (e) {
+            console.warn('Error inserting export record fallback:', e);
+          }
+        }
+      } catch (e) {
+        console.warn('Error recording/exporting section file:', e);
+      }
+
       setShowExportModal(false);
+      setExportLogRefreshToken((current) => current + 1);
     } finally {
       setExporting(false);
     }
@@ -1520,10 +1646,10 @@ export default function InventorySection() {
 
   return (
     <div className="p-6 space-y-5">
-      <div className="mx-auto w-full max-w-7xl space-y-5">
+      <div className="w-full space-y-5">
 
-        <div className="flex flex-col items-center justify-between gap-3 sm:flex-row sm:gap-4">
-          <div className="flex flex-wrap items-center justify-center gap-1.5 sm:justify-start">
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center justify-start gap-1.5">
             {sections.length === 0 ? (
               <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-2 text-sm text-slate-500">
                 No sections yet. Add one from the inventory manager.
@@ -1535,7 +1661,11 @@ export default function InventorySection() {
                   type="button"
                   onClick={() => {
                     setSelectedSectionSlug(section.slug);
-                    setSearchParams({ section: section.slug }, { replace: true });
+                    setSearchParams((current) => {
+                      const params = new URLSearchParams(current);
+                      params.set("section", section.slug);
+                      return params;
+                    }, { replace: true });
                   }}
                   className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
                     section.slug === selectedSectionSlug
@@ -1573,24 +1703,70 @@ export default function InventorySection() {
               </>
             ) : (
               <>
+                {!isHistoryOpen && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={openExportModal}
+                      disabled={itemsLoading || items.length === 0}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                      title={itemsLoading ? "Loading items..." : "Export"}
+                      aria-label={itemsLoading ? "Loading items" : "Export"}
+                    >
+                      <Download className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGridEditMode(true)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717]"
+                      title="Edit mode off"
+                      aria-label="Edit mode off"
+                    >
+                      <PencilLine className="h-4 w-4" />
+                    </button>
+                  </>
+                )}
                 <button
                   type="button"
-                  onClick={openExportModal}
-                  disabled={itemsLoading || items.length === 0}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
-                  title={itemsLoading ? "Loading items..." : "Export"}
-                  aria-label={itemsLoading ? "Loading items" : "Export"}
-                >
-                  <Download className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setGridEditMode(true)}
+                  onClick={() => {
+                    // toggle history mode; prompt if exiting edit mode with changes
+                    if (!isHistoryOpen) {
+                      // Check if in edit mode and has any unsaved changes (from cellDrafts)
+                      const hasUnsavedChanges = gridEditMode && Object.keys(cellDrafts).length > 0;
+                      if (hasUnsavedChanges) {
+                        // Show confirmation before switching to history
+                        setPendingAction('switchHistory');
+                        setConfirmExitEditMode(true);
+                      } else {
+                        // No unsaved changes, proceed directly to history
+                        setGridEditMode(false);
+                        setIsHistoryOpen(true);
+                        setSearchParams((current) => {
+                          const params = new URLSearchParams(current);
+                          params.set("view", "logs");
+                          return params;
+                        }, { replace: true });
+                      }
+                    } else {
+                      setIsHistoryOpen(false);
+                      setSearchParams((current) => {
+                        const params = new URLSearchParams(current);
+                        params.delete("view");
+                        return params;
+                      }, { replace: true });
+                    }
+                  }}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717]"
-                  title="Edit mode off"
-                  aria-label="Edit mode off"
+                  title={isHistoryOpen ? "Return to inventory" : "View history"}
+                  aria-label={isHistoryOpen ? "Return to inventory" : "View history"}
                 >
-                  <PencilLine className="h-4 w-4" />
+                  <span className="inline-flex items-center justify-center w-4 h-4">
+                    {isHistoryOpen ? (
+                      <ChevronLeft className="h-4 w-4 text-white" />
+                    ) : (
+                      <FileText className="h-4 w-4 text-white" />
+                    )}
+                  </span>
                 </button>
               </>
             )}
@@ -1598,7 +1774,7 @@ export default function InventorySection() {
         </div>
 
         {!isHistoryOpen && (
-          <div className="w-full sm:w-96">
+          <div className="mt-3 w-full sm:w-96">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -1623,6 +1799,33 @@ export default function InventorySection() {
           </div>
         )}
 
+        {isHistoryOpen && (
+          <div className="mt-3 w-full sm:w-96">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={historySearchQuery}
+                onChange={(e) => setHistorySearchQuery(e.target.value)}
+                placeholder="Search history, actions, values..."
+                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+              />
+              {historySearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setHistorySearchQuery("")}
+                  className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="Clear history search"
+                  title="Clear history search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!isHistoryOpen && (
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
          
 
@@ -1892,8 +2095,41 @@ export default function InventorySection() {
             </div>
           )}
         </div>
+        )}
 
       </div>
+
+      {isHistoryOpen && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+            <div className="xl:col-span-3">
+              <InventorySectionHistoryView
+                selectedTab={{
+                  id: tab?.id,
+                  tableName: tabTableName,
+                }}
+                selectedSection={selectedSection}
+                searchQuery={historySearchQuery}
+              />
+            </div>
+
+            <div className="xl:col-span-2">
+              <InventorySectionExportPanel
+                searchQuery={historySearchQuery}
+                refreshToken={exportLogRefreshToken}
+                selectedSection={selectedSection}
+                selectedTab={{
+                  id: tab?.id,
+                  tableName: tabTableName,
+                }}
+                items={items}
+                exportColumnOptions={exportColumnOptions}
+                onExported={() => setExportLogRefreshToken((c) => c + 1)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {showModal && selectedSection && (
         <ItemModal

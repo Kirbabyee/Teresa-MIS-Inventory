@@ -1199,14 +1199,50 @@ export default function ComputerLaboratoryInventory() {
             if (uploadError) throw uploadError;
 
             const exportBy = (user?.displayName || [user?.first_name, user?.last_name].filter(Boolean).join(" ") || user?.email || "system").trim();
-            const { error: logError } = await supabase.from("export_logs").insert({
-                export_by: exportBy || "system",
-                file_name: filename,
-                export_date: exportDate,
-                file_path: storagePath,
-            });
 
-            if (logError) throw logError;
+            // Try dynamic shared table first
+            let logged = false;
+            try {
+                const { error: dynErr } = await supabase.from('dynamic_inventory_export_logs').insert({
+                    exported_by: exportBy || "system",
+                    file_name: filename,
+                    export_date: exportDate,
+                    file_path: storagePath,
+                    table_name: 'computers_components',
+                    metadata: { labId: selectedLab } ,
+                });
+                if (!dynErr) logged = true;
+            } catch (e) {
+                // ignore - table may not exist
+            }
+
+            if (!logged) {
+                // Prefer per-table exports table (computers_components_exports) then fallback to global export_logs
+                const perTableExports = `computers_components_exports`;
+                let insertError = null;
+                try {
+                    const res = await supabase.from(perTableExports).insert({
+                        exported_by: exportBy || "system",
+                        file_name: filename,
+                        export_date: exportDate,
+                        file_path: storagePath,
+                    });
+                    insertError = res.error;
+                    if (!insertError) logged = true;
+                } catch (e) {
+                    insertError = e;
+                }
+
+                if (!logged) {
+                    const { error: fallbackErr } = await supabase.from("export_logs").insert({
+                        export_by: exportBy || "system",
+                        file_name: filename,
+                        export_date: exportDate,
+                        file_path: storagePath,
+                    });
+                    if (fallbackErr) throw fallbackErr;
+                }
+            }
 
             setExportLogRefreshToken((current) => current + 1);
             setShowExportModal(false);
@@ -1848,12 +1884,12 @@ export default function ComputerLaboratoryInventory() {
                             <p className="text-sm text-slate-500">No component records found for this laboratory.</p>
                         </div>
                     ) : isHistoryOpen ? (
-                        <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-                            <div className="xl:col-span-3 p-4">
+                        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(440px,1fr)]">
+                            <div className="min-w-0 w-full">
                                 <InventoryHistoryView selectedLab={selectedLab} searchQuery={historySearchQuery} />
                             </div>
 
-                            <div className="xl:col-span-2 p-4">
+                            <div className="min-w-0 w-full xl:min-w-[440px]">
                                 <ExportLogsPanel searchQuery={historySearchQuery} selectedLab={selectedLab} refreshToken={exportLogRefreshToken} />
                             </div>
                         </div>

@@ -204,6 +204,16 @@ export default function Layout() {
       .replace(/\b\w/g, (char) => char.toUpperCase());
   }, [location.pathname, location.search]);
 
+  const sectionTitleDisplay = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const isLogsView = params.get("view") === "logs";
+
+    if (!isLogsView) return sectionTitle;
+    if (/logs?$/i.test(sectionTitle)) return sectionTitle;
+
+    return `${sectionTitle} - Logs`;
+  }, [location.search, sectionTitle]);
+
   const navItems = useMemo(() => {
     const inventoryChildren = inventoryTabs.map((tab) => ({
       label: tab.name,
@@ -370,8 +380,8 @@ export default function Layout() {
               <Menu className="w-6 h-6" />
             </button>
             <div className="hidden md:block min-w-0">
-              <p className="text-sm md:text-base font-semibold text-slate-900 truncate">{sectionTitle}</p>
-              <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500">ST Teresa MIS</p>
+              <p className="text-sm md:text-base font-semibold text-slate-900 truncate">{sectionTitleDisplay}</p>
+              <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500">CSTA MIS</p>
             </div>
           </div>
 

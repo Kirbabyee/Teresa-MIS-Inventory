@@ -4,10 +4,82 @@ import { supabase } from "@/api/supabaseClient";
 export const INVENTORY_CATALOG_CHANGED_EVENT = "inventory-catalog-changed";
 export const INVENTORY_ITEMS_CHANGED_EVENT = "inventory-items-changed";
 
+// Log inventory changes to the logs table
+export const logInventoryChange = async (tableName, action, oldData, newData, sectionId = null) => {
+  try {
+    const normalizedTableName = String(tableName || "").trim();
+    const isLegacyInventoryTable = normalizedTableName === "inventory_items";
+
+    // Try to get the current user for changed_by
+    let changedBy = "system";
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData?.session?.user;
+      if (user) {
+        changedBy = user.email || user.id || "system";
+      }
+    } catch (e) {
+      // If we can't get the user, use system
+      changedBy = "system";
+    }
+
+    if (isLegacyInventoryTable) {
+      const legacyLogEntry = {
+        action,
+        table_name: normalizedTableName,
+        record_id: newData?.id ?? oldData?.id ?? null,
+        lab_number_id: sectionId ?? oldData?.section_id ?? newData?.section_id ?? null,
+        computer_number: newData?.computer_number ?? oldData?.computer_number ?? null,
+        component_type: newData?.type ?? oldData?.type ?? null,
+        old_data: oldData,
+        new_data: newData,
+        changed_by: changedBy,
+        metadata: {
+          source: "client",
+          section_id: sectionId ?? oldData?.section_id ?? newData?.section_id ?? null,
+        },
+      };
+
+      const { error } = await supabase.from("inventory_change_logs").insert([legacyLogEntry]);
+      if (error) {
+        console.warn("Failed to insert legacy inventory log entry:", error);
+      }
+      return;
+    }
+
+    // Prepare the log entry for the per-table logs table
+    const logEntry = {
+      action,
+      old_data: oldData,
+      new_data: newData,
+      changed_by: changedBy,
+      change_ts: new Date().toISOString(),
+    };
+
+    // Insert into the logs table using Supabase directly
+    // Note: We're using the logs table directly, not an Edge Function
+    // The logs table should be: {tableName}_logs
+    const logsTableName = `${normalizedTableName}_logs`;
+
+    const { error } = await supabase
+      .from(logsTableName)
+      .insert([logEntry]);
+
+    if (error) {
+      console.warn("Failed to insert log entry:", error);
+      // Don't throw - continue operation even if logging fails
+    }
+  } catch (error) {
+    console.warn("Error in logInventoryChange:", error);
+    // Don't throw - continue operation even if logging fails
+  }
+};
+
 const DEFAULT_CREATE_TABLE_ENDPOINT = "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/create-inventory-table";
 const DEFAULT_MODIFY_TABLE_ENDPOINT = "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/modify-inventory-table";
 const DEFAULT_DROP_TABLE_ENDPOINT = "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/drop-inventory-table";
 const DEFAULT_DROP_COLUMNS_ENDPOINT = "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/drop-inventory-columns";
+const DEFAULT_CLEANUP_EXPORT_LOGS_ENDPOINT = "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/cleanup-export-logs";
 
 export const getInventoryCreateTableEndpoint = () => {
   if (typeof window !== "undefined" && window.__INVENTORY_CREATE_TABLE_ENDPOINT__) {
@@ -39,6 +111,46 @@ export const getInventoryDropColumnsEndpoint = () => {
   }
 
   return import.meta.env.VITE_INVENTORY_DROP_COLUMNS_ENDPOINT || DEFAULT_DROP_COLUMNS_ENDPOINT;
+};
+
+export const getInventoryCleanupExportLogsEndpoint = () => {
+  if (typeof window !== "undefined" && window.__INVENTORY_CLEANUP_EXPORT_LOGS_ENDPOINT__) {
+    return window.__INVENTORY_CLEANUP_EXPORT_LOGS_ENDPOINT__;
+  }
+
+  return import.meta.env.VITE_INVENTORY_CLEANUP_EXPORT_LOGS_ENDPOINT || DEFAULT_CLEANUP_EXPORT_LOGS_ENDPOINT;
+};
+
+export const getInventoryLogsTableEndpoint = () => {
+  if (typeof window !== "undefined" && window.__INVENTORY_LOGS_TABLE_ENDPOINT__) {
+    return window.__INVENTORY_LOGS_TABLE_ENDPOINT__;
+  }
+
+  return import.meta.env.VITE_INVENTORY_LOGS_TABLE_ENDPOINT || "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/create-inventory-logs-table";
+};
+
+export const getInventoryDropLogsTableEndpoint = () => {
+  if (typeof window !== "undefined" && window.__INVENTORY_DROP_LOGS_TABLE_ENDPOINT__) {
+    return window.__INVENTORY_DROP_LOGS_TABLE_ENDPOINT__;
+  }
+
+  return import.meta.env.VITE_INVENTORY_DROP_LOGS_TABLE_ENDPOINT || "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/drop-inventory-logs-table";
+};
+
+export const getInventoryExportsTableEndpoint = () => {
+  if (typeof window !== "undefined" && window.__INVENTORY_EXPORTS_TABLE_ENDPOINT__) {
+    return window.__INVENTORY_EXPORTS_TABLE_ENDPOINT__;
+  }
+
+  return import.meta.env.VITE_INVENTORY_EXPORTS_TABLE_ENDPOINT || "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/create-inventory-exports-table";
+};
+
+export const getInventoryDropExportsTableEndpoint = () => {
+  if (typeof window !== "undefined" && window.__INVENTORY_DROP_EXPORTS_TABLE_ENDPOINT__) {
+    return window.__INVENTORY_DROP_EXPORTS_TABLE_ENDPOINT__;
+  }
+
+  return import.meta.env.VITE_INVENTORY_DROP_EXPORTS_TABLE_ENDPOINT || "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/drop-inventory-exports-table";
 };
 
 export const slugify = (value = "") =>
@@ -256,6 +368,15 @@ export const deleteInventoryTab = async (id) => {
     // Configuration might not exist
   }
 
+  // Also fetch the tab row (name/slug) to help probe for possible physical table names
+  let tabRow = null;
+  try {
+    const { data, error: tabErr } = await supabase.from('inventory_tabs').select('id, name, slug').eq('id', id).limit(1).maybeSingle();
+    if (!tabErr) tabRow = data || null;
+  } catch (e) {
+    // ignore
+  }
+
   // Delete the physical table if it exists (via Edge Function)
   // NOTE: Edge Functions must be deployed to Supabase. See EDGE_FUNCTIONS_DEPLOYMENT.md
   if (tableName) {
@@ -264,6 +385,23 @@ export const deleteInventoryTab = async (id) => {
       console.log("[deleteInventoryTab] Calling drop endpoint:", dropEndpoint, "for table:", tableName);
       const result = await callDropInventoryTable(dropEndpoint, tableName);
       console.info(`[deleteInventoryTab] Successfully dropped physical table: ${tableName}`, result);
+      // If the drop reported that the table did not exist, try probing a few candidate names
+      if (result && result.existed === false) {
+        // Physical table reported as not existing. Rather than probing candidate table names
+        // (which issues REST queries and can generate 400 errors in the browser), we will
+        // log a set of suggested candidate names for manual inspection or admin cleanup.
+        const suggestions = [];
+        if (tableName) suggestions.push(tableName);
+        if (tabRow?.name) {
+          suggestions.push(`inventory_${String(tabRow.name || 'tab').toLowerCase().trim().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')}`);
+        }
+        if (tabRow?.slug) {
+          suggestions.push(`inventory_${String(tabRow.slug || '').toLowerCase().trim().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')}`);
+        }
+        if (suggestions.length > 0) {
+          console.info('[deleteInventoryTab] Physical table did not exist. Candidate table names to inspect manually:', suggestions);
+        }
+      }
     } catch (dropErr) {
       console.error("[deleteInventoryTab] Error during table drop:", {
         message: dropErr?.message,
@@ -278,6 +416,63 @@ export const deleteInventoryTab = async (id) => {
         console.warn("Failed to drop physical table", tableName, dropErr);
       }
       // Continue with metadata deletion even if physical table drop fails
+    }
+
+    // Delete the corresponding logs table (non-critical: if it fails, we warn but continue)
+    try {
+      const dropLogsEndpoint = getInventoryDropLogsTableEndpoint();
+      console.log("[deleteInventoryTab] Calling drop logs endpoint:", dropLogsEndpoint, "for table:", `${tableName}_logs`);
+      const logsResult = await callDropInventoryLogsTable(dropLogsEndpoint, tableName);
+      console.info(`[deleteInventoryTab] Successfully dropped logs table: ${tableName}_logs`, logsResult);
+    } catch (logsDropErr) {
+      console.warn("[deleteInventoryTab] Failed to drop logs table (non-critical):", {
+        message: logsDropErr?.message,
+        error: logsDropErr,
+        tableName,
+      });
+      // Don't throw error - continue with tab deletion even if logs table drop fails
+    }
+    // Skipping drop of per-table exports edge function due to CORS / environment constraints.
+    // Exports are stored centrally in `dynamic_inventory_export_logs`, so per-table exports cleanup
+    // is not required on the client side.
+  }
+
+  // If we didn't find a persisted tableName, try to derive a candidate from the tab row
+  if (!tableName) {
+    try {
+      const { data: tabRow, error: tabErr } = await supabase
+        .from('inventory_tabs')
+        .select('id, name')
+        .eq('id', id)
+        .limit(1)
+        .maybeSingle();
+      if (!tabErr && tabRow?.name) {
+        const candidate = `inventory_${String(tabRow.name || 'tab').toLowerCase().trim().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')}`;
+        try {
+          const dropEndpoint = getInventoryDropTableEndpoint();
+          console.log('[deleteInventoryTab] Attempting to drop derived table name:', candidate);
+          await callDropInventoryTable(dropEndpoint, candidate);
+          console.info('[deleteInventoryTab] Dropped derived physical table:', candidate);
+
+          // also attempt to drop logs/exports tied to candidate
+          try {
+            const dropLogsEndpoint = getInventoryDropLogsTableEndpoint();
+            await callDropInventoryLogsTable(dropLogsEndpoint, candidate);
+          } catch (e) {
+            console.warn('[deleteInventoryTab] Failed to drop derived logs table (non-critical):', e);
+          }
+          try {
+            const dropExportsEndpoint = getInventoryDropExportsTableEndpoint();
+            await callDropInventoryExportsTable(dropExportsEndpoint, candidate);
+          } catch (e) {
+            console.warn('[deleteInventoryTab] Failed to drop derived exports table (non-critical):', e);
+          }
+        } catch (e) {
+          console.warn('[deleteInventoryTab] Failed to drop derived candidate table (non-critical):', candidate, e);
+        }
+      }
+    } catch (e) {
+      // ignore
     }
   }
 
@@ -382,35 +577,60 @@ export const upsertInventoryItem = async ({ id, sectionId, computerNumber, type,
       status,
       ...sortOrderPayload,
     };
+  let result;
   if (tableName) {
     if (id) {
-      const { data, error } = await supabase.from(tableName).update(payload).eq("id", id).single();
+      // For UPDATE, we need to fetch old data for logging
+      let oldData = null;
+      try {
+        const { data: oldDataRes } = await supabase.from(tableName).select("*").eq("id", id).single();
+        oldData = oldDataRes;
+      } catch (e) {
+        console.warn("Failed to fetch old data for logging:", e);
+      }
+      const { data, error } = await supabase.from(tableName).update(payload).eq("id", id).select("*").single();
       if (error) throw error;
-      return data;
+      result = data;
+      // Log the update
+      try {
+        await logInventoryChange(tableName, 'UPDATE', oldData, result, sectionId);
+      } catch (logError) {
+        console.warn("Failed to log inventory update:", logError);
+      }
+    } else {
+      // For INSERT
+      const { data, error } = await supabase.from(tableName).insert([payload]).select("*").single();
+      if (error) throw error;
+      result = data;
+      // Log the insert
+      try {
+        await logInventoryChange(tableName, 'INSERT', null, result, sectionId);
+      } catch (logError) {
+        console.warn("Failed to log inventory insert:", logError);
+      }
     }
-    const { data, error } = await supabase.from(tableName).insert([payload]).single();
-    if (error) throw error;
-    return data;
+  } else {
+    // Legacy inventory_items table
+    if (id) {
+      const { data, error } = await supabase
+        .from("inventory_items")
+        .update(payload)
+        .eq("id", id)
+        .select("id, section_id, computer_number, type, brand, description, status, sort_order, created_at, updated_at")
+        .single();
+      if (error) throw error;
+      result = data;
+    } else {
+      const { data, error } = await supabase
+        .from("inventory_items")
+        .insert([payload])
+        .select("id, section_id, computer_number, type, brand, description, status, sort_order, created_at, updated_at")
+        .single();
+      if (error) throw error;
+      result = data;
+    }
   }
-
-  if (id) {
-    const { data, error } = await supabase
-      .from("inventory_items")
-      .update(payload)
-      .eq("id", id)
-      .select("id, section_id, computer_number, type, brand, description, status, sort_order, created_at, updated_at")
-      .single();
-    if (error) throw error;
-    return data;
-  }
-
-  const { data, error } = await supabase
-    .from("inventory_items")
-    .insert([payload])
-    .select("id, section_id, computer_number, type, brand, description, status, sort_order, created_at, updated_at")
-    .single();
-  if (error) throw error;
-  return data;
+  return result;
 };
 
 export const updateInventoryItemQuantity = async ({
@@ -427,7 +647,16 @@ export const updateInventoryItemQuantity = async ({
     throw new Error("Inventory quantity must be a valid non-negative number.");
   }
 
+  let result;
   if (tableName) {
+    // For UPDATE, we need to fetch old data for logging
+    let oldData = null;
+    try {
+      const { data: oldDataRes } = await supabase.from(tableName).select("*").eq("id", id).single();
+      oldData = oldDataRes;
+    } catch (e) {
+      console.warn("Failed to fetch old data for logging:", e);
+    }
     const { data, error } = await supabase
       .from(tableName)
       .update({
@@ -437,38 +666,64 @@ export const updateInventoryItemQuantity = async ({
       .eq("section_id", sectionId)
       .select("*")
       .single();
-
     if (error) throw error;
-    notifyInventoryItemsChanged();
-    return data;
+    result = data;
+    // Log the update
+    try {
+      await logInventoryChange(tableName, 'UPDATE', oldData, result, sectionId);
+    } catch (logError) {
+      console.warn("Failed to log inventory quantity update:", logError);
+    }
+  } else {
+    // Legacy inventory_items table
+    const { data: existingItem, error: existingError } = await supabase
+      .from("inventory_items")
+      .select("data")
+      .eq("id", id)
+      .eq("section_id", sectionId)
+      .single();
+
+    if (existingError) throw existingError;
+
+    // For UPDATE, we need to fetch old data for logging
+    let oldData = null;
+    try {
+      const { data: oldDataRes } = await supabase
+        .from("inventory_items")
+        .select("*")
+        .eq("id", id)
+        .eq("section_id", sectionId)
+        .single();
+      oldData = oldDataRes;
+    } catch (e) {
+      console.warn("Failed to fetch old data for logging:", e);
+    }
+
+    const { data, error } = await supabase
+      .from("inventory_items")
+      .update({
+        data: {
+          ...(existingItem?.data && typeof existingItem.data === "object" ? existingItem.data : {}),
+          quantity: nextQuantity,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("section_id", sectionId)
+      .select("id, section_id, computer_number, type, brand, description, status, data, sort_order, created_at, updated_at")
+      .single();
+    if (error) throw error;
+    result = data;
+    // Log the update
+    try {
+      await logInventoryChange('inventory_items', 'UPDATE', oldData, result, sectionId);
+    } catch (logError) {
+      console.warn("Failed to log inventory quantity update:", logError);
+    }
   }
 
-  const { data: existingItem, error: existingError } = await supabase
-    .from("inventory_items")
-    .select("data")
-    .eq("id", id)
-    .eq("section_id", sectionId)
-    .single();
-
-  if (existingError) throw existingError;
-
-  const { data, error } = await supabase
-    .from("inventory_items")
-    .update({
-      data: {
-        ...(existingItem?.data && typeof existingItem.data === "object" ? existingItem.data : {}),
-        quantity: nextQuantity,
-      },
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .eq("section_id", sectionId)
-    .select("id, section_id, computer_number, type, brand, description, status, data, sort_order, created_at, updated_at")
-    .single();
-
-  if (error) throw error;
   notifyInventoryItemsChanged();
-  return data;
+  return result;
 };
 
 export const adjustInventoryItemQuantity = async ({
@@ -530,15 +785,41 @@ export const adjustInventoryItemQuantity = async ({
   });
 };
 
-export const deleteInventoryItem = async (id, tableName = null) => {
+export const deleteInventoryItem = async (id, tableName = null, sectionId = null) => {
+  // For DELETE, we need to fetch old data for logging
+  let oldData = null;
+  try {
+    if (tableName) {
+      const { data: oldDataRes } = await supabase.from(tableName).select("*").eq("id", id).single();
+      oldData = oldDataRes;
+    } else {
+      const { data: oldDataRes } = await supabase.from("inventory_items").select("*").eq("id", id).single();
+      oldData = oldDataRes;
+    }
+  } catch (e) {
+    console.warn("Failed to fetch old data for deletion logging:", e);
+  }
+
   if (tableName) {
     const { error } = await supabase.from(tableName).delete().eq("id", id);
     if (error) throw error;
+    // Log the deletion
+    try {
+      await logInventoryChange(tableName, 'DELETE', oldData, null, sectionId);
+    } catch (logError) {
+      console.warn("Failed to log inventory deletion:", logError);
+    }
     return;
   }
 
   const { error } = await supabase.from("inventory_items").delete().eq("id", id);
   if (error) throw error;
+  // Log the deletion for legacy table
+  try {
+    await logInventoryChange('inventory_items', 'DELETE', oldData, null, sectionId);
+  } catch (logError) {
+    console.warn("Failed to log inventory deletion:", logError);
+  }
 };
 
 export const getTabTableConfig = async (tabId) => {
@@ -765,6 +1046,249 @@ export const callDropInventoryColumns = async (edgeFunctionUrl, tableName, colum
   console.log("[callDropInventoryColumns] Success:", result);
   return result;
 };
+
+// Create logs table for inventory table
+export const callCreateInventoryLogsTable = async (edgeFunctionUrl, inventoryTableName, columns = []) => {
+  if (!edgeFunctionUrl) throw new Error("Edge function URL is required to create logs tables.");
+  const headers = { "Content-Type": "application/json" };
+
+  // Try to get Supabase access token first
+  let hasValidAuth = false;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+      hasValidAuth = true;
+    }
+  } catch (e) {
+    // If getting session fails, fall back to app_session
+  }
+
+  // Always include app_session when available so the edge function can resolve role from the browser session too.
+  if (typeof window !== "undefined") {
+    try {
+      const sessionRaw = window.localStorage.getItem("app_session");
+      if (sessionRaw) {
+        headers["X-App-Session"] = sessionRaw;
+      }
+    } catch (e) {
+      // ignore storage errors
+    }
+  }
+
+  const res = await fetch(edgeFunctionUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      tableName: `${inventoryTableName}_logs`,
+      inventoryTableName,
+      columns
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Create inventory logs table failed: ${res.status} ${text}`);
+  }
+  return res.json();
+};
+
+// Drop logs table for inventory table
+export const callDropInventoryLogsTable = async (edgeFunctionUrl, inventoryTableName) => {
+  if (!edgeFunctionUrl) throw new Error("Edge function URL is required to drop logs tables.");
+  const headers = { "Content-Type": "application/json" };
+
+  // Try to get Supabase access token first
+  let hasValidAuth = false;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+      hasValidAuth = true;
+    }
+  } catch (e) {
+    // If getting session fails, fall back to app_session
+  }
+
+  // Always include app_session when available so the edge function can resolve role from the browser session too.
+  if (typeof window !== "undefined") {
+    try {
+      const sessionRaw = window.localStorage.getItem("app_session");
+      if (sessionRaw) {
+        headers["X-App-Session"] = sessionRaw;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  console.log("[callDropInventoryLogsTable] Starting fetch:", {
+    url: edgeFunctionUrl,
+    inventoryTableName,
+    headersKeys: Object.keys(headers),
+  });
+
+  try {
+    const res = await fetch(edgeFunctionUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ tableName: `${inventoryTableName}_logs` }),
+    });
+
+    console.log("[callDropInventoryLogsTable] Response status:", res.status, res.statusText);
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("[callDropInventoryLogsTable] Response not ok:", { status: res.status, text });
+      const errorMsg = res.status === 404
+        ? `Drop logs table function not deployed. See EDGE_FUNCTIONS_DEPLOYMENT.md for deployment instructions.`
+        : `Drop logs table failed: ${res.status} ${text}`;
+      throw new Error(errorMsg);
+    }
+
+    const result = await res.json();
+    console.log("[callDropInventoryLogsTable] Success:", result);
+    return result;
+  } catch (error) {
+    console.error("[callDropInventoryLogsTable] Fetch error:", error);
+    throw error;
+  }
+};
+
+// Drop exports table for inventory table (used by delete flow)
+export const callDropInventoryExportsTable = async (edgeFunctionUrl, inventoryTableName) => {
+  if (!edgeFunctionUrl) throw new Error("Edge function URL is required to drop exports tables.");
+  const headers = { "Content-Type": "application/json" };
+
+  // Try to get Supabase access token first
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  } catch (e) {
+    // ignore
+  }
+
+  if (typeof window !== "undefined") {
+    try {
+      const sessionRaw = window.localStorage.getItem("app_session");
+      if (sessionRaw) headers["X-App-Session"] = sessionRaw;
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  console.log("[callDropInventoryExportsTable] Starting fetch:", {
+    url: edgeFunctionUrl,
+    inventoryTableName,
+    headersKeys: Object.keys(headers),
+  });
+
+  try {
+    const res = await fetch(edgeFunctionUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ tableName: `${inventoryTableName}_exports` }),
+    });
+
+    console.log("[callDropInventoryExportsTable] Response status:", res.status, res.statusText);
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("[callDropInventoryExportsTable] Response not ok:", { status: res.status, text });
+      const errorMsg = res.status === 404
+        ? `Drop exports table function not deployed. See EDGE_FUNCTIONS_DEPLOYMENT.md for deployment instructions.`
+        : `Drop exports table failed: ${res.status} ${text}`;
+      throw new Error(errorMsg);
+    }
+
+    const result = await res.json();
+    console.log("[callDropInventoryExportsTable] Success:", result);
+    return result;
+  } catch (error) {
+    console.error("[callDropInventoryExportsTable] Fetch error:", error);
+    throw error;
+  }
+};
+
+export const callCleanupExportLogs = async (edgeFunctionUrl, retentionDays) => {
+  if (!edgeFunctionUrl) throw new Error("Edge function URL is required to clean up export logs.");
+  const headers = { "Content-Type": "application/json" };
+
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  } catch (e) {
+    // ignore
+  }
+
+  if (typeof window !== "undefined") {
+    try {
+      const sessionRaw = window.localStorage.getItem("app_session");
+      if (sessionRaw) headers["X-App-Session"] = sessionRaw;
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const response = await fetch(edgeFunctionUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ retentionDays }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Cleanup export logs failed: ${response.status} ${text}`);
+  }
+
+  return response.json();
+};
+
+// Create exports table for inventory table
+export const callCreateInventoryExportsTable = async (edgeFunctionUrl, inventoryTableName, columns = []) => {
+  if (!edgeFunctionUrl) throw new Error("Edge function URL is required to create exports tables.");
+  const headers = { "Content-Type": "application/json" };
+
+  // Try to get Supabase access token first
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  } catch (e) {
+    // ignore
+  }
+
+  if (typeof window !== "undefined") {
+    try {
+      const sessionRaw = window.localStorage.getItem("app_session");
+      if (sessionRaw) headers["X-App-Session"] = sessionRaw;
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const res = await fetch(edgeFunctionUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      tableName: `${inventoryTableName}_exports`,
+      inventoryTableName,
+      columns,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Create inventory exports table failed: ${res.status} ${text}`);
+  }
+  return res.json();
+};
+
+// (duplicate `callDropInventoryExportsTable` removed — single implementation retained earlier)
 
 // Simple settings CRUD (key -> jsonb value)
 export const fetchSetting = async (key) => {

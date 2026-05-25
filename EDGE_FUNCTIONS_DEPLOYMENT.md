@@ -5,7 +5,7 @@ The Teresa-MIS Inventory system uses Supabase Edge Functions to handle the physi
 
 ## Created Edge Functions
 
-Two new Edge Functions have been created and are ready for deployment:
+Four Edge Functions are used by the inventory manager and should be deployed together:
 
 ### 1. drop-inventory-table
 **Location:** `supabase/functions/drop-inventory-table/index.ts`
@@ -50,6 +50,60 @@ Two new Edge Functions have been created and are ready for deployment:
 }
 ```
 
+### 3. create-inventory-logs-table
+**Location:** `supabase/functions/create-inventory-logs-table/index.ts`
+
+**Purpose:** Creates the per-tab history/logs table used by the inventory history views.
+
+**Requirements:**
+- Admin role (account_type = 'admin' or 'superadmin')
+- POST request with JSON body containing `tableName` or `inventoryTableName`
+
+**Request Body:**
+```json
+{
+   "tableName": "my_inventory_table_logs",
+   "inventoryTableName": "my_inventory_table"
+}
+```
+
+**Response:**
+```json
+{
+   "ok": true,
+   "schema": "public",
+   "table": "my_inventory_table_logs",
+   "columns": []
+}
+```
+
+### 4. drop-inventory-logs-table
+**Location:** `supabase/functions/drop-inventory-logs-table/index.ts`
+
+**Purpose:** Drops the per-tab history/logs table when an inventory tab is deleted.
+
+**Requirements:**
+- Admin role (account_type = 'admin' or 'superadmin')
+- POST request with JSON body containing `tableName` or `inventoryTableName`
+
+**Request Body:**
+```json
+{
+   "tableName": "my_inventory_table_logs",
+   "inventoryTableName": "my_inventory_table"
+}
+```
+
+**Response:**
+```json
+{
+   "ok": true,
+   "schema": "public",
+   "table": "my_inventory_table_logs",
+   "dropped": true
+}
+```
+
 **Response:**
 ```json
 {
@@ -91,12 +145,24 @@ Two new Edge Functions have been created and are ready for deployment:
    supabase functions deploy drop-inventory-columns --project-ref yzhgvvnchajslpcabrjn
    ```
 
+5. **Deploy the create-inventory-logs-table function:**
+   ```bash
+   supabase functions deploy create-inventory-logs-table --project-ref yzhgvvnchajslpcabrjn
+   ```
+
+6. **Deploy the drop-inventory-logs-table function:**
+   ```bash
+   supabase functions deploy drop-inventory-logs-table --project-ref yzhgvvnchajslpcabrjn
+   ```
+
 ### Option 2: Using npx (If Global Install Fails)
 
 ```bash
 # In the project directory
 npx supabase@latest functions deploy drop-inventory-table --project-ref yzhgvvnchajslpcabrjn
 npx supabase@latest functions deploy drop-inventory-columns --project-ref yzhgvvnchajslpcabrjn
+npx supabase@latest functions deploy create-inventory-logs-table --project-ref yzhgvvnchajslpcabrjn
+npx supabase@latest functions deploy drop-inventory-logs-table --project-ref yzhgvvnchajslpcabrjn
 ```
 
 ### Option 3: Using Supabase Dashboard (Manual)
@@ -109,6 +175,8 @@ npx supabase@latest functions deploy drop-inventory-columns --project-ref yzhgvv
 6. Paste it into the function editor
 7. Click Deploy
 8. Repeat steps 3-7 for `drop-inventory-columns`
+9. Repeat steps 3-7 for `create-inventory-logs-table`
+10. Repeat steps 3-7 for `drop-inventory-logs-table`
 
 ## Troubleshooting
 
@@ -128,6 +196,9 @@ This is usually a warning and can be ignored if you have SUPABASE_URL and SUPABA
 
 ### Error: "Failed to fetch - 404 Not Found"
 The Edge Function is not deployed. Follow the deployment instructions above.
+
+### Error: "CORS policy" when creating logs tables
+This usually means `create-inventory-logs-table` has not been deployed yet, or the deployed function returned an error before sending CORS headers. Redeploy the logs functions and check the Supabase function logs.
 
 ### Error: "CORS policy"
 If you see a CORS error in the browser console, the function may exist but isn't responding correctly. Check:

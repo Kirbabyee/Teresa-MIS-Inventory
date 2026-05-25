@@ -9,14 +9,21 @@ import { supabase } from "@/api/supabaseClient";
 import {
   deleteInventorySection,
   deleteInventoryTab,
+  fetchSetting,
+  callCleanupExportLogs,
   upsertInventorySection,
   upsertInventoryTab,
   useInventoryCatalog,
   callCreateInventoryTable,
   callModifyInventoryTable,
+  callCreateInventoryLogsTable,
+  callDropInventoryLogsTable,
   upsertSetting,
   getInventoryCreateTableEndpoint,
+  getInventoryCleanupExportLogsEndpoint,
   getInventoryModifyTableEndpoint,
+  getInventoryLogsTableEndpoint,
+  getInventoryDropLogsTableEndpoint,
   getTabTableConfig,
   slugify,
   makeUniqueSlug,
@@ -1025,7 +1032,28 @@ function TabModal({ tab, onClose, onSave }) {
     setShowColumnModal(true);
   };
 
-  const deleteColumn = (index) => {
+  const deleteColumn = async (index) => {
+    const columnToDelete = columns[index];
+    if (!columnToDelete || !columnToDelete.key) {
+      setColumns((currentColumns) => currentColumns.filter((_, currentIndex) => currentIndex !== index));
+      if (editingColumnIndex === index) setEditingColumnIndex(null);
+      return;
+    }
+
+    try {
+      // If we have an existing table, drop the column immediately
+      if (editingTab && editingTab.id) {
+        const tableName = await getTabTableName(editingTab.id);
+        if (tableName) {
+          const dropColumnsEndpoint = getInventoryDropColumnsEndpoint();
+          await callDropInventoryColumns(dropColumnsEndpoint, tableName, [columnToDelete.key]);
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to drop column immediately, will drop on save:", error);
+      // Continue with UI update - will be cleaned up on save
+    }
+
     setColumns((currentColumns) => currentColumns.filter((_, currentIndex) => currentIndex !== index));
     if (editingColumnIndex === index) setEditingColumnIndex(null);
   };
@@ -1647,6 +1675,11 @@ export default function Inventory() {
   const navigate = useNavigate();
   const [computerLaboratoryCount, setComputerLaboratoryCount] = useState(0);
   const [showModal, setShowModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [exportRetentionDays, setExportRetentionDays] = useState(30);
+  const [savingExportRetention, setSavingExportRetention] = useState(false);
+  const [cleaningExportLogs, setCleaningExportLogs] = useState(false);
+  const [cleanupStatus, setCleanupStatus] = useState("");
   const [editingSlug, setEditingSlug] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -1705,18 +1738,60 @@ export default function Inventory() {
       try {
         // Get the existing tab config to compare columns
         const existingConfig = await getTabTableConfig(currentTab.id);
+        const existingColumns = (existingConfig?.columns || []).filter(col => col && col.key);
         const updatedColumns = (form.columns || [])
           .filter((col) => col && col.key)
           .map((col) => normalizeColumnConfig(col));
         const tabConfig = { tableName: existingConfig?.tableName, columns: updatedColumns };
 
         const tableName = existingConfig?.tableName;
-        if (tableName && updatedColumns.length > 0) {
+        if (tableName) {
           const modifyEndpoint = getInventoryModifyTableEndpoint();
-          // Ensure columns are flattened for the SQL generation (DDL)
-          const flattened = flattenColumnsForDDL(updatedColumns);
-          console.log("Modifying table:", tableName, "with columns:", flattened);
-          await callModifyInventoryTable(modifyEndpoint, tableName, "sync", flattened);
+
+          // Create maps for easy comparison
+          const existingColumnMap = new Map();
+          existingColumns.forEach(col => {
+            if (col.key) existingColumnMap.set(col.key, col);
+          });
+
+          const updatedColumnMap = new Map();
+          updatedColumns.forEach(col => {
+            if (col.key) updatedColumnMap.set(col.key, col);
+          });
+
+          // Determine which columns to add and which to remove
+          const columnsToAdd = [];
+          const columnsToRemove = [];
+
+          // Find columns to add (in updated but not in existing)
+          updatedColumns.forEach(col => {
+            if (!existingColumnMap.has(col.key)) {
+              columnsToAdd.push({ key: col.key, type: col.data_type || col.type || "text" });
+            }
+          });
+
+          // Find columns to remove (in existing but not in updated)
+          existingColumns.forEach(col => {
+            if (!updatedColumnMap.has(col.key)) {
+              columnsToRemove.push(col.key);
+            }
+          });
+
+          // Add new columns
+          if (columnsToAdd.length > 0) {
+            const flattenedAdd = flattenColumnsForDDL(columnsToAdd);
+            console.log("Adding columns to table:", tableName, "with columns:", flattenedAdd);
+            await callModifyInventoryTable(modifyEndpoint, tableName, "add", flattenedAdd);
+            console.log("Columns added successfully");
+          }
+
+          // Remove deleted columns
+          if (columnsToRemove.length > 0) {
+            console.log("Removing columns from table:", tableName, "columns:", columnsToRemove);
+            await callModifyInventoryTable(modifyEndpoint, tableName, "remove", columnsToRemove);
+            console.log("Columns removed successfully");
+          }
+
           console.log("Table columns modified successfully");
         }
 
@@ -1760,14 +1835,27 @@ export default function Inventory() {
         }
 
         const endpoint = ddlEndpoint;
+        const logsEndpoint = getInventoryLogsTableEndpoint();
         console.log("Creating inventory table:", tableName, "with columns:", cols);
 
         // Flatten columns so the Edge Function creates physical sub-columns in the DB
         const flattened = flattenColumnsForDDL(cols);
         console.log("Flattened columns for DDL:", flattened);
 
+        // Create the main inventory table
         await callCreateInventoryTable(endpoint, tableName, flattened);
-        console.log("Physical table created successfully");
+        console.log("Physical inventory table created successfully");
+
+        // Create the corresponding logs table (non-critical: if it fails, we warn but continue)
+        try {
+          await callCreateInventoryLogsTable(logsEndpoint, tableName, cols);
+          console.log(`Physical logs table created successfully: ${tableName}_logs`);
+        } catch (logsError) {
+          console.warn("Failed to create logs table (non-critical):", logsError);
+          alert(`Warning: Inventory table created but logs table creation failed. Error: ${logsError.message}`);
+        }
+
+        // Exports are recorded in the shared dynamic export logs table; no per-table exports creation here.
 
         // persist mapping and create-time template columns for this tab
         const tabConfig = { tableName, columns: cols };
@@ -1831,6 +1919,60 @@ export default function Inventory() {
     setPendingDeleteTab(null);
   };
 
+  const loadExportRetentionSetting = async () => {
+    try {
+      const setting = await fetchSetting("export_logs.retention_days");
+      const nextValue = Number.parseInt(String(setting?.value?.days ?? setting?.value ?? 30), 10);
+      if (Number.isFinite(nextValue) && nextValue > 0) {
+        setExportRetentionDays(nextValue);
+      }
+    } catch (settingError) {
+      console.warn("Failed to load export retention setting:", settingError);
+    }
+  };
+
+  const runExportCleanup = async (days = exportRetentionDays) => {
+    const nextDays = Number.parseInt(String(days), 10);
+    if (!Number.isFinite(nextDays) || nextDays < 1) {
+      throw new Error("Please enter a valid retention period in days.");
+    }
+
+    setCleaningExportLogs(true);
+    setCleanupStatus("");
+
+    try {
+      const endpoint = getInventoryCleanupExportLogsEndpoint();
+      const result = await callCleanupExportLogs(endpoint, nextDays);
+      const deletedRows = Object.values(result?.deletedTables || {}).reduce((total, count) => total + Number(count || 0), 0);
+      const deletedFiles = Number(result?.deletedFileCount || 0);
+      const message = `Cleanup completed: removed ${deletedRows} log rows and ${deletedFiles} stored files.`;
+      setCleanupStatus(message);
+      return result;
+    } finally {
+      setCleaningExportLogs(false);
+    }
+  };
+
+  const saveExportRetentionSetting = async () => {
+    const nextDays = Number.parseInt(String(exportRetentionDays), 10);
+    if (!Number.isFinite(nextDays) || nextDays < 1) {
+      alert("Please enter a valid retention period in days.");
+      return;
+    }
+
+    setSavingExportRetention(true);
+    try {
+      await upsertSetting("export_logs.retention_days", { days: nextDays });
+      await runExportCleanup(nextDays);
+      setShowSettingsModal(false);
+    } catch (saveError) {
+      console.error("Failed to save export retention setting:", saveError);
+      alert(saveError?.message || "Failed to save export retention setting.");
+    } finally {
+      setSavingExportRetention(false);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     const checkAdmin = async () => {
@@ -1845,6 +1987,10 @@ export default function Inventory() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    loadExportRetentionSetting();
   }, []);
 
   useEffect(() => {
@@ -1887,15 +2033,23 @@ export default function Inventory() {
             <h1 className="text-2xl font-bold text-slate-900">Inventory Manager</h1>
             <p className="text-slate-500 text-sm">{tabs.length} total tabs</p>
           </div>
-          <Button
-            onClick={() => {
-              setEditingSlug("");
-              setShowModal(true);
-            }}
-            className="gap-2 bg-[#4a1111] hover:bg-[#3f0f0f]"
-          >
-            <Plus className="w-4 h-4" /> Add Tab
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={() => {
+                setEditingSlug("");
+                setShowModal(true);
+              }}
+              className="gap-2 bg-[#4a1111] hover:bg-[#3f0f0f]"
+            >
+              <Plus className="w-4 h-4" /> Add Tab
+            </Button>
+            <Button
+              onClick={() => setShowSettingsModal(true)}
+              className="gap-2 bg-[#4a1111] hover:bg-[#3f0f0f]"
+            >
+              <Wrench className="w-4 h-4" /> Settings
+            </Button>
+          </div>
         </div>
 
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -2013,6 +2167,56 @@ export default function Inventory() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {showSettingsModal && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
+            <div className="relative w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
+              <h3 className="text-lg font-semibold text-slate-900">Inventory Settings</h3>
+
+              <div className="mt-5 space-y-4">
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Delete export files after
+                  </label>
+                  <div className="mt-2 flex items-center gap-3">
+                    <Input
+                      type="number"
+                      min="1"
+                      value={exportRetentionDays}
+                      onChange={(event) => setExportRetentionDays(event.target.value)}
+                      className="w-32"
+                    />
+                    <span className="text-sm text-slate-600">days</span>
+                  </div>
+                </div>
+
+                {cleanupStatus ? (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                    {cleanupStatus}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowSettingsModal(false)}
+                  className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveExportRetentionSetting}
+                  disabled={savingExportRetention || cleaningExportLogs}
+                  className="rounded-lg bg-[#4a1111] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {savingExportRetention || cleaningExportLogs ? "Saving..." : "Save"}
+                </button>
+              </div>
             </div>
           </div>
         )}
