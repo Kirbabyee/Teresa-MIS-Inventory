@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { hashInviteToken } from "@/lib/employeeInvites";
 import arkLogo from "@/assets/imgs/ark-logo.png";
+import { useAuth } from "@/lib/AuthContext";
 //ive edited this file again
 
 function evaluatePassword(password) {
@@ -21,6 +22,7 @@ function evaluatePassword(password) {
 
 export default function ActivateAccount() {
   const navigate = useNavigate();
+  const { showGlobalLoader, hideGlobalLoader } = useAuth();
   const [params] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -184,6 +186,7 @@ export default function ActivateAccount() {
     setSubmitting(true);
     setError("");
     setActivationNotice("");
+    showGlobalLoader("Activating account...");
 
     try {
       if (activationFunctionUrl) {
@@ -242,6 +245,7 @@ export default function ActivateAccount() {
       setError(submitError.message || "Failed to activate account.");
     } finally {
       setSubmitting(false);
+      hideGlobalLoader();
     }
   };
 

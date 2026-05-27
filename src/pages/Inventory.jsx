@@ -2019,8 +2019,15 @@ export default function Inventory() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-5">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading inventory tabs...</div>
+      <div className="flex min-h-[calc(100vh-6rem)] items-center justify-center p-6">
+        <div className="flex flex-col items-center gap-3">
+          <div
+            className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-[#4a1111]"
+            role="status"
+            aria-label="Loading inventory tabs"
+          />
+          <p className="text-sm text-slate-500">Loading inventory tabs...</p>
+        </div>
       </div>
     );
   }
@@ -2030,8 +2037,7 @@ export default function Inventory() {
       <div className="p-6 space-y-5">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Inventory Manager</h1>
-            <p className="text-slate-500 text-sm">{tabs.length} total tabs</p>
+            
           </div>
           <div className="flex items-center gap-3">
             <Button

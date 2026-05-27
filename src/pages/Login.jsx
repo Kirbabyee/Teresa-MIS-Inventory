@@ -1,10 +1,11 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import arkLogo from "@/assets/imgs/ark-logo.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/api/supabaseClient";
+import { useAuth } from "@/lib/AuthContext";
 
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
@@ -44,6 +45,7 @@ const fetchAccountForUser = async (user) => {
 
 export default function Login() {
   const navigate = useNavigate();
+  const { showGlobalLoader, hideGlobalLoader } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -69,6 +71,11 @@ export default function Login() {
     }
 
     setSubmitting(true);
+    showGlobalLoader("Verifying Credentials...");
+
+    const timeoutId = window.setTimeout(() => {
+      showGlobalLoader("Check your internet connection...");
+    }, 5000);
 
     try {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
@@ -122,7 +129,9 @@ export default function Login() {
     } catch (authError) {
       setError(authError?.message || "Unable to sign in.");
     } finally {
+      window.clearTimeout(timeoutId);
       setSubmitting(false);
+      hideGlobalLoader();
     }
   };
 

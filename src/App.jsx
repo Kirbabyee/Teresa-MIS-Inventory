@@ -26,6 +26,8 @@ import Laboratory5 from "./pages/Laboratory5";
 import UserAccounts from "./pages/UserAccounts";
 import ActivateAccount from "./pages/ActivateAccount";
 import ForgotPassword from "./pages/ForgotPassword";
+import { LoadingPopup } from "@/components/loaders/LoadingPopUp";
+import { useAuth } from "@/lib/AuthContext";
 
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
@@ -97,6 +99,80 @@ function AdminRoute({ session, children }) {
   return children;
 }
 
+function AppContent({ session, authenticated }) {
+  const { isGlobalLoading, globalLoadingMessage } = useAuth();
+
+  return (
+    <Router>
+      <Routes>
+        <Route
+          path="/activate-account"
+          element={<ActivateAccount />}
+        />
+        <Route
+          path="/login"
+          element={authenticated ? <Navigate to="/" replace /> : <Login />}
+        />
+        <Route
+          path="/forgot-password"
+          element={authenticated ? <Navigate to="/" replace /> : <ForgotPassword />}
+        />
+        <Route
+          path="/"
+          element={
+            authenticated ? <Layout /> : <Navigate to="/login" replace />
+          }
+        >
+          <Route index element={<Dashboard />} />
+          <Route
+            path="manage/accounts"
+            element={
+              <AdminRoute session={session}>
+                <UserAccounts />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="manage/inventory_manager"
+            element={
+              <AdminRoute session={session}>
+                <Inventory />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="manage/inventory-table-test"
+            element={
+              <AdminRoute session={session}>
+                <InventoryTableTest />
+              </AdminRoute>
+            }
+          />
+          <Route path="borrowing" element={<Borrowing />} />
+          <Route path="inventory" element={<Navigate to="/manage/inventory" replace />} />
+          <Route path="inventory/manage" element={<Navigate to="/manage/inventory" replace />} />
+          <Route path="inventory/laboratory" element={<ComputerLaboratoryInventory />} />
+          <Route path="inventory/:sectionSlug" element={<InventorySection />} />
+          <Route path="laboratory/inventory" element={<Navigate to="/inventory/laboratory" replace />} />
+          <Route path="laboratory/computer-laboratory-inventory" element={<Navigate to="/inventory/laboratory" replace />} />
+          <Route path="laboratory/comlab" element={<Navigate to="/inventory/laboratory" replace />} />
+          <Route path="laboratory/laboratory-1" element={<Laboratory1 />} />
+          <Route path="laboratory/laboratory-2" element={<Laboratory2 />} />
+          <Route path="laboratory/laboratory-3" element={<Laboratory3 />} />
+          <Route path="laboratory/laboratory-4" element={<Laboratory4 />} />
+          <Route path="laboratory/laboratory-5" element={<Laboratory5 />} />
+          <Route path="*" element={<PageNotFound />} />
+        </Route>
+        <Route
+          path="*"
+          element={<Navigate to={authenticated ? "/" : "/login"} replace />}
+        />
+      </Routes>
+      <LoadingPopup show={isGlobalLoading} message={globalLoadingMessage} color="#ffffff" />
+    </Router>
+  );
+}
+
 function App() {
   const session = useSyncExternalStore(
     subscribeToSessionChanges,
@@ -108,72 +184,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClientInstance}>
       <AuthProvider>
-      <Router>
-        <Routes>
-          <Route
-            path="/activate-account"
-            element={<ActivateAccount />}
-          />
-          <Route
-            path="/login"
-            element={authenticated ? <Navigate to="/" replace /> : <Login />}
-          />
-          <Route
-            path="/forgot-password"
-            element={authenticated ? <Navigate to="/" replace /> : <ForgotPassword />}
-          />
-          <Route
-            path="/"
-            element={
-              authenticated ? <Layout /> : <Navigate to="/login" replace />
-            }
-          >
-            <Route index element={<Dashboard />} />
-            <Route
-              path="manage/accounts"
-              element={
-                <AdminRoute session={session}>
-                  <UserAccounts />
-                </AdminRoute>
-              }
-            />
-            <Route
-              path="manage/inventory"
-              element={
-                <AdminRoute session={session}>
-                  <Inventory />
-                </AdminRoute>
-              }
-            />
-            <Route
-              path="manage/inventory-table-test"
-              element={
-                <AdminRoute session={session}>
-                  <InventoryTableTest />
-                </AdminRoute>
-              }
-            />
-            <Route path="borrowing" element={<Borrowing />} />
-            <Route path="inventory" element={<Navigate to="/manage/inventory" replace />} />
-            <Route path="inventory/manage" element={<Navigate to="/manage/inventory" replace />} />
-            <Route path="inventory/laboratory" element={<ComputerLaboratoryInventory />} />
-            <Route path="inventory/:sectionSlug" element={<InventorySection />} />
-            <Route path="laboratory/inventory" element={<Navigate to="/inventory/laboratory" replace />} />
-            <Route path="laboratory/computer-laboratory-inventory" element={<Navigate to="/inventory/laboratory" replace />} />
-            <Route path="laboratory/comlab" element={<Navigate to="/inventory/laboratory" replace />} />
-            <Route path="laboratory/laboratory-1" element={<Laboratory1 />} />
-            <Route path="laboratory/laboratory-2" element={<Laboratory2 />} />
-            <Route path="laboratory/laboratory-3" element={<Laboratory3 />} />
-            <Route path="laboratory/laboratory-4" element={<Laboratory4 />} />
-            <Route path="laboratory/laboratory-5" element={<Laboratory5 />} />
-            <Route path="*" element={<PageNotFound />} />
-          </Route>
-          <Route
-            path="*"
-            element={<Navigate to={authenticated ? "/" : "/login"} replace />}
-          />
-        </Routes>
-      </Router>
+        <AppContent session={session} authenticated={authenticated} />
       </AuthProvider>
       <Toaster />
     </QueryClientProvider>

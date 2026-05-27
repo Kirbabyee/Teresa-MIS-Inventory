@@ -287,17 +287,28 @@ export default function UserAccounts() {
   const sortedFiltered = sortAccountsByStatus(filtered);
 
   const uniqueAccountTypes = [...new Set(accounts.map(a => a.account_type).filter(Boolean))];
+  if (loading) {
+    return (
+      <div className="flex min-h-[calc(100vh-6rem)] items-center justify-center p-6">
+        <div className="flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <div
+              className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-[#4a1111]"
+              role="status"
+              aria-label="Loading user accounts"
+            />
+            <p className="text-sm text-slate-500">Loading accounts...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">
-            User Accounts
-          </h1>
-          <p className="text-slate-500 text-sm">
-            {accounts.length} total accounts
-          </p>
+          
         </div>
         <Button
           onClick={() => {
@@ -336,23 +347,19 @@ export default function UserAccounts() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-opacity duration-300">
         {loadError && (
           <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             Error loading accounts: {loadError}
           </div>
         )}
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-          </div>
-        ) : sortedFiltered.length === 0 ? (
+        {!loading && sortedFiltered.length === 0 ? (
           <div className="text-center py-16 text-slate-400">
             <p>No accounts found.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full transition-opacity duration-300">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   {[
@@ -465,6 +472,8 @@ export default function UserAccounts() {
           </div>
         )}
       </div>
+
+      {/* Global loader used via AuthContext; local overlay removed to avoid positioning issues */}
 
       {showModal && (
         <UserAccountModal

@@ -51,8 +51,20 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(true);
+  const [isGlobalLoading, setIsGlobalLoading] = useState(false);
+  const [globalLoadingMessage, setGlobalLoadingMessage] = useState("Loading...");
   const [authError, setAuthError] = useState(null);
   const [appPublicSettings, setAppPublicSettings] = useState(null);
+
+  const showGlobalLoader = (message = "Loading...") => {
+    setGlobalLoadingMessage(message);
+    setIsGlobalLoading(true);
+  };
+
+  const hideGlobalLoader = () => {
+    setIsGlobalLoading(false);
+    setGlobalLoadingMessage("Loading...");
+  };
 
   useEffect(() => {
     checkAppState();
@@ -195,14 +207,20 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    setUser(null);
-    setIsAuthenticated(false);
-    setAuthError(null);
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(SESSION_KEY);
-      window.dispatchEvent(new Event(SESSION_EVENT));
+    showGlobalLoader("Logging you out...");
+
+    try {
+      setUser(null);
+      setIsAuthenticated(false);
+      setAuthError(null);
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(SESSION_KEY);
+        window.dispatchEvent(new Event(SESSION_EVENT));
+      }
+      await supabase.auth.signOut();
+    } finally {
+      hideGlobalLoader();
     }
-    await supabase.auth.signOut();
   };
 
   const navigateToLogin = () => {
@@ -216,6 +234,12 @@ export const AuthProvider = ({ children }) => {
         isAuthenticated,
         isLoadingAuth,
         isLoadingPublicSettings,
+        isGlobalLoading,
+        globalLoadingMessage,
+        setIsGlobalLoading,
+        setGlobalLoadingMessage,
+        showGlobalLoader,
+        hideGlobalLoader,
         authError,
         appPublicSettings,
         login,

@@ -26,7 +26,7 @@ import {
   FlaskConical,
 } from "lucide-react";
 import arkLogo from "@/assets/imgs/ark-logo.png";
-import { supabase } from "@/api/supabaseClient";
+import { useAuth } from "@/lib/AuthContext";
 
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
@@ -174,11 +174,12 @@ export default function Layout() {
   });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const { logout } = useAuth();
   const [now, setNow] = useState(() => new Date());
   const { tabs: inventoryTabs } = useInventoryCatalog();
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const session = readSession();
   const displayName = session?.displayName || session?.email || "User";
   const displayRole = session?.role || "Employee";
@@ -264,7 +265,7 @@ export default function Layout() {
           {
             label: "Inventory Manager",
             icon: Boxes,
-            path: "/manage/inventory",
+            path: "/manage/inventory_manager",
           },
           //{
           //  label: "Inventory Table Test",
@@ -289,7 +290,7 @@ export default function Layout() {
   }, [collapsed]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await logout();
 
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(SESSION_KEY);
@@ -438,7 +439,7 @@ export default function Layout() {
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2">
             <AlertDialogCancel className="rounded-lg">Wait, stay</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleLogout}
               className="bg-red-600 hover:bg-red-700 text-white rounded-lg px-6"
             >
@@ -447,6 +448,7 @@ export default function Layout() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
     </div>
   );
 }
