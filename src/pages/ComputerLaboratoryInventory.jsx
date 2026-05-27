@@ -3,6 +3,9 @@ import { useSearchParams } from "react-router-dom";
 import { Download, Plus, PencilLine, Trash2, Check, FileText, ChevronLeft, ChevronDown, Search, X } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
+import { DayPicker } from "react-day-picker";
+import "react-day-picker/dist/style.css";
+import { format } from "date-fns";
 import { supabase } from "@/api/supabaseClient";
 import arkLogoUrl from "@/assets/imgs/ark-logo.png";
 import InventoryHistoryView from "@/components/InventoryHistoryView";
@@ -156,6 +159,12 @@ const generateSchoolYearOptions = (back = 3, forward = 3, referenceDate = new Da
 
 const SEMESTER_OPTIONS = ["1st", "2nd", "Summer"];
 
+const formatPickerLabel = (range) => {
+    if (!range?.from) return "Select date range";
+    if (range.from && !range.to) return `${format(range.from, "MMM d, yyyy")} —`;
+    return `${format(range.from, "MMM d, yyyy")} — ${format(range.to, "MMM d, yyyy")}`;
+};
+
 const applyExportHeader = (worksheet, titleText, exportDate, headerColor, logoImage, separatorImage, options = {}) => {
     for (let i = 1; i <= 5; i++) {
         worksheet.getRow(i).height = 25;
@@ -254,6 +263,7 @@ export default function ComputerLaboratoryInventory() {
     const [newLabName, setNewLabName] = useState("");
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [labsLoading, setLabsLoading] = useState(true);
     const [error, setError] = useState("");
     const [exporting, setExporting] = useState(false);
     const [showExportModal, setShowExportModal] = useState(false);
@@ -274,6 +284,8 @@ export default function ComputerLaboratoryInventory() {
     const [isHistoryOpen, setIsHistoryOpen] = useState(() => searchParams.get("view") === "logs");
     const [searchQuery, setSearchQuery] = useState("");
     const [historySearchQuery, setHistorySearchQuery] = useState("");
+    const [historyDateRange, setHistoryDateRange] = useState({ from: undefined, to: undefined });
+    const [showHistoryDatePicker, setShowHistoryDatePicker] = useState(false);
     const [openComponentSections, setOpenComponentSections] = useState(() => createInitialComponentSections());
     const [cellDrafts, setCellDrafts] = useState({});
     const [savingCellKey, setSavingCellKey] = useState(null);
@@ -492,41 +504,46 @@ export default function ComputerLaboratoryInventory() {
         let cancelled = false;
 
         const loadLaboratories = async () => {
-            const { data: labsData, error: labsError } = await supabase
-                .from("lab_numbers")
-                .select("id, lab_number, name")
-                .order("lab_number", { ascending: true });
+            setLabsLoading(true);
+            try {
+                const { data: labsData, error: labsError } = await supabase
+                    .from("lab_numbers")
+                    .select("id, lab_number, name")
+                    .order("lab_number", { ascending: true });
 
-            if (cancelled) return;
+                if (cancelled) return;
 
-            if (labsError) {
-                console.error("Failed to load laboratories:", labsError.message);
-                setLabOptions([]);
-                setSelectedLab(null);
-                return;
-            }
-
-            const normalizedLabs = (labsData || []).map((lab) => ({
-                value: lab.id,
-                label: lab.name || `Laboratory ${lab.lab_number}`,
-                order: Number(lab.lab_number),
-            }));
-
-            setLabOptions(normalizedLabs);
-
-            // respect labId query param if present
-            const labIdParam = searchParams.get("labId");
-            if (labIdParam) {
-                const match = normalizedLabs.find((l) => String(l.value) === String(labIdParam));
-                if (match) {
-                    setSelectedLab(match.value);
+                if (labsError) {
+                    console.error("Failed to load laboratories:", labsError.message);
+                    setLabOptions([]);
+                    setSelectedLab(null);
                     return;
                 }
-            }
 
-            setSelectedLab((current) =>
-                normalizedLabs.some((lab) => lab.value === current) ? current : normalizedLabs[0]?.value || null
-            );
+                const normalizedLabs = (labsData || []).map((lab) => ({
+                    value: lab.id,
+                    label: lab.name || `Laboratory ${lab.lab_number}`,
+                    order: Number(lab.lab_number),
+                }));
+
+                setLabOptions(normalizedLabs);
+
+                // respect labId query param if present
+                const labIdParam = searchParams.get("labId");
+                if (labIdParam) {
+                    const match = normalizedLabs.find((l) => String(l.value) === String(labIdParam));
+                    if (match) {
+                        setSelectedLab(match.value);
+                        return;
+                    }
+                }
+
+                setSelectedLab((current) =>
+                    normalizedLabs.some((lab) => lab.value === current) ? current : normalizedLabs[0]?.value || null
+                );
+            } finally {
+                if (!cancelled) setLabsLoading(false);
+            }
         };
 
         loadLaboratories();
@@ -779,8 +796,10 @@ export default function ComputerLaboratoryInventory() {
 
         const fetchLabComponents = async () => {
             if (!selectedLab) {
-                setRows([]);
-                setLoading(false);
+                if (!labsLoading) {
+                    setRows([]);
+                    setLoading(false);
+                }
                 return;
             }
 
@@ -892,6 +911,8 @@ export default function ComputerLaboratoryInventory() {
     useEffect(() => {
         if (!isHistoryOpen) {
             setHistorySearchQuery("");
+            setHistoryDateRange({ from: undefined, to: undefined });
+            setShowHistoryDatePicker(false);
         }
     }, [isHistoryOpen]);
 
@@ -1253,6 +1274,23 @@ export default function ComputerLaboratoryInventory() {
             setExporting(false);
         }
     };
+
+    if (loading || labsLoading) {
+        return (
+            <div className="flex min-h-[calc(100vh-6rem)] items-center justify-center p-6">
+                <div className="flex items-center justify-center">
+                    <div className="flex flex-col items-center gap-3">
+                        <div
+                            className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-[#4a1111]"
+                            role="status"
+                            aria-label="Loading inventory data"
+                        />
+                        <p className="text-sm text-slate-500">Loading...</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="p-6 space-y-5">
@@ -1685,29 +1723,77 @@ export default function ComputerLaboratoryInventory() {
             )}
 
             {isHistoryOpen && (
-                <div className="mt-3 w-full sm:w-96">
-                    <div className="relative">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                        <input
-                            type="text"
-                            value={historySearchQuery}
-                            onChange={(e) => setHistorySearchQuery(e.target.value)}
-                            placeholder="Search computer #, component, brand, description..."
-                            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
-                        />
-                        {historySearchQuery && (
+                    <div className="mt-3 flex w-full flex-wrap items-center gap-3 overflow-visible">
+                        <div className="relative w-full sm:w-96">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="text"
+                                value={historySearchQuery}
+                                onChange={(e) => setHistorySearchQuery(e.target.value)}
+                                placeholder="Search computer #, component, brand, description, dates..."
+                                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+                            />
+                            {historySearchQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => setHistorySearchQuery("")}
+                                    className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                                    aria-label="Clear search"
+                                    title="Clear search"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="relative z-[90]">
                             <button
                                 type="button"
-                                onClick={() => setHistorySearchQuery("")}
-                                className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                                aria-label="Clear search"
-                                title="Clear search"
+                                onClick={() => setShowHistoryDatePicker((current) => !current)}
+                                className="w-full min-w-[18rem] sm:w-64 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-left text-slate-700 hover:border-slate-300"
                             >
-                                <X className="h-4 w-4" />
+                                <span className="text-slate-500">{formatPickerLabel(historyDateRange)}</span>
+                                <span className="text-xs text-slate-400">▼</span>
                             </button>
-                        )}
+                            {showHistoryDatePicker && (
+                                <div className="absolute left-0 top-full z-[100] mt-2 w-[22rem] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl">
+                                    <style>{`\n                    .rdp-sidebar-picker .rdp-day_selected,\n                    .rdp-sidebar-picker .rdp-day_range_start,\n                    .rdp-sidebar-picker .rdp-day_range_end,\n                    .rdp-sidebar-picker .rdp-day_range_middle {\n                      background-color: #2b0707 !important;\n                      color: #ffffff !important;\n                    }\n                    .rdp-sidebar-picker .rdp-day_selected:hover,\n                    .rdp-sidebar-picker .rdp-day_range_start:hover,\n                    .rdp-sidebar-picker .rdp-day_range_end:hover,\n                    .rdp-sidebar-picker .rdp-day_range_middle:hover {\n                      background-color: #2b0707 !important;\n                      color: #ffffff !important;\n                    }\n                    .rdp-sidebar-picker .rdp-day_today .rdp-button {\n                      border-color: #2b0707 !important;\n                    }\n                  `}</style>
+                                    <DayPicker
+                                        className="rdp-sidebar-picker text-sm"
+                                        mode="range"
+                                        selected={historyDateRange}
+                                        numberOfMonths={1}
+                                        onSelect={(range) => {
+                                            setHistoryDateRange(range || { from: undefined, to: undefined });
+                                        }}
+                                        footer={
+                                            historyDateRange.from && historyDateRange.to
+                                                ? `${format(historyDateRange.from, "MMM d, yyyy")} — ${format(historyDateRange.to, "MMM d, yyyy")}`
+                                                : "Select a date range"
+                                        }
+                                        fromDate={new Date("2000-01-01")}
+                                        toDate={new Date("2100-12-31")}
+                                    />
+                                    <div className="mt-3 flex items-center justify-between gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setHistoryDateRange({ from: undefined, to: undefined })}
+                                            className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                                        >
+                                            Clear
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowHistoryDatePicker(false)}
+                                            className="rounded-full bg-[#2b0707] px-3 py-1 text-xs font-medium text-white hover:bg-[#3a0b0b]"
+                                        >
+                                            Close
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
             )}
 
             {showExportModal && (
@@ -1870,23 +1956,18 @@ export default function ComputerLaboratoryInventory() {
             )}
             <div className={`${isHistoryOpen ? "" : "bg-white rounded-xl shadow-sm border border-slate-200"} overflow-hidden`}> 
                 <div className="min-w-0 overflow-hidden p-0">
-                    {loading ? (
-                        <div className="flex flex-col items-center justify-center gap-3 py-16">
-                            <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-300 border-t-[#4a1111]" />
-                            <p className="text-sm text-slate-500">Loading...</p>
-                        </div>
-                    ) : error ? (
+                    {error ? (
                         <div className="border-t border-rose-200 bg-rose-50 p-4 text-center text-sm text-rose-700">
                             {error}
                         </div>
-                    ) : rows.length === 0 ? (
+                    ) : !loading && !labsLoading && rows.length === 0 ? (
                         <div className="py-16 text-center">
                             <p className="text-sm text-slate-500">No component records found for this laboratory.</p>
                         </div>
                     ) : isHistoryOpen ? (
                         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(440px,1fr)]">
                             <div className="min-w-0 w-full">
-                                <InventoryHistoryView selectedLab={selectedLab} searchQuery={historySearchQuery} />
+                                <InventoryHistoryView selectedLab={selectedLab} searchQuery={historySearchQuery} dateRange={historyDateRange} />
                             </div>
 
                             <div className="min-w-0 w-full xl:min-w-[440px]">

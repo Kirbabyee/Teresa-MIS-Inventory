@@ -437,42 +437,34 @@ export const deleteInventoryTab = async (id) => {
     // is not required on the client side.
   }
 
-  // If we didn't find a persisted tableName, try to derive a candidate from the tab row
-  if (!tableName) {
-    try {
-      const { data: tabRow, error: tabErr } = await supabase
-        .from('inventory_tabs')
-        .select('id, name')
-        .eq('id', id)
-        .limit(1)
-        .maybeSingle();
-      if (!tabErr && tabRow?.name) {
-        const candidate = `inventory_${String(tabRow.name || 'tab').toLowerCase().trim().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')}`;
-        try {
-          const dropEndpoint = getInventoryDropTableEndpoint();
-          console.log('[deleteInventoryTab] Attempting to drop derived table name:', candidate);
-          await callDropInventoryTable(dropEndpoint, candidate);
-          console.info('[deleteInventoryTab] Dropped derived physical table:', candidate);
+  // Always try to drop the physical table using the derived name from tab name as a robust fallback
+  // This ensures we attempt to drop the table even if config lookup fails or Edge Function fails
+  const derivedTableName = tabRow?.name
+    ? `inventory_${String(tabRow.name || 'tab').toLowerCase().trim().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')}`
+    : null;
 
-          // also attempt to drop logs/exports tied to candidate
-          try {
-            const dropLogsEndpoint = getInventoryDropLogsTableEndpoint();
-            await callDropInventoryLogsTable(dropLogsEndpoint, candidate);
-          } catch (e) {
-            console.warn('[deleteInventoryTab] Failed to drop derived logs table (non-critical):', e);
-          }
-          try {
-            const dropExportsEndpoint = getInventoryDropExportsTableEndpoint();
-            await callDropInventoryExportsTable(dropExportsEndpoint, candidate);
-          } catch (e) {
-            console.warn('[deleteInventoryTab] Failed to drop derived exports table (non-critical):', e);
-          }
-        } catch (e) {
-          console.warn('[deleteInventoryTab] Failed to drop derived candidate table (non-critical):', candidate, e);
-        }
+  const tableNamesToTry = [];
+  if (tableName) tableNamesToTry.push(tableName);
+  if (derivedTableName && derivedTableName !== tableName) tableNamesToTry.push(derivedTableName);
+
+  // Try to drop physical tables for all candidate names
+  for (const candidate of tableNamesToTry) {
+    try {
+      const dropEndpoint = getInventoryDropTableEndpoint();
+      console.log('[deleteInventoryTab] Attempting to drop table:', candidate);
+      await callDropInventoryTable(dropEndpoint, candidate);
+      console.info('[deleteInventoryTab] Dropped physical table:', candidate);
+
+      // Also attempt to drop logs tied to candidate.
+      // Export logs are shared in dynamic_inventory_export_logs, so there is no per-table exports table to drop.
+      try {
+        const dropLogsEndpoint = getInventoryDropLogsTableEndpoint();
+        await callDropInventoryLogsTable(dropLogsEndpoint, candidate);
+      } catch (e) {
+        console.warn('[deleteInventoryTab] Failed to drop logs table (non-critical):', e);
       }
     } catch (e) {
-      // ignore
+      console.warn('[deleteInventoryTab] Failed to drop table (non-critical):', candidate, e);
     }
   }
 
@@ -488,7 +480,7 @@ export const deleteInventoryTab = async (id) => {
     .from("inventory_sections")
     .select("id")
     .eq("tab_id", id);
-  
+
   if (sections && sections.length > 0) {
     for (const section of sections) {
       try {
@@ -497,6 +489,52 @@ export const deleteInventoryTab = async (id) => {
         // Ignore errors - items might not exist
       }
     }
+  }
+
+  // Delete export files and logs associated with this tab
+  try {
+    // Get all export logs for this tab
+    const { data: exportLogs, error: fetchLogsError } = await supabase
+      .from("dynamic_inventory_export_logs")
+      .select("id, file_path")
+      .eq("tab_id", id);
+
+    if (!fetchLogsError && exportLogs && exportLogs.length > 0) {
+      console.log("[deleteInventoryTab] Found export logs to delete:", exportLogs.length);
+
+      // Delete files from Supabase Storage
+      for (const log of exportLogs) {
+        if (log.file_path) {
+          try {
+            const { error: storageError } = await supabase.storage
+              .from("section-exports")
+              .remove([log.file_path]);
+            if (storageError) {
+              console.warn("[deleteInventoryTab] Failed to delete export file:", log.file_path, storageError);
+            } else {
+              console.log("[deleteInventoryTab] Deleted export file:", log.file_path);
+            }
+          } catch (storageErr) {
+            console.warn("[deleteInventoryTab] Error deleting export file:", log.file_path, storageErr);
+          }
+        }
+      }
+
+      // Delete export log entries
+      const { error: deleteLogsError } = await supabase
+        .from("dynamic_inventory_export_logs")
+        .delete()
+        .eq("tab_id", id);
+
+      if (deleteLogsError) {
+        console.warn("[deleteInventoryTab] Failed to delete export logs:", deleteLogsError);
+      } else {
+        console.log("[deleteInventoryTab] Deleted export log entries:", exportLogs.length);
+      }
+    }
+  } catch (exportCleanupErr) {
+    console.warn("[deleteInventoryTab] Error cleaning up export files/logs:", exportCleanupErr);
+    // Don't throw - this is non-critical
   }
 
   // Delete tab configuration settings

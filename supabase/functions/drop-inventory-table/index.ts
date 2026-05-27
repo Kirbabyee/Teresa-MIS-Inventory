@@ -180,45 +180,17 @@ Deno.serve(async (req) => {
 
       console.log("[drop-inventory-table] Sanitized table name:", safeTableName);
 
-      // Check if table exists before attempting to drop
-      const checkTableResult = await client.queryObject<{ exists: boolean }>(
-        `
-          SELECT EXISTS (
-            SELECT 1
-            FROM information_schema.tables
-            WHERE table_schema = $1
-            AND table_name = $2
-          ) as exists
-        `,
-        schemaName,
-        safeTableName,
-      );
+      // Check if table exists before attempting to drop - also list all tables for debugging
+      let tableExisted = false;
+      try {
+        // First try to get all tables in public schema to help debug
+        const listTablesResult = await client.queryObject<{ table_name: string }>(
+          `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
+        );
+        console.log("[drop-inventory-table] All public tables:", listTablesResult.rows.map(r => r.table_name));
 
-      const tableExisted = checkTableResult.rows[0]?.exists ?? false;
-      let tableWasDropped = false;
-
-      console.log("[drop-inventory-table] Table exists check:", { tableExisted, schemaName, safeTableName });
-
-      if (tableExisted) {
-        // Drop the table (CASCADE will drop triggers and dependent objects)
-        const dropSql = `DROP TABLE IF EXISTS "${schemaName}"."${safeTableName}" CASCADE;`;
-        console.log("[drop-inventory-table] Executing DROP:", dropSql);
-        try {
-          await client.queryObject(dropSql);
-          console.log("[drop-inventory-table] DROP statement executed successfully");
-          tableWasDropped = true;
-        } catch (dropError) {
-          console.error("[drop-inventory-table] DROP failed:", dropError);
-          return jsonResponse({
-            ok: false,
-            error: `Failed to drop table: ${String(dropError?.message || dropError)}`,
-            schema: schemaName,
-            table: safeTableName,
-          }, 500);
-        }
-
-        // Verify the table was actually dropped
-        const verifyResult = await client.queryObject<{ exists: boolean }>(
+        // Check if our table exists
+        const checkTableResult = await client.queryObject<{ exists: boolean }>(
           `
             SELECT EXISTS (
               SELECT 1
@@ -231,18 +203,58 @@ Deno.serve(async (req) => {
           safeTableName,
         );
 
-        const tableStillExists = verifyResult.rows[0]?.exists ?? false;
-        console.log("[drop-inventory-table] Post-drop verification:", { tableStillExists });
-        
-        if (tableStillExists) {
-          console.error("[drop-inventory-table] Table still exists after DROP");
-          return jsonResponse({
-            ok: false,
-            error: `Table still exists after DROP statement. Verify permissions and schema.`,
-            schema: schemaName,
-            table: safeTableName,
-          }, 500);
-        }
+        tableExisted = checkTableResult.rows[0]?.exists ?? false;
+        console.log("[drop-inventory-table] Table exists check:", { tableExisted, schemaName, safeTableName });
+      } catch (checkError) {
+        console.error("[drop-inventory-table] Error checking table existence:", checkError);
+        // If check fails, try to drop anyway - DROP TABLE IF EXISTS will handle it
+        tableExisted = true;
+      }
+
+      let tableWasDropped = false;
+
+      // Always try to drop the table (DROP TABLE IF EXISTS handles non-existent tables safely)
+      const dropSql = `DROP TABLE IF EXISTS "${schemaName}"."${safeTableName}" CASCADE;`;
+      console.log("[drop-inventory-table] Executing DROP:", dropSql);
+      try {
+        await client.queryObject(dropSql);
+        console.log("[drop-inventory-table] DROP statement executed successfully");
+        tableWasDropped = true;
+      } catch (dropError) {
+        console.error("[drop-inventory-table] DROP failed:", dropError);
+        return jsonResponse({
+          ok: false,
+          error: `Failed to drop table: ${String(dropError?.message || dropError)}`,
+          schema: schemaName,
+          table: safeTableName,
+        }, 500);
+      }
+
+      // Verify the table was actually dropped
+      const verifyResult = await client.queryObject<{ exists: boolean }>(
+        `
+          SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = $1
+            AND table_name = $2
+          ) as exists
+        `,
+        schemaName,
+        safeTableName,
+      );
+
+      const tableStillExists = verifyResult.rows[0]?.exists ?? false;
+      console.log("[drop-inventory-table] Post-drop verification:", { tableStillExists });
+
+      if (tableStillExists) {
+        console.error("[drop-inventory-table] Table still exists after DROP");
+        return jsonResponse({
+          ok: false,
+          error: `Table still exists after DROP statement. Verify permissions and schema.`,
+          schema: schemaName,
+          table: safeTableName,
+        }, 500);
       }
 
       console.log("[drop-inventory-table] Operation completed successfully");

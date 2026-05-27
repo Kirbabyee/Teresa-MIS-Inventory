@@ -15,6 +15,12 @@ const formatDate = (dateString) => {
   }
 };
 
+const parseSafeDate = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
 const formatValue = (value) => {
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "object") {
@@ -91,7 +97,7 @@ const extractChangedPair = (oldData, newData, action) => {
   };
 };
 
-export default function InventoryHistoryView({ selectedLab, searchQuery = "" }) {
+export default function InventoryHistoryView({ selectedLab, searchQuery = "", dateRange }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -213,11 +219,23 @@ export default function InventoryHistoryView({ selectedLab, searchQuery = "" }) 
   );
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const displayedLogs = useMemo(() => {
-    if (!normalizedSearchQuery) return logs;
+    const rangeStart = parseSafeDate(dateRange?.from);
+    const rangeEnd = parseSafeDate(dateRange?.to);
+
+    if (!normalizedSearchQuery && !rangeStart && !rangeEnd) return logs;
 
     return logs.filter((entry) => {
       const changedBy = userMap[entry.changed_by] || entry.changed_by || "system";
       const { oldVal, newVal } = extractChangedPair(entry.old_data, entry.new_data, entry.action);
+      const entryDate = parseSafeDate(entry.change_ts);
+
+      if (rangeStart && (!entryDate || entryDate < rangeStart)) return false;
+      if (rangeEnd) {
+        const endOfDay = new Date(rangeEnd);
+        endOfDay.setHours(23, 59, 59, 999);
+        if (!entryDate || entryDate > endOfDay) return false;
+      }
+
       const combined = [
         String(entry.action || ""),
         String(entry.computer_number ?? ""),
@@ -228,7 +246,7 @@ export default function InventoryHistoryView({ selectedLab, searchQuery = "" }) 
       ].join(" ").toLowerCase();
       return combined.includes(normalizedSearchQuery);
     });
-  }, [logs, userMap, normalizedSearchQuery]);
+  }, [logs, userMap, normalizedSearchQuery, dateRange]);
 
   
 
@@ -250,10 +268,20 @@ export default function InventoryHistoryView({ selectedLab, searchQuery = "" }) 
     return Array.from({ length: maxVisible }, (_, index) => startPage + index);
   })();
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [displayedLogs.length]);
+
 
   return (
     <div>
-      {loading && <div className="p-4 text-sm text-slate-500">Loading history…</div>}
+      {loading && (
+        <div className="flex min-h-[220px] items-center justify-center p-4">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#4a1111]" role="status" aria-label="Loading history" />
+          </div>
+        </div>
+      )}
       {error && <div className="p-4 text-sm text-rose-600">{error}</div>}
 
       {!loading && logs.length === 0 && <div className="p-4 text-sm text-slate-500">No history entries found.</div>}
@@ -341,9 +369,9 @@ export default function InventoryHistoryView({ selectedLab, searchQuery = "" }) 
             </div>
           </div>
         </div>
-      ) : (
+      ) : !loading && logs.length > 0 ? (
         <div className="p-4 text-sm text-slate-500">No history entries to show.</div>
-      )}
+      ) : null}
     </div>
   );
 }

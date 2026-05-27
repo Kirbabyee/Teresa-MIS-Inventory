@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { saveAs } from "file-saver";
 import { supabase } from "@/api/supabaseClient";
 import ExcelJS from "exceljs";
@@ -161,6 +161,8 @@ export default function InventorySectionExportPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [dateOrder, setDateOrder] = useState("desc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const [exportSchoolYear, setExportSchoolYear] = useState("");
   const [exportSemester, setExportSemester] = useState("");
   const [preparedByName, setPreparedByName] = useState("");
@@ -168,6 +170,7 @@ export default function InventorySectionExportPanel({
   const [exportDate, setExportDate] = useState(new Date().toISOString().slice(0, 10));
   const [showColumnOptions, setShowColumnOptions] = useState(true);
   const [selectedExportColumns, setSelectedExportColumns] = useState([]);
+  const [userNameMap, setUserNameMap] = useState({});
 
   // Use passed-in exportColumnOptions or default to basic columns if not provided
   const columnsToUse = useMemo(() => {
@@ -244,6 +247,57 @@ export default function InventorySectionExportPanel({
           if (!mounted) return;
           setLogs(data || []);
         }
+
+        const uniqueEmails = new Set();
+        const uniqueIds = new Set();
+        for (const entry of data || []) {
+          const rawValue = String(entry.exported_by || "").trim();
+          if (!rawValue) continue;
+          if (rawValue.includes("@")) uniqueEmails.add(rawValue);
+          else if (/^[0-9a-f-]{16,}$/i.test(rawValue)) uniqueIds.add(rawValue);
+        }
+
+        if (uniqueEmails.size > 0 || uniqueIds.size > 0) {
+          const nextNameMap = {};
+          const normalizeName = (profile) => {
+            const firstName = String(profile?.first_name || "").trim();
+            const lastName = String(profile?.last_name || "").trim();
+            const combinedName = [firstName, lastName].filter(Boolean).join(" ").trim();
+            return combinedName || String(profile?.email || profile?.id || "").trim();
+          };
+
+          try {
+            if (uniqueIds.size > 0) {
+              const { data: usersById } = await supabase
+                .from("user_accounts")
+                .select("id, email, first_name, last_name")
+                .in("id", Array.from(uniqueIds));
+
+              (usersById || []).forEach((user) => {
+                const displayName = normalizeName(user);
+                nextNameMap[user.id] = displayName;
+                if (user.email) nextNameMap[user.email] = displayName;
+              });
+            }
+
+            if (uniqueEmails.size > 0) {
+              const { data: usersByEmail } = await supabase
+                .from("user_accounts")
+                .select("id, email, first_name, last_name")
+                .in("email", Array.from(uniqueEmails));
+
+              (usersByEmail || []).forEach((user) => {
+                const displayName = normalizeName(user);
+                nextNameMap[user.email] = displayName;
+                nextNameMap[user.id] = displayName;
+              });
+            }
+          } catch (userError) {
+            console.warn("Failed to resolve export-by names:", userError);
+          }
+
+          if (mounted) setUserNameMap(nextNameMap);
+        }
       } catch (err) {
         // If the table doesn't exist yet, that's okay for now
         console.warn('Failed to load inventory section exports (table may not exist yet):', err);
@@ -274,8 +328,9 @@ export default function InventorySectionExportPanel({
     if (!normalizedSearchQuery) return exportLikeLogs;
 
     return exportLikeLogs.filter((entry) => {
+      const displayBy = userNameMap[entry.exported_by] || entry.exported_by || "";
       const combined = [
-        String(entry.exported_by || ""),
+        String(displayBy || ""),
         String(entry.file_name || ""),
         String(entry.export_date || ""),
         formatDate(entry.export_date),
@@ -283,7 +338,35 @@ export default function InventorySectionExportPanel({
       ].join(" ").toLowerCase();
       return combined.includes(normalizedSearchQuery);
     });
-  }, [sortedExportLogs, normalizedSearchQuery]);
+  }, [sortedExportLogs, normalizedSearchQuery, userNameMap]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [displayedExportLogs.length]);
+
+  const totalPages = Math.ceil(displayedExportLogs.length / itemsPerPage);
+  const startIdx = (currentPage - 1) * itemsPerPage;
+  const endIdx = startIdx + itemsPerPage;
+  const paginatedExportLogs = displayedExportLogs.slice(startIdx, endIdx);
+  const showingStart = displayedExportLogs.length === 0 ? 0 : startIdx + 1;
+  const showingEnd = Math.min(endIdx, displayedExportLogs.length);
+
+  const visiblePageNumbers = (() => {
+    const maxVisible = 3;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const offset = Math.min(Math.max(currentPage - 2, 0), totalPages - maxVisible);
+    const startPage = offset + 1;
+    return Array.from({ length: maxVisible }, (_, index) => startPage + index);
+  })();
+
+  const resolveExportedByName = (entry) => {
+    const rawValue = String(entry?.exported_by || "").trim();
+    if (!rawValue) return "-";
+    return userNameMap[rawValue] || rawValue;
+  };
 
   const handleExportSection = async () => {
     if (!selectedSection || !selectedTab || !items || items.length === 0) {
@@ -566,20 +649,24 @@ export default function InventorySectionExportPanel({
         <tbody className="divide-y divide-slate-200 bg-white">
           {loading ? (
             <tr>
-              <td colSpan={3} className="px-3 py-8 text-center text-xs text-slate-500">Loading export history...</td>
+              <td colSpan={3} className="px-3 py-8 text-center text-xs text-slate-500">
+                <div className="flex items-center justify-center">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-[#4a1111]" role="status" aria-label="Loading export history" />
+                </div>
+              </td>
             </tr>
           ) : error ? (
             <tr>
               <td colSpan={3} className="px-3 py-8 text-center text-xs text-rose-600">{error}</td>
             </tr>
-          ) : displayedExportLogs.length === 0 ? (
+          ) : paginatedExportLogs.length === 0 ? (
             <tr>
               <td colSpan={3} className="px-3 py-8 text-center text-xs text-slate-500">No export history found.</td>
             </tr>
           ) : (
-            displayedExportLogs.slice(0, 50).map((entry) => (
+            paginatedExportLogs.map((entry) => (
               <tr key={`export-${entry.id}`}>
-                <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600 text-center align-top">{entry.exported_by || "-"}</td>
+                <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600 text-center align-top">{resolveExportedByName(entry)}</td>
                 <td className="px-3 py-3 text-xs text-slate-600 text-center align-top break-all">
                   {entry.file_path ? (
                     <button
@@ -601,6 +688,47 @@ export default function InventorySectionExportPanel({
           )}
         </tbody>
       </table>
+      <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
+        <div className="text-sm text-slate-500">
+          Showing {showingStart}–{showingEnd} of {displayedExportLogs.length}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+            disabled={currentPage === 1}
+            className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+
+          {visiblePageNumbers.map((pageNumber) => {
+            const isActive = currentPage === pageNumber;
+            return (
+              <button
+                key={pageNumber}
+                type="button"
+                onClick={() => setCurrentPage(pageNumber)}
+                className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
+              >
+                {pageNumber}
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+            disabled={currentPage === totalPages || totalPages === 0}
+            className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Next page"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

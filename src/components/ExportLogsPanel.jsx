@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { saveAs } from "file-saver";
 import { supabase } from "@/api/supabaseClient";
 
@@ -21,11 +21,14 @@ const formatDate = (dateString) => {
     return dateString;
   }
 };
+
 export default function ExportLogsPanel({ searchQuery = "", refreshToken = 0 }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [dateOrder, setDateOrder] = useState("desc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const downloadLogFile = async (entry) => {
     if (!entry?.file_path) return;
@@ -98,11 +101,43 @@ export default function ExportLogsPanel({ searchQuery = "", refreshToken = 0 }) 
     });
   }, [sortedExportLogs, normalizedSearchQuery]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [displayedExportLogs.length]);
+
+  const totalPages = Math.ceil(displayedExportLogs.length / itemsPerPage);
+  const startIdx = (currentPage - 1) * itemsPerPage;
+  const endIdx = startIdx + itemsPerPage;
+  const paginatedExportLogs = displayedExportLogs.slice(startIdx, endIdx);
+  const showingStart = displayedExportLogs.length === 0 ? 0 : startIdx + 1;
+  const showingEnd = Math.min(endIdx, displayedExportLogs.length);
+
+  const visiblePageNumbers = (() => {
+    const maxVisible = 3;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const offset = Math.min(Math.max(currentPage - 2, 0), totalPages - maxVisible);
+    const startPage = offset + 1;
+    return Array.from({ length: maxVisible }, (_, index) => startPage + index);
+  })();
+
   return (
     <div className="w-full overflow-x-auto rounded-2xl border border-border bg-card text-card-foreground shadow-sm">
       <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
         <div className="text-sm font-medium text-slate-700">Export Logs</div>
       </div>
+      {loading && (
+        <div className="flex min-h-[220px] items-center justify-center p-4">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#4a1111]" role="status" aria-label="Loading export logs" />
+            <p className="text-sm text-slate-500">Loading export logs...</p>
+          </div>
+        </div>
+      )}
+      {!loading && (
+      <>
       <table className="min-w-full divide-y divide-slate-200 bg-white table-fixed">
         <thead className="bg-slate-100">
           <tr>
@@ -122,12 +157,12 @@ export default function ExportLogsPanel({ searchQuery = "", refreshToken = 0 }) 
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-200 bg-white">
-          {displayedExportLogs.length === 0 ? (
+          {paginatedExportLogs.length === 0 ? (
             <tr>
               <td colSpan={3} className="px-3 py-8 text-center text-xs text-slate-500">No export logs found.</td>
             </tr>
           ) : (
-            displayedExportLogs.slice(0, 50).map((entry) => {
+            paginatedExportLogs.map((entry) => {
               return (
                 <tr key={`export-${entry.id}`}>
                   <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600 text-center align-top">{entry.export_by || "-"}</td>
@@ -153,6 +188,49 @@ export default function ExportLogsPanel({ searchQuery = "", refreshToken = 0 }) 
           )}
         </tbody>
       </table>
+      <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
+        <div className="text-sm text-slate-500">
+          Showing {showingStart}–{showingEnd} of {displayedExportLogs.length}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+            disabled={currentPage === 1}
+            className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+
+          {visiblePageNumbers.map((pageNumber) => {
+            const isActive = currentPage === pageNumber;
+            return (
+              <button
+                key={pageNumber}
+                type="button"
+                onClick={() => setCurrentPage(pageNumber)}
+                className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
+              >
+                {pageNumber}
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+            disabled={currentPage === totalPages || totalPages === 0}
+            className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Next page"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+      </>
+      )}
     </div>
   );
 }

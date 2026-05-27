@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { format } from "date-fns";
 import { supabase } from "@/api/supabaseClient";
 
 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -13,6 +14,20 @@ const formatDate = (dateString) => {
   } catch (e) {
     return dateString;
   }
+};
+
+const formatDateLabel = (dateString) => {
+  try {
+    const date = new Date(dateString);
+    return format(date, "MMM d, yyyy");
+  } catch (e) {
+    return String(dateString || "");
+  }
+};
+
+const parseSafeDate = (dateString) => {
+  const date = new Date(dateString);
+  return Number.isNaN(date.getTime()) ? null : date;
 };
 
 const formatValue = (value) => {
@@ -39,6 +54,17 @@ const formatValue = (value) => {
 };
 
 const formatChangeText = (oldVal, newVal) => `${formatValue(oldVal)} -> ${formatValue(newVal)}`;
+
+const formatColumnLabel = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return "-";
+
+  return text
+    .replace(/[_-]+/g, " ")
+    .split(/\s+/)
+    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase() : ""))
+    .join(" ");
+};
 
 const renderChangeContent = (oldVal, newVal) => (
   <div className="inline-flex items-center justify-center gap-1 whitespace-pre-wrap break-words text-center">
@@ -74,10 +100,10 @@ const extractChangedPair = (oldData, newData, action) => {
 
   const normalizedAction = String(action || '').toUpperCase();
   if (normalizedAction === 'INSERT') {
-    return { oldVal: null, newVal: pickDisplayValue(newData) };
+    return { oldVal: null, newVal: pickDisplayValue(newData), changedField: "created record" };
   }
   if (normalizedAction === 'DELETE') {
-    return { oldVal: pickDisplayValue(oldData), newVal: null };
+    return { oldVal: pickDisplayValue(oldData), newVal: null, changedField: "deleted record" };
   }
 
   if (oldData && newData && typeof oldData === 'object' && typeof newData === 'object') {
@@ -88,10 +114,10 @@ const extractChangedPair = (oldData, newData, action) => {
       const nv = newData[k];
       try {
         if (JSON.stringify(ov) !== JSON.stringify(nv)) {
-          return { oldVal: ov ?? null, newVal: nv ?? null };
+          return { oldVal: ov ?? null, newVal: nv ?? null, changedField: k };
         }
       } catch (e) {
-        if (String(ov) !== String(nv)) return { oldVal: ov ?? null, newVal: nv ?? null };
+        if (String(ov) !== String(nv)) return { oldVal: ov ?? null, newVal: nv ?? null, changedField: k };
       }
     }
   }
@@ -99,6 +125,7 @@ const extractChangedPair = (oldData, newData, action) => {
   return {
     oldVal: pickDisplayValue(oldData),
     newVal: pickDisplayValue(newData),
+    changedField: null,
   };
 };
 
@@ -122,7 +149,7 @@ const getItemNumber = (oldData, newData) => {
   return null;
 };
 
-export default function InventorySectionHistoryView({ selectedTab, selectedSection, searchQuery = "" }) {
+export default function InventorySectionHistoryView({ selectedTab, selectedSection, searchQuery = "", dateRange = { from: undefined, to: undefined } }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -241,22 +268,34 @@ export default function InventorySectionHistoryView({ selectedTab, selectedSecti
 
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const displayedLogs = useMemo(() => {
-    if (!normalizedSearchQuery) return logs;
+    const minDate = dateRange?.from ? new Date(`${dateRange.from.toISOString().slice(0, 10)}T00:00:00.000`) : null;
+    const maxDate = dateRange?.to ? new Date(`${dateRange.to.toISOString().slice(0, 10)}T23:59:59.999`) : null;
 
     return logs.filter((entry) => {
+      const entryDate = parseSafeDate(entry.change_ts);
+      if (!entryDate) return false;
+      const matchesStart = !minDate || entryDate >= minDate;
+      const matchesEnd = !maxDate || entryDate <= maxDate;
+      if (!matchesStart || !matchesEnd) return false;
+
+      if (!normalizedSearchQuery) return true;
+
       const changedBy = userMap[entry.changed_by] || entry.changed_by || "system";
-      const { oldVal, newVal } = extractChangedPair(entry.old_data, entry.new_data, entry.action);
+      const { oldVal, newVal, changedField } = extractChangedPair(entry.old_data, entry.new_data, entry.action);
       const itemNumber = getItemNumber(entry.old_data, entry.new_data);
       const combined = [
         String(entry.action || ""),
         String(itemNumber ?? ""),
         String(changedBy || ""),
+        formatColumnLabel(changedField),
         formatChangeText(oldVal, newVal),
+        formatDateLabel(entry.change_ts),
+        format(entryDate, "yyyy-MM-dd"),
         formatDate(entry.change_ts),
       ].join(" ").toLowerCase();
       return combined.includes(normalizedSearchQuery);
     });
-  }, [logs, userMap, normalizedSearchQuery]);
+  }, [logs, userMap, normalizedSearchQuery, dateRange]);
 
   const totalPages = Math.ceil(displayedLogs.length / itemsPerPage);
   const startIdx = (currentPage - 1) * itemsPerPage;
@@ -278,7 +317,11 @@ export default function InventorySectionHistoryView({ selectedTab, selectedSecti
 
   return (
     <div>
-      {loading && <div className="p-4 text-sm text-slate-500">Loading history…</div>}
+      {loading && (
+        <div className="flex min-h-[220px] items-center justify-center p-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#4a1111]" role="status" aria-label="Loading history" />
+        </div>
+      )}
       {error && <div className="p-4 text-sm text-rose-600">{error}</div>}
 
       {!loading && logs.length === 0 && <div className="p-4 text-sm text-slate-500">No history entries found.</div>}
@@ -299,6 +342,7 @@ export default function InventorySectionHistoryView({ selectedTab, selectedSecti
                 <tr>
                   <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Action</th>
                   <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Item #</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Updated Column</th>
                   <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Changes</th>
                   <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Changed By</th>
                   <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700 cursor-pointer hover:bg-slate-200" onClick={() => setDateOrder(dateOrder === 'desc' ? 'asc' : 'desc')}>Date {dateOrder === 'desc' ? '↓' : '↑'}</th>
@@ -306,7 +350,7 @@ export default function InventorySectionHistoryView({ selectedTab, selectedSecti
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white">
                 {paginatedLogs.map((entry) => {
-                  const { oldVal, newVal } = extractChangedPair(entry.old_data, entry.new_data, entry.action);
+                  const { oldVal, newVal, changedField } = extractChangedPair(entry.old_data, entry.new_data, entry.action);
                   const itemNumber = getItemNumber(entry.old_data, entry.new_data);
                   const changedByKey = entry.changed_by || 'system';
                   const displayName = userMap[changedByKey] || entry.changed_by || 'system';
@@ -314,6 +358,7 @@ export default function InventorySectionHistoryView({ selectedTab, selectedSecti
                     <tr key={entry.id}>
                       <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-slate-700 text-center align-top">{entry.action || "-"}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 text-center align-top">{itemNumber ?? "-"}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 text-center align-top">{formatColumnLabel(changedField)}</td>
                       <td className="px-4 py-3 text-xs text-slate-600 align-top text-center">
                         <div className="text-xs text-center break-words">{renderChangeContent(oldVal, newVal)}</div>
                       </td>
@@ -366,9 +411,9 @@ export default function InventorySectionHistoryView({ selectedTab, selectedSecti
             </div>
           </div>
         </div>
-      ) : (
+      ) : !loading && logs.length > 0 ? (
         <div className="p-4 text-sm text-slate-500">No history entries to show.</div>
-      )}
+      ) : null}
     </div>
   );
 }

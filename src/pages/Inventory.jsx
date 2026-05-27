@@ -1909,6 +1909,12 @@ export default function Inventory() {
       setPendingDeleteTab(null);
       refetch();
       setShowDeleteConfirm(false);
+      // Show success feedback
+      const wasDeletedMsg = "Tab and all associated data (including physical table in database) have been deleted.";
+      alert(wasDeletedMsg);
+    } catch (err) {
+      console.error("Delete failed:", err);
+      alert(`Delete failed: ${err.message || err}`);
     } finally {
       setIsDeleting(false);
     }

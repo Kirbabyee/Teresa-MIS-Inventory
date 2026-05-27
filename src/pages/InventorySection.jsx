@@ -3,6 +3,9 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Check, ChevronLeft, ChevronDown, Download, FileText, PencilLine, Plus, Search, Trash2, X } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
+import { DayPicker } from "react-day-picker";
+import "react-day-picker/dist/style.css";
+import { format } from "date-fns";
 import { supabase } from "@/api/supabaseClient";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -108,6 +111,15 @@ const formatCellValue = (value) => {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return String(value);
 };
+
+const isDefectiveInventoryRecord = (record = {}) =>
+  Object.entries(record || {}).some(([key, value]) => {
+    if (["id", "section_id", "created_at", "updated_at", "sort_order"].includes(key)) return false;
+    if (value && typeof value === "object") return isDefectiveInventoryRecord(value);
+
+    const normalized = String(value || "").trim().toUpperCase();
+    return normalized.includes("DEFECT") || normalized.includes("BROKEN");
+  });
 
 const isDropdownField = (field) => String(field?.fieldType || "").toLowerCase() === "dropdown";
 
@@ -228,6 +240,12 @@ const generateSchoolYearOptions = (back = 3, forward = 3, referenceDate = new Da
   }
 
   return options.reverse();
+};
+
+const formatPickerLabel = (range) => {
+  if (!range?.from) return "Select date range";
+  if (range.from && !range.to) return `${format(range.from, "MMM d, yyyy")} —`;
+  return `${format(range.from, "MMM d, yyyy")} — ${format(range.to, "MMM d, yyyy")}`;
 };
 
 const getColumnLetter = (columnNumber) => {
@@ -856,12 +874,15 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
 export default function InventorySection() {
   const { sectionSlug: tabSlug } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const isDefectiveOnlyView = Boolean(searchParams.get("defectiveOnly"));
   const { tabs, loading: tabsLoading, error: tabsError } = useInventoryCatalog();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedSectionSlug, setSelectedSectionSlug] = useState("");
   const [items, setItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsLoadedForSectionId, setItemsLoadedForSectionId] = useState(null);
+  const [sectionsLoading, setSectionsLoading] = useState(true);
   const [itemsError, setItemsError] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -879,6 +900,8 @@ export default function InventorySection() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [historySearchQuery, setHistorySearchQuery] = useState("");
+  const [historyDateRange, setHistoryDateRange] = useState({ from: undefined, to: undefined });
+  const [showHistoryDatePicker, setShowHistoryDatePicker] = useState(false);
   const [confirmExitEditMode, setConfirmExitEditMode] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [selectedExportColumns, setSelectedExportColumns] = useState([]);
@@ -988,7 +1011,7 @@ export default function InventorySection() {
 
   useEffect(() => {
     setPage(1);
-  }, [selectedSectionSlug, refreshKey]);
+  }, [selectedSectionSlug, refreshKey, isDefectiveOnlyView]);
 
   useEffect(() => {
     if (!gridEditMode) {
@@ -1115,15 +1138,16 @@ export default function InventorySection() {
     [templateColumns, usesTemplateColumns]
   );
   const tableColSpan = displayTemplateColumns.length + 1;
-  const totalPages = Math.ceil(items.length / itemsPerPage);
-  const pageStartIndex = (page - 1) * itemsPerPage;
-  const pageEndIndex = pageStartIndex + itemsPerPage;
   const displayItems = useMemo(() => {
+    const visibleItems = isDefectiveOnlyView
+      ? items.filter(isDefectiveInventoryRecord)
+      : items;
+
     if (!hasItemNumberColumn) {
-      return items;
+      return visibleItems;
     }
 
-    return [...items].sort((leftItem, rightItem) => {
+    return [...visibleItems].sort((leftItem, rightItem) => {
       const leftValue = Number.parseInt(String(leftItem?.item_number ?? "").trim(), 10);
       const rightValue = Number.parseInt(String(rightItem?.item_number ?? "").trim(), 10);
       const leftMissing = !Number.isFinite(leftValue);
@@ -1134,7 +1158,10 @@ export default function InventorySection() {
       if (rightMissing) return -1;
       return leftValue - rightValue;
     });
-  }, [hasItemNumberColumn, items]);
+  }, [hasItemNumberColumn, isDefectiveOnlyView, items]);
+  const totalPages = Math.ceil(displayItems.length / itemsPerPage);
+  const pageStartIndex = (page - 1) * itemsPerPage;
+  const pageEndIndex = pageStartIndex + itemsPerPage;
   const paginatedItems = useMemo(
     () =>
       displayItems.filter(
@@ -1147,13 +1174,7 @@ export default function InventorySection() {
   const itemStatusMap = useMemo(() => {
     const map = {};
     items.forEach((item) => {
-      const values = Object.values(item || {});
-      const stringValues = values.map((v) => String(v || "").toUpperCase());
-
-      // Check for defective (status contains DEFECT, BROKEN, etc.)
-      const hasDefect = stringValues.some(
-        (v) => v.includes("DEFECT") || v.includes("BROKEN")
-      );
+      const hasDefect = isDefectiveInventoryRecord(item);
 
       // Check for missing (brand, description, or status is empty)
       const hasMissing =
@@ -1231,11 +1252,13 @@ export default function InventorySection() {
     let cancelled = false;
 
     const loadTabState = async () => {
+      setSectionsLoading(true);
       if (!tab) {
         setSelectedSectionSlug("");
         setTabTableName("");
         setTemplateColumns([]);
         setLoading(false);
+        setSectionsLoading(false);
         return;
       }
 
@@ -1271,6 +1294,7 @@ export default function InventorySection() {
       } finally {
         if (!cancelled) {
           setLoading(false);
+          setSectionsLoading(false);
         }
       }
     };
@@ -1311,11 +1335,17 @@ export default function InventorySection() {
     const loadItems = async () => {
       if (!selectedSection?.id) {
         setItems([]);
+        setItemsLoadedForSectionId(null);
+        if (!sectionsLoading) {
+          setItemsLoading(false);
+        }
         return;
       }
 
       setItemsLoading(true);
+      setItemsLoadedForSectionId(null);
       setItemsError("");
+      setItems([]);
 
       try {
         const loadedItems = await fetchInventoryItems(
@@ -1324,10 +1354,12 @@ export default function InventorySection() {
         );
         if (!cancelled) {
           setItems(loadedItems || []);
+          setItemsLoadedForSectionId(selectedSection.id);
         }
       } catch (loadError) {
         if (!cancelled) {
           setItems([]);
+          setItemsLoadedForSectionId(null);
           setItemsError(
             loadError?.message || "Failed to load section items."
           );
@@ -1344,7 +1376,7 @@ export default function InventorySection() {
     return () => {
       cancelled = true;
     };
-  }, [selectedSection?.id, tabTableName, refreshKey]);
+  }, [selectedSection?.id, tabTableName, refreshKey, sectionsLoading]);
 
   useEffect(() => {
     if (page < 1) {
@@ -1608,14 +1640,13 @@ export default function InventorySection() {
     setRefreshKey((current) => current + 1);
   };
 
-  if (tabsLoading || loading) {
+  const isSectionTableLoading = !isHistoryOpen && (itemsLoading || itemsLoadedForSectionId !== selectedSection?.id);
+
+  if (tabsLoading || loading || sectionsLoading || isSectionTableLoading) {
     return (
-      <div className="p-6 space-y-5">
-        <div className="mx-auto max-w-7xl rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <div className="flex flex-col items-center justify-center gap-3 py-16">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-300 border-t-[#4a1111]" />
-            <p className="text-sm text-slate-500">Loading inventory tab...</p>
-          </div>
+      <div className="flex min-h-[calc(100vh-6rem)] items-center justify-center p-6">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-[#4a1111]" role="status" aria-label="Loading inventory section" />
         </div>
       </div>
     );
@@ -1800,14 +1831,14 @@ export default function InventorySection() {
         )}
 
         {isHistoryOpen && (
-          <div className="mt-3 w-full sm:w-96">
-            <div className="relative">
+          <div className="relative z-[80] mt-3 flex w-full flex-wrap items-center gap-3 overflow-visible">
+            <div className="relative w-full sm:w-96">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 value={historySearchQuery}
                 onChange={(e) => setHistorySearchQuery(e.target.value)}
-                placeholder="Search history, actions, values..."
+                placeholder="Search history, actions, values, dates..."
                 className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
               />
               {historySearchQuery && (
@@ -1820,6 +1851,72 @@ export default function InventorySection() {
                 >
                   <X className="h-4 w-4" />
                 </button>
+              )}
+            </div>
+
+            <div className="relative z-[90]">
+              <button
+                type="button"
+                onClick={() => setShowHistoryDatePicker((current) => !current)}
+                className="w-full min-w-[18rem] sm:w-64 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-left text-slate-700 hover:border-slate-300"
+              >
+                <span className="text-slate-500">{formatPickerLabel(historyDateRange)}</span>
+                <span className="text-xs text-slate-400">▼</span>
+              </button>
+              {showHistoryDatePicker && (
+                <div className="absolute left-0 top-full z-[100] mt-2 w-[22rem] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl">
+                  <style>{`
+                    .rdp-sidebar-picker .rdp-day_selected,
+                    .rdp-sidebar-picker .rdp-day_range_start,
+                    .rdp-sidebar-picker .rdp-day_range_end,
+                    .rdp-sidebar-picker .rdp-day_range_middle {
+                      background-color: #2b0707 !important;
+                      color: #ffffff !important;
+                    }
+                    .rdp-sidebar-picker .rdp-day_selected:hover,
+                    .rdp-sidebar-picker .rdp-day_range_start:hover,
+                    .rdp-sidebar-picker .rdp-day_range_end:hover,
+                    .rdp-sidebar-picker .rdp-day_range_middle:hover {
+                      background-color: #2b0707 !important;
+                      color: #ffffff !important;
+                    }
+                    .rdp-sidebar-picker .rdp-day_today .rdp-button {
+                      border-color: #2b0707 !important;
+                    }
+                  `}</style>
+                  <DayPicker
+                    className="rdp-sidebar-picker text-sm"
+                    mode="range"
+                    selected={historyDateRange}
+                    numberOfMonths={1}
+                    onSelect={(range) => {
+                      setHistoryDateRange(range || { from: undefined, to: undefined });
+                    }}
+                    footer={
+                      historyDateRange.from && historyDateRange.to
+                        ? `${format(historyDateRange.from, "MMM d, yyyy")} — ${format(historyDateRange.to, "MMM d, yyyy")}`
+                        : ""
+                    }
+                    fromDate={new Date("2000-01-01")}
+                    toDate={new Date("2100-12-31")}
+                  />
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setHistoryDateRange({ from: undefined, to: undefined })}
+                      className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowHistoryDatePicker(false)}
+                      className="rounded-full bg-[#2b0707] px-3 py-1 text-xs font-medium text-white hover:bg-[#3a0b0b]"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -1836,21 +1933,14 @@ export default function InventorySection() {
                   Pick a section to view or add items.
                 </p>
               </div>
-            ) : itemsLoading ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <div className="h-10 w-10 rounded-full border-4 border-slate-200 border-t-[#4a1111] animate-spin" />
-                <p className="text-sm text-slate-500 font-medium">
-                  Loading components...
-                </p>
-              </div>
             ) : itemsError ? (
               <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center text-sm text-rose-700">
                 {itemsError}
               </div>
-            ) : items.length === 0 ? (
+            ) : displayItems.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-300 py-20 text-center">
                 <p className="text-slate-500 font-medium">
-                  No records found for this section.
+                  {isDefectiveOnlyView ? "No defective records found for this section." : "No records found for this section."}
                 </p>
               </div>
             ) : (
@@ -2054,13 +2144,13 @@ export default function InventorySection() {
 
           </div>
 
-          {items.length > 0 && (
+          {displayItems.length > 0 && (
             <div className="flex items-center justify-between gap-4 border-t border-slate-200 px-5 py-4">
               <div className="text-sm text-slate-600">
-                Showing {Math.min(pageStartIndex + 1, items.length)}–{Math.min(
+                Showing {Math.min(pageStartIndex + 1, displayItems.length)}–{Math.min(
                   pageEndIndex,
-                  items.length
-                )} of {items.length}
+                  displayItems.length
+                )} of {displayItems.length}
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -2110,6 +2200,7 @@ export default function InventorySection() {
                 }}
                 selectedSection={selectedSection}
                 searchQuery={historySearchQuery}
+                dateRange={historyDateRange}
               />
             </div>
 

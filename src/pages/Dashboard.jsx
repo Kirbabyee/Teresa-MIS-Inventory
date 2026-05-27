@@ -1,14 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, ClipboardList, Cpu, Package, RotateCcw, Trophy } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { fetchBorrowingRecords, markOverdueBorrowingRecords } from "@/lib/borrowingApi";
+import { getTabTableConfig, useInventoryCatalog } from "@/lib/inventoryApi";
 
 const defaultBorrowingStats = {
   borrowedToday: 0,
   unreturned: 0,
   defectiveReturned: [],
   mostBorrowedItem: null,
+};
+
+const COMPUTER_LABS_TAB = {
+  id: "computer-laboratories",
+  name: "Computer Laboratories",
+  slug: "laboratory",
+  isComputerLabs: true,
 };
 
 const getBorrowedQuantity = (item = {}) => {
@@ -91,18 +99,50 @@ const summarizeBorrowingRecords = (records = []) => {
   };
 };
 
+const isDefectiveValue = (value) => {
+  const normalized = String(value || "").trim().toUpperCase();
+  return normalized.includes("DEFECT") || normalized.includes("BROKEN");
+};
+
+const isDefectiveRecord = (record = {}) =>
+  Object.entries(record).some(([key, value]) => {
+    if (["id", "section_id", "created_at", "updated_at", "sort_order"].includes(key)) return false;
+    if (value && typeof value === "object") return isDefectiveRecord(value);
+    return isDefectiveValue(value);
+  });
+
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [labs, setLabs] = useState([]);
   const [overall, setOverall] = useState({ total: 0, defective: 0 });
   const [borrowingStats, setBorrowingStats] = useState(defaultBorrowingStats);
   const [error, setError] = useState("");
+  const { tabs: inventoryTabs, loading: tabsLoading, error: tabsError } = useInventoryCatalog();
+  const [selectedTabSlug, setSelectedTabSlug] = useState("");
+  const dashboardTabs = useMemo(() => [COMPUTER_LABS_TAB, ...inventoryTabs], [inventoryTabs]);
 
   const defectiveRate = overall.total
     ? Math.round((overall.defective / overall.total) * 100)
     : 0;
+  const activeDashboardTab = dashboardTabs.find((tab) => tab.slug === selectedTabSlug) || COMPUTER_LABS_TAB;
+  const isComputerLabsSelected = activeDashboardTab.isComputerLabs;
 
+  // Handle tab selection from URL params
+  useEffect(() => {
+    if (dashboardTabs.length === 0) return;
+
+    const urlTab = searchParams.get("tab");
+    if (urlTab && urlTab !== selectedTabSlug && dashboardTabs.some(tab => tab.slug === urlTab)) {
+      setSelectedTabSlug(urlTab);
+    } else if (!urlTab && !selectedTabSlug && dashboardTabs.length > 0) {
+      // Auto-select first tab if none selected and tabs exist
+      setSelectedTabSlug(dashboardTabs[0].slug);
+    }
+  }, [searchParams, selectedTabSlug, dashboardTabs]);
+
+  // Main data loading effect - now depends on selected tab
   useEffect(() => {
     let cancelled = false;
 
@@ -115,15 +155,8 @@ export default function Dashboard() {
         const borrowingRecords = await fetchBorrowingRecords({ status: null });
         const borrowingSummary = summarizeBorrowingRecords(borrowingRecords);
 
-        // 1. Fetch all laboratories
-        const { data: labRows, error: labErr } = await supabase
-          .from("lab_numbers")
-          .select("id, lab_number, name")
-          .order("lab_number", { ascending: true });
-
-        if (labErr) throw labErr;
-
-        if (!labRows || labRows.length === 0) {
+        // If no tab selected, show empty state
+        if (!selectedTabSlug) {
           if (!cancelled) {
             setLabs([]);
             setOverall({ total: 0, defective: 0 });
@@ -133,109 +166,152 @@ export default function Dashboard() {
           return;
         }
 
-        // 2. Fetch ALL components with batching
-        let allComponents = [];
-        let from = 0;
-        const batchSize = 1000;
-
-        while (true) {
-          const { data, error } = await supabase
-            .from("computers_components")
-            .select("computer_number, status, lab_number_id")
-            .range(from, from + batchSize - 1);
-
-          if (error) throw error;
-          if (!data || data.length === 0) break;
-
-          allComponents = [...allComponents, ...data];
-          from += batchSize;
-
-          if (data.length < batchSize) break;
+        // Get the selected tab info
+        const selectedTab = dashboardTabs.find(tab => tab.slug === selectedTabSlug);
+        if (!selectedTab) {
+          if (!cancelled) {
+            setLabs([]);
+            setOverall({ total: 0, defective: 0 });
+            setBorrowingStats(borrowingSummary);
+            setLoading(false);
+          }
+          return;
         }
 
-        console.log("<<< FETCH COMPLETE. TOTAL RECORDS:", allComponents.length);
-
-        // 3. Calculate Totals and Group Data
-        let totalComponentCount = 0;
-        let totalDefectiveCount = 0;
-        const grouped = {};
-
-        for (const comp of allComponents) {
-          if (!comp.lab_number_id) continue;
-
-          const labId = comp.lab_number_id;
-          const computerKey = String(comp.computer_number).trim();
-
-          if (!grouped[labId]) {
-            grouped[labId] = {};
-          }
-
-          // Initialize PC record if it doesn't exist
-          if (!grouped[labId] [computerKey]) {
-            grouped[labId] [computerKey] = { 
-              pcTotal: 0,
-              defectiveComponentCount: 0 
-            };
-          }
-
-          // Count total components for this PC
-          grouped[labId] [computerKey].pcTotal++;
-          totalComponentCount++;
-
-          // Normalize status
-          const rawStatus = comp.status || "";
-          const normalizedStatus = rawStatus.trim().toUpperCase();
-
-          // Check for defect
-          const isDef = 
-            normalizedStatus.includes("DEFECT") || 
-            normalizedStatus === "DEFECTIVE" || 
-            normalizedStatus === "DEFECTIVE PC" ||
-            normalizedStatus === "BROKEN";
-
-          if (isDef) {
-            // Increment global defective row count
-            totalDefectiveCount++;
-            
-            // Increment the specific count for this PC
-            grouped[labId] [computerKey].defectiveComponentCount += 1;
-          }
-        }
-
-        console.log("<<< FINAL TOTAL COMPONENTS (ROWS):", totalComponentCount);
-        console.log("<<< FINAL DEFECTIVE COMPONENTS (ROWS):", totalDefectiveCount);
-
-        // 4. Build Lab Summaries
-        // NOW: Summing defectiveComponentCount instead of counting unique PCs
-        let overallTotal = 0;
         let labSummaries = [];
+        let overallTotal = 0;
+        let totalDefectiveCount = 0;
 
-        labRows.forEach((lab) => {
-          const comps = grouped[lab.id] || {};
-          const values = Object.values(comps);
+        if (selectedTab.isComputerLabs) {
+          const { data: labRows, error: labErr } = await supabase
+            .from("lab_numbers")
+            .select("id, lab_number, name")
+            .order("lab_number", { ascending: true });
 
-          const total = values.length; // Total PCs in this lab
-          
-          // NEW LOGIC: Sum of all defective components across all PCs in this lab
-          const defectiveComponentTotal = values.reduce((sum, pc) => sum + pc.defectiveComponentCount, 0);
+          if (labErr) {
+            console.error("Error fetching laboratories:", labErr);
+            throw labErr;
+          }
 
-          overallTotal += total;
+          let allComponents = [];
+          let from = 0;
+          const batchSize = 1000;
 
-          labSummaries.push({
-            id: lab.id,
-            label: lab.name || `Laboratory ${lab.lab_number}`,
-            total,
-            defective: defectiveComponentTotal, // This is now the count of components, not PCs
-          });
-        });
+          while (true) {
+            const { data, error } = await supabase
+              .from("computers_components")
+              .select("computer_number, status, lab_number_id")
+              .range(from, from + batchSize - 1);
 
-        console.log("<<< FINAL LABS COUNT:", labSummaries.length);
+            if (error) throw error;
+            if (!data || data.length === 0) break;
+
+            allComponents = [...allComponents, ...data];
+            from += batchSize;
+
+            if (data.length < batchSize) break;
+          }
+
+          const grouped = {};
+
+          for (const comp of allComponents) {
+            if (!comp.lab_number_id) continue;
+
+            const labId = comp.lab_number_id;
+            const computerKey = String(comp.computer_number || "Unknown").trim();
+
+            if (!grouped[labId]) grouped[labId] = {};
+            if (!grouped[labId][computerKey]) {
+              grouped[labId][computerKey] = {
+                defectiveComponentCount: 0,
+              };
+            }
+
+            if (isDefectiveValue(comp.status)) {
+              totalDefectiveCount++;
+              grouped[labId][computerKey].defectiveComponentCount += 1;
+            }
+          }
+
+          labSummaries = (labRows || [])
+            .map((lab) => {
+              const pcs = Object.values(grouped[lab.id] || {});
+              const total = pcs.length;
+              const defective = pcs.reduce((sum, pc) => sum + pc.defectiveComponentCount, 0);
+              overallTotal += total;
+
+              return {
+                id: lab.id,
+                label: lab.name || `Laboratory ${lab.lab_number}`,
+                total,
+                defective,
+                path: `/inventory/laboratory?labId=${lab.id}&defectiveOnly=1`,
+              };
+            })
+            .filter((lab) => lab.total > 0 || lab.defective > 0);
+        } else {
+          const sectionData = selectedTab.sections || [];
+          const sectionIds = sectionData.map((section) => section.id);
+          const grouped = sectionData.reduce((accumulator, section) => {
+            accumulator[section.id] = {
+              id: section.id,
+              label: section.name,
+              total: 0,
+              defective: 0,
+              path: `/inventory/${selectedTab.slug}?section=${section.slug}&defectiveOnly=1`,
+            };
+            return accumulator;
+          }, {});
+
+          if (sectionIds.length > 0) {
+            const tabConfig = await getTabTableConfig(selectedTab.id);
+            const tableName = tabConfig?.tableName;
+
+            if (!tableName) {
+              console.warn(`No table is configured for ${selectedTab.name}. Showing sections only.`);
+            } else {
+              let allItems = [];
+              let from = 0;
+              const batchSize = 1000;
+
+              while (true) {
+                const { data, error } = await supabase
+                  .from(tableName)
+                  .select("*")
+                  .in("section_id", sectionIds)
+                  .range(from, from + batchSize - 1);
+
+                if (error) throw error;
+                if (!data || data.length === 0) break;
+
+                allItems = [...allItems, ...data];
+                from += batchSize;
+
+                if (data.length < batchSize) break;
+              }
+
+              for (const item of allItems) {
+                if (!grouped[item.section_id]) continue;
+
+                grouped[item.section_id].total += 1;
+                overallTotal += 1;
+
+                if (isDefectiveRecord(item)) {
+                  grouped[item.section_id].defective += 1;
+                  totalDefectiveCount += 1;
+                }
+              }
+            }
+          }
+
+          labSummaries = Object.values(grouped);
+        }
 
         if (!cancelled) {
           setLabs(labSummaries);
           setOverall({
             total: overallTotal,
-            defective: totalDefectiveCount, 
+            defective: totalDefectiveCount,
           });
           setBorrowingStats(borrowingSummary);
         }
@@ -250,7 +326,7 @@ export default function Dashboard() {
 
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [selectedTabSlug, dashboardTabs]); // Re-fetch when tab or inventory tabs change
 
   if (loading) {
     return (
@@ -280,6 +356,55 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Tab Selection */}
+      {!tabsLoading && !tabsError && dashboardTabs.length > 0 ? (
+        <div className="mb-6">
+          <div className="flex flex-wrap items-center gap-2">
+            {dashboardTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  setSelectedTabSlug(tab.slug);
+                  // Update URL params to reflect selection
+                  const params = new URLSearchParams(searchParams);
+                  params.set("tab", tab.slug);
+                  setSearchParams(params, { replace: true });
+                }}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  tab.slug === selectedTabSlug
+                    ? "bg-[#4a1111] text-white"
+                    : "bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                }`}
+              >
+                {tab.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : tabsLoading ? (
+        <div className="mb-6">
+          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-2 text-sm text-slate-500 animate-pulse">
+            Loading tabs...
+          </div>
+        </div>
+      ) : tabsError ? (
+        <div className="mb-6">
+          <div className="rounded-md bg-rose-50 p-4 text-sm text-rose-700 border border-rose-100">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              <span>{tabsError}</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-6">
+          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-2 text-sm text-slate-500">
+            No inventory tabs found. Add one from the inventory manager.
+          </div>
+        </div>
+      )}
+
       <div className="md:flex md:gap-6">
         <div className="md:w-1/2 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -287,11 +412,11 @@ export default function Dashboard() {
             <div className="group rounded-xl bg-gradient-to-r from-white to-slate-50 p-6 shadow-lg border border-transparent hover:shadow-xl transition">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-slate-500">Total PCs</p>
+                  <p className="text-xs font-semibold text-slate-500">{isComputerLabsSelected ? "Total PCs" : "Total Items"}</p>
                   <p className="mt-2 text-3xl font-extrabold text-slate-900">
                     {overall.total.toLocaleString()}
                   </p>
-                  <p className="mt-2 text-xs text-slate-400">Across all labs</p>
+                  <p className="mt-2 text-xs text-slate-400">{isComputerLabsSelected ? "Across all labs" : "Across selected tab"}</p>
                 </div>
                 <div className="flex h-11 w-11 flex-none items-center justify-center self-start overflow-hidden rounded-full bg-[#4a1111] sm:h-12 sm:w-12 sm:self-auto">
                   <Cpu className="block h-5 w-5 shrink-0 text-white sm:h-6 sm:w-6 md:h-6 md:w-6 lg:h-6 lg:w-6" />
@@ -314,11 +439,11 @@ export default function Dashboard() {
             <div className="group rounded-xl bg-white p-6 shadow-lg border border-transparent hover:shadow-xl transition">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-slate-500">Defective Components</p>
+                  <p className="text-xs font-semibold text-slate-500">{isComputerLabsSelected ? "Defective Components" : "Defective Items"}</p>
                   <p className="mt-2 text-3xl font-extrabold text-rose-600">
                     {overall.defective.toLocaleString()}
                   </p>
-                  <p className="mt-2 text-xs text-slate-400">Total defective parts</p>
+                  <p className="mt-2 text-xs text-slate-400">{isComputerLabsSelected ? "Total defective parts" : "Marked defective"}</p>
                 </div>
                 <div className="flex h-11 w-11 flex-none items-center justify-center self-start overflow-hidden rounded-full bg-rose-500 sm:h-12 sm:w-12 sm:self-auto">
                   <AlertCircle className="block h-5 w-5 shrink-0 text-white sm:h-6 sm:w-6 md:h-6 md:w-6 lg:h-6 lg:w-6" />
@@ -330,11 +455,11 @@ export default function Dashboard() {
             <div className="group rounded-xl bg-white p-6 shadow-lg border border-transparent hover:shadow-xl transition">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-slate-500">Sections/Labs</p>
+                  <p className="text-xs font-semibold text-slate-500">{isComputerLabsSelected ? "Labs" : "Sections"}</p>
                   <p className="mt-2 text-3xl font-extrabold text-slate-900">
                     {labs.length.toLocaleString()}
                   </p>
-                  <p className="mt-2 text-xs text-slate-400">Active sections</p>
+                  <p className="mt-2 text-xs text-slate-400">{isComputerLabsSelected ? "Active laboratories" : "Active sections"}</p>
                 </div>
                 <div className="flex h-11 w-11 flex-none items-center justify-center self-start overflow-hidden rounded-full bg-slate-700 sm:h-12 sm:w-12 sm:self-auto">
                   <Package className="block h-5 w-5 shrink-0 text-white sm:h-6 sm:w-6 md:h-6 md:w-6 lg:h-6 lg:w-6" />
@@ -356,8 +481,8 @@ export default function Dashboard() {
                   <thead className="bg-slate-50">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">NAME</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">NUMBER OF PC</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">DEFECTIVE COMPONENTS</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{isComputerLabsSelected ? "NUMBER OF PC" : "ITEMS"}</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{isComputerLabsSelected ? "DEFECTIVE COMPONENTS" : "DEFECTIVE ITEMS"}</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-200">
@@ -365,10 +490,10 @@ export default function Dashboard() {
                       <tr
                         key={lab.id}
                         className="hover:bg-slate-50 transition-colors cursor-pointer"
-                        onClick={() => navigate(`/inventory/laboratory?labId=${lab.id}&defectiveOnly=1`)}
+                        onClick={() => navigate(lab.path || `/inventory/laboratory?labId=${lab.id}&defectiveOnly=1`)}
                         role="button"
                         tabIndex={0}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/inventory/laboratory?labId=${lab.id}&defectiveOnly=1`); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(lab.path || `/inventory/laboratory?labId=${lab.id}&defectiveOnly=1`); }}
                       >
                         <td className="px-4 py-3 text-sm">
                           <span className="font-medium text-slate-800 hover:text-slate-600 hover:underline">
