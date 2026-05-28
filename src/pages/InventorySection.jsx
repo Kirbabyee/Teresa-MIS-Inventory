@@ -2189,8 +2189,19 @@ export default function InventorySection() {
                             const columnDraftKey = getCellDraftKey(item.id, columnKey);
                             const columnDraftValue = cellDrafts[columnDraftKey] ?? normalizeCellValue(columnValue);
 
+                            const isMissingColumn = (() => {
+                              if (column.subColumns && column.subColumns.length > 0) {
+                                return column.subColumns.some((subColumn) => {
+                                  const v = item?.[subColumn.physicalKey];
+                                  return v === null || v === undefined || String(v).trim() === "" || String(v) === "-";
+                                });
+                              }
+                              const v = columnValue;
+                              return v === null || v === undefined || String(v).trim() === "" || String(v) === "-";
+                            })();
+
                             return (
-                              <td key={`${item.id}-${column.key}`} className="px-4 py-4 align-top text-sm text-slate-700">
+                              <td key={`${item.id}-${column.key}`} className={`px-4 py-4 align-top text-sm text-slate-700 ${isMissingColumn ? "bg-amber-100" : ""}`}>
                                 {column.subColumns && column.subColumns.length > 0 ? (
                                   <div className="space-y-3">
                                     {column.subColumns.map((subColumn) => {
