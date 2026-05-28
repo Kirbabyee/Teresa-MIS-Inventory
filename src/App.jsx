@@ -16,13 +16,7 @@ import Dashboard from "./pages/Dashboard";
 import Borrowing from "./pages/Borrowing";
 import Inventory from "./pages/Inventory";
 import InventorySection from "./pages/InventorySection";
-import InventoryTableTest from "./pages/InventoryTableTest";
 import ComputerLaboratoryInventory from "./pages/ComputerLaboratoryInventory";
-import Laboratory1 from "./pages/Laboratory1";
-import Laboratory2 from "./pages/Laboratory2";
-import Laboratory3 from "./pages/Laboratory3";
-import Laboratory4 from "./pages/Laboratory4";
-import Laboratory5 from "./pages/Laboratory5";
 import UserAccounts from "./pages/UserAccounts";
 import ActivateAccount from "./pages/ActivateAccount";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -140,14 +134,6 @@ function AppContent({ session, authenticated }) {
               </AdminRoute>
             }
           />
-          <Route
-            path="manage/inventory-table-test"
-            element={
-              <AdminRoute session={session}>
-                <InventoryTableTest />
-              </AdminRoute>
-            }
-          />
           <Route path="borrowing" element={<Borrowing />} />
           <Route path="inventory" element={<Navigate to="/manage/inventory" replace />} />
           <Route path="inventory/manage" element={<Navigate to="/manage/inventory" replace />} />
@@ -156,11 +142,6 @@ function AppContent({ session, authenticated }) {
           <Route path="laboratory/inventory" element={<Navigate to="/inventory/laboratory" replace />} />
           <Route path="laboratory/computer-laboratory-inventory" element={<Navigate to="/inventory/laboratory" replace />} />
           <Route path="laboratory/comlab" element={<Navigate to="/inventory/laboratory" replace />} />
-          <Route path="laboratory/laboratory-1" element={<Laboratory1 />} />
-          <Route path="laboratory/laboratory-2" element={<Laboratory2 />} />
-          <Route path="laboratory/laboratory-3" element={<Laboratory3 />} />
-          <Route path="laboratory/laboratory-4" element={<Laboratory4 />} />
-          <Route path="laboratory/laboratory-5" element={<Laboratory5 />} />
           <Route path="*" element={<PageNotFound />} />
         </Route>
         <Route
