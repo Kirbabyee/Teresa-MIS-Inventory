@@ -1285,7 +1285,7 @@ export default function ComputerLaboratoryInventory() {
                             role="status"
                             aria-label="Loading inventory data"
                         />
-                        <p className="text-sm text-slate-500">Loading...</p>
+                        
                     </div>
                 </div>
             </div>

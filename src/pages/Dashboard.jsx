@@ -338,7 +338,7 @@ export default function Dashboard() {
               role="status"
               aria-label="Loading dashboard data"
             />
-            <p className="text-sm text-slate-500">Loading dashboard data...</p>
+            
           </div>
         </div>
       </div>
@@ -409,7 +409,7 @@ export default function Dashboard() {
         <div className="md:w-1/2 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {/* Total PCs Card */}
-            <div className="group rounded-xl bg-gradient-to-r from-white to-slate-50 p-6 shadow-lg border border-transparent hover:shadow-xl transition">
+            <div className="group rounded-xl bg-gradient-to-r from-white to-slate-50 p-6 shadow-lg border border-transparent hover:shadow-xl transition relative overflow-visible">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-slate-500">{isComputerLabsSelected ? "Total PCs" : "Total Items"}</p>
@@ -418,8 +418,16 @@ export default function Dashboard() {
                   </p>
                   <p className="mt-2 text-xs text-slate-400">{isComputerLabsSelected ? "Across all labs" : "Across selected tab"}</p>
                 </div>
-                <div className="flex h-11 w-11 flex-none items-center justify-center self-start overflow-hidden rounded-full bg-[#4a1111] sm:h-12 sm:w-12 sm:self-auto">
-                  <Cpu className="block h-5 w-5 shrink-0 text-white sm:h-6 sm:w-6 md:h-6 md:w-6 lg:h-6 lg:w-6" />
+                <div className="absolute top-3 right-3 sm:static flex h-10 w-10 sm:h-11 sm:w-11 flex-none items-center justify-center overflow-hidden rounded-full bg-[#4a1111]">
+                  {isComputerLabsSelected ? (
+                    <Cpu className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 sm:h-6 sm:w-6 text-white">
+                      <rect width="9" height="6" x="6" y="14" rx="2" />
+                      <rect width="16" height="6" x="6" y="4" rx="2" />
+                      <path d="M2 2v20" />
+                    </svg>
+                  )}
                 </div>
               </div>
               {overall.total > 0 && (
@@ -436,7 +444,7 @@ export default function Dashboard() {
             </div>
 
             {/* Defective Components Card */}
-            <div className="group rounded-xl bg-white p-6 shadow-lg border border-transparent hover:shadow-xl transition">
+            <div className="group rounded-xl bg-white p-6 shadow-lg border border-transparent hover:shadow-xl transition relative overflow-visible">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-slate-500">{isComputerLabsSelected ? "Defective Components" : "Defective Items"}</p>
@@ -445,14 +453,14 @@ export default function Dashboard() {
                   </p>
                   <p className="mt-2 text-xs text-slate-400">{isComputerLabsSelected ? "Total defective parts" : "Marked defective"}</p>
                 </div>
-                <div className="flex h-11 w-11 flex-none items-center justify-center self-start overflow-hidden rounded-full bg-rose-500 sm:h-12 sm:w-12 sm:self-auto">
-                  <AlertCircle className="block h-5 w-5 shrink-0 text-white sm:h-6 sm:w-6 md:h-6 md:w-6 lg:h-6 lg:w-6" />
+                <div className="absolute top-3 right-3 sm:static flex h-10 w-10 sm:h-11 sm:w-11 flex-none items-center justify-center overflow-hidden rounded-full bg-rose-500">
+                  <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                 </div>
               </div>
             </div>
 
             {/* Labs Card */}
-            <div className="group rounded-xl bg-white p-6 shadow-lg border border-transparent hover:shadow-xl transition">
+            <div className="group rounded-xl bg-white p-6 shadow-lg border border-transparent hover:shadow-xl transition relative overflow-visible">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-slate-500">{isComputerLabsSelected ? "Labs" : "Sections"}</p>
@@ -461,15 +469,15 @@ export default function Dashboard() {
                   </p>
                   <p className="mt-2 text-xs text-slate-400">{isComputerLabsSelected ? "Active laboratories" : "Active sections"}</p>
                 </div>
-                <div className="flex h-11 w-11 flex-none items-center justify-center self-start overflow-hidden rounded-full bg-slate-700 sm:h-12 sm:w-12 sm:self-auto">
-                  <Package className="block h-5 w-5 shrink-0 text-white sm:h-6 sm:w-6 md:h-6 md:w-6 lg:h-6 lg:w-6" />
+                <div className="absolute top-3 right-3 sm:static flex h-10 w-10 sm:h-11 sm:w-11 flex-none items-center justify-center overflow-hidden rounded-full bg-slate-700">
+                  <Package className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                 </div>
               </div>
             </div>
           </div>
 
           {/* Lab Details Table */}
-          <div className="overflow-hidden rounded-lg border border-slate-100 bg-white">
+          <div className="overflow-hidden rounded-lg border border-slate-100 bg-white shadow-lg transition hover:shadow-xl">
             {labs.length === 0 ? (
               <div className="p-8 text-center">
                 <Package className="mx-auto h-12 w-12 text-slate-300" />

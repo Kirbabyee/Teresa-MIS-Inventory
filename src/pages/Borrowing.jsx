@@ -1058,6 +1058,22 @@ export default function Borrowing() {
     }
   };
 
+  if (inventoryLoading || itemsLoading || borrowingsLoading) {
+    return (
+      <div className="flex min-h-[calc(100vh-6rem)] items-center justify-center p-6">
+        <div className="flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <div
+              className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-[#4a1111]"
+              role="status"
+              aria-label="Loading borrowing data"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-h-screen py-10 px-6">
       <style>{`

@@ -26,6 +26,7 @@ import {
   fetchInventoryItems,
   getTabTableConfig,
   isCurrentUserAdmin,
+  updateInventoryItemQuantity,
   upsertInventoryItem,
   useInventoryCatalog,
   callCreateInventoryLogsTable,
@@ -376,6 +377,9 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
   const orderedTemplateColumns = useMemo(() => orderTemplateColumns(templateColumns), [templateColumns]);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [duplicateMatch, setDuplicateMatch] = useState(null);
+  const [pendingRecordData, setPendingRecordData] = useState(null);
+  const [duplicateAction, setDuplicateAction] = useState("");
   const createInitialSubFieldGroups = (columns) =>
     (columns || []).reduce((accumulator, column) => {
       if (Array.isArray(column?.subColumns) && column.subColumns.length > 1) {
@@ -470,6 +474,81 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
     : buildLegacySnapshot(legacyForm);
   const hasUnsavedChanges = initialSnapshotRef.current !== currentSnapshot;
 
+  const quantityFieldKey = useMemo(() => {
+    for (const column of orderedTemplateColumns) {
+      if (column.subColumns && column.subColumns.length > 0) {
+        const quantitySubColumn = column.subColumns.find(
+          (subColumn) =>
+            String(subColumn.key || "").toLowerCase() === "quantity" ||
+            String(subColumn.label || "").toLowerCase() === "quantity" ||
+            String(subColumn.physicalKey || "").toLowerCase() === "quantity"
+        );
+        if (quantitySubColumn?.physicalKey) return quantitySubColumn.physicalKey;
+        continue;
+      }
+
+      if (
+        String(column.key || "").toLowerCase() === "quantity" ||
+        String(column.label || "").toLowerCase() === "quantity"
+      ) {
+        return column.key;
+      }
+    }
+
+    return "";
+  }, [orderedTemplateColumns]);
+
+  const isQuantityLikeKey = (fieldKey = "") => {
+    const normalizedKey = String(fieldKey || "").trim().toLowerCase();
+    return normalizedKey === "quantity" || normalizedKey.endsWith("_quantity");
+  };
+
+  const getDuplicateComparisonKeys = (recordData = {}) =>
+    Object.keys(recordData).filter((key) => {
+      const normalizedKey = String(key || "").trim().toLowerCase();
+      if (!normalizedKey) return false;
+      if (normalizedKey === String(quantityFieldKey || "").toLowerCase() || isQuantityLikeKey(normalizedKey)) return false;
+      if (["id", "section_id", "created_at", "updated_at", "sort_order"].includes(normalizedKey)) return false;
+      if (isIdentifierField(normalizedKey)) return false;
+      if (normalizedKey.endsWith("_item_number") || normalizedKey.endsWith("_computer_number")) return false;
+
+      const value = recordData[key];
+      return value !== null && value !== undefined && String(value).trim() !== "";
+    });
+
+  const normalizeDuplicateValue = (value) => String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+
+  const findDuplicateItem = (recordData = {}) => {
+    if (item?.id || !useTemplate) return null;
+
+    const comparisonKeys = getDuplicateComparisonKeys(recordData);
+    if (comparisonKeys.length === 0) return null;
+
+    return (items || []).find((existingItem) =>
+      comparisonKeys.every(
+        (key) => normalizeDuplicateValue(existingItem?.[key]) === normalizeDuplicateValue(recordData?.[key])
+      )
+    ) || null;
+  };
+
+  const buildTemplateRecordData = () => {
+    const recordData = {};
+    for (const column of orderedTemplateColumns) {
+      if (column.subColumns && column.subColumns.length > 0) {
+        for (const subColumn of column.subColumns) {
+          recordData[subColumn.physicalKey] = castValueByType(
+            dynamicForm[subColumn.physicalKey],
+            subColumn.data_type
+          );
+        }
+      } else {
+        recordData[column.key] = castValueByType(dynamicForm[column.key], column.data_type);
+      }
+    }
+
+    return recordData;
+  };
+
   useEffect(() => {
     if (useTemplate) {
       const nextForm = {};
@@ -499,6 +578,9 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
       initialSnapshotRef.current = buildTemplateSnapshot(nextForm);
       setShowDiscardConfirm(false);
       setShowSaveConfirm(false);
+      setDuplicateMatch(null);
+      setPendingRecordData(null);
+      setDuplicateAction("");
       return;
     }
 
@@ -514,6 +596,9 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
     initialSnapshotRef.current = buildLegacySnapshot(nextLegacyForm);
     setShowDiscardConfirm(false);
     setShowSaveConfirm(false);
+    setDuplicateMatch(null);
+    setPendingRecordData(null);
+    setDuplicateAction("");
   }, [item, items, orderedTemplateColumns, useTemplate]);
 
   useEffect(() => {
@@ -565,24 +650,19 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
     }));
   };
 
-  const save = async () => {
+  const save = async ({ allowDuplicate = false, recordDataOverride = null } = {}) => {
     if (useTemplate) {
       if (!tableName) {
         throw new Error("Physical table is not ready yet. Please wait for the table mapping to load.");
       }
 
-      const recordData = {};
-      for (const column of orderedTemplateColumns) {
-        if (column.subColumns && column.subColumns.length > 0) {
-          for (const subColumn of column.subColumns) {
-            recordData[subColumn.physicalKey] = castValueByType(
-              dynamicForm[subColumn.physicalKey],
-              subColumn.data_type
-            );
-          }
-        } else {
-          recordData[column.key] = castValueByType(dynamicForm[column.key], column.data_type);
-        }
+      const recordData = recordDataOverride || buildTemplateRecordData();
+      const matchingItem = allowDuplicate ? null : findDuplicateItem(recordData);
+
+      if (matchingItem) {
+        setDuplicateMatch(matchingItem);
+        setPendingRecordData(recordData);
+        return;
       }
 
       await upsertInventoryItem({
@@ -606,6 +686,37 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
       tableName,
     });
     onSaved();
+  };
+
+  const mergeDuplicateItem = async () => {
+    if (!duplicateMatch || !pendingRecordData || !quantityFieldKey) return;
+
+    setDuplicateAction("merge");
+    try {
+      const existingQuantity = Number(duplicateMatch?.[quantityFieldKey] ?? 0);
+      const addedQuantity = Number(pendingRecordData?.[quantityFieldKey] ?? 0);
+      const nextQuantity = (Number.isFinite(existingQuantity) ? existingQuantity : 0) +
+        (Number.isFinite(addedQuantity) ? addedQuantity : 0);
+
+      await updateInventoryItemQuantity({
+        id: duplicateMatch.id,
+        sectionId: section.id,
+        tableName,
+        quantity: nextQuantity,
+      });
+      onSaved();
+    } finally {
+      setDuplicateAction("");
+    }
+  };
+
+  const addDuplicateSeparately = async () => {
+    setDuplicateAction("separate");
+    try {
+      await save({ allowDuplicate: true, recordDataOverride: pendingRecordData });
+    } finally {
+      setDuplicateAction("");
+    }
   };
 
   return (
@@ -861,6 +972,96 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
               </button>
               <button type="button" onClick={confirmSave} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {duplicateMatch && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Item already exists</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  A matching item was found in {section?.name || "this section"}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setDuplicateMatch(null);
+                  setPendingRecordData(null);
+                }}
+                disabled={duplicateAction !== ""}
+                className={modalCloseButtonClass}
+                title="Close"
+                aria-label="Close duplicate item modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-5">
+              <p className="text-sm text-slate-600">
+                You can merge it by adding the typed quantity to the existing item, or keep it as a separate
+                inventory record.
+              </p>
+
+              {quantityFieldKey ? (
+                <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Existing quantity
+                    </div>
+                    <div className="mt-1 text-2xl font-semibold text-slate-900">
+                      {formatCellValue(duplicateMatch?.[quantityFieldKey])}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Quantity to add
+                    </div>
+                    <div className="mt-1 text-2xl font-semibold text-[#4a1111]">
+                      {formatCellValue(pendingRecordData?.[quantityFieldKey])}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  This inventory does not have a Quantity column, so it can only be added separately.
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-3 border-t border-slate-200 bg-white px-5 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setDuplicateMatch(null);
+                  setPendingRecordData(null);
+                }}
+                disabled={duplicateAction !== ""}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Keep editing
+              </button>
+              <button
+                type="button"
+                onClick={addDuplicateSeparately}
+                disabled={duplicateAction !== ""}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {duplicateAction === "separate" ? "Adding..." : "Add separately"}
+              </button>
+              <button
+                type="button"
+                onClick={mergeDuplicateItem}
+                disabled={!quantityFieldKey || duplicateAction !== ""}
+                className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {duplicateAction === "merge" ? "Merging..." : "Merge quantity"}
               </button>
             </div>
           </div>

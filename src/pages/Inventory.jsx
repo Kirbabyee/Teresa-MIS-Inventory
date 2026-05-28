@@ -2032,7 +2032,6 @@ export default function Inventory() {
             role="status"
             aria-label="Loading inventory tabs"
           />
-          <p className="text-sm text-slate-500">Loading inventory tabs...</p>
         </div>
       </div>
     );

@@ -297,7 +297,7 @@ export default function UserAccounts() {
               role="status"
               aria-label="Loading user accounts"
             />
-            <p className="text-sm text-slate-500">Loading accounts...</p>
+            
           </div>
         </div>
       </div>
