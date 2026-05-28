@@ -104,6 +104,12 @@ const isDefectiveValue = (value) => {
   return normalized.includes("DEFECT") || normalized.includes("BROKEN");
 };
 
+const getInventoryQuantity = (item = {}) => {
+  const quantityValue = item.quantity ?? item.data?.quantity ?? 1;
+  const quantity = Number(quantityValue);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+};
+
 const isDefectiveRecord = (record = {}) =>
   Object.entries(record).some(([key, value]) => {
     if (["id", "section_id", "created_at", "updated_at", "sort_order"].includes(key)) return false;
@@ -293,12 +299,14 @@ export default function Dashboard() {
               for (const item of allItems) {
                 if (!grouped[item.section_id]) continue;
 
-                grouped[item.section_id].total += 1;
-                overallTotal += 1;
+                const quantity = getInventoryQuantity(item);
+
+                grouped[item.section_id].total += quantity;
+                overallTotal += quantity;
 
                 if (isDefectiveRecord(item)) {
-                  grouped[item.section_id].defective += 1;
-                  totalDefectiveCount += 1;
+                  grouped[item.section_id].defective += quantity;
+                  totalDefectiveCount += quantity;
                 }
               }
             }
