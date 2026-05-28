@@ -214,6 +214,27 @@ const compareSortableValues = (left, right) => {
   });
 };
 
+const isIdentifierLikeField = (fieldKey = "") => {
+  const normalizedKey = String(fieldKey || "").trim().toLowerCase();
+  return (
+    !normalizedKey ||
+    normalizedKey === "quantity" ||
+    normalizedKey.endsWith("_quantity") ||
+    IDENTIFIER_FIELD_KEYS.has(normalizedKey) ||
+    normalizedKey === "id" ||
+    normalizedKey === "section_id" ||
+    normalizedKey === "created_at" ||
+    normalizedKey === "updated_at" ||
+    normalizedKey === "sort_order"
+  );
+};
+
+const hasMeaningfulValue = (value) => {
+  if (value === null || value === undefined) return false;
+  const normalized = String(value).trim();
+  return normalized !== "" && normalized !== "-";
+};
+
 const modalCloseButtonClass =
   "inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700";
 
@@ -1377,37 +1398,28 @@ export default function InventorySection() {
     items.forEach((item) => {
       const hasDefect = isDefectiveInventoryRecord(item);
 
-      // Check for missing (brand, description, or status is empty)
       const hasMissing =
-        !item?.brand ||
-        !item?.description ||
-        !item?.status ||
-        String(item?.brand || "").trim() === "" ||
-        String(item?.description || "").trim() === "" ||
-        String(item?.status || "").trim() === "";
+        usesTemplateColumns && displayTemplateColumns.length > 0
+          ? displayTemplateColumns.some((column) => {
+              if (column.subColumns && column.subColumns.length > 0) {
+                return column.subColumns.some((subColumn) => {
+                  if (isIdentifierLikeField(subColumn.physicalKey)) return false;
+                  return !hasMeaningfulValue(item?.[subColumn.physicalKey]);
+                });
+              }
 
-      // Also check dynamic columns for missing
-      if (templateColumns && templateColumns.length > 0) {
-        templateColumns.forEach((col) => {
-          const colKey = col.key;
-          if (
-            colKey.toLowerCase().includes("brand") ||
-            colKey.toLowerCase().includes("description") ||
-            colKey.toLowerCase().includes("status")
-          ) {
-            const val = item?.[colKey];
-            if (!val || String(val).trim() === "") {
-              // eslint-disable-next-line no-param-reassign
-              item[colKey] = null;
-            }
-          }
-        });
-      }
+              if (isIdentifierLikeField(column.key)) return false;
+              return !hasMeaningfulValue(item?.[column.key]);
+            })
+          : ["type", "brand", "description", "status"].some((fieldKey) => {
+              if (isIdentifierLikeField(fieldKey)) return false;
+              return !hasMeaningfulValue(item?.[fieldKey]);
+            });
 
       map[item.id] = { hasDefect, hasMissing };
     });
     return map;
-  }, [items, templateColumns]);
+  }, [displayTemplateColumns, items, usesTemplateColumns]);
 
   const sortedItems = useMemo(() => {
     if (!sortConfig.key) return items;
