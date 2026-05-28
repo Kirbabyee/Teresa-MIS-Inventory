@@ -28,7 +28,7 @@ export default function ExportLogsPanel({ searchQuery = "", refreshToken = 0 }) 
   const [error, setError] = useState("");
   const [dateOrder, setDateOrder] = useState("desc");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 7;
 
   const downloadLogFile = async (entry) => {
     if (!entry?.file_path) return;

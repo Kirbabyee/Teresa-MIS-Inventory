@@ -107,7 +107,7 @@ export default function InventoryHistoryView({ selectedLab, searchQuery = "", da
   const [filterComponent, setFilterComponent] = useState("all");
   const [dateOrder, setDateOrder] = useState("desc");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 12;
+  const itemsPerPage = 10;
 
   useEffect(() => {
     let mounted = true;

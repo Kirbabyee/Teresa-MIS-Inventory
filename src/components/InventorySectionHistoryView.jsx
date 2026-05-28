@@ -156,7 +156,7 @@ export default function InventorySectionHistoryView({ selectedTab, selectedSecti
   const [userMap, setUserMap] = useState({}); // maps uid or email -> display name
   const [dateOrder, setDateOrder] = useState("desc");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 12;
+  const itemsPerPage = 10;
 
   // Form the logs table name from the tab's table name
   const logsTableName = selectedTab?.tableName ? `${selectedTab.tableName}_logs` : "";

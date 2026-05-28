@@ -1221,49 +1221,48 @@ export default function ComputerLaboratoryInventory() {
 
             const exportBy = (user?.displayName || [user?.first_name, user?.last_name].filter(Boolean).join(" ") || user?.email || "system").trim();
 
-            // Try dynamic shared table first
-            let logged = false;
+            // Always write a canonical entry into the global `export_logs` table
+            // so the ExportLogsPanel can reliably display recent exports.
             try {
-                const { error: dynErr } = await supabase.from('dynamic_inventory_export_logs').insert({
-                    exported_by: exportBy || "system",
+                const { error: globalErr } = await supabase.from('export_logs').insert({
+                    export_by: exportBy || "system",
                     file_name: filename,
                     export_date: exportDate,
                     file_path: storagePath,
-                    table_name: 'computers_components',
-                    metadata: { labId: selectedLab } ,
                 });
-                if (!dynErr) logged = true;
+                if (globalErr) {
+                    console.warn('Failed to insert into export_logs:', globalErr);
+                }
             } catch (e) {
-                // ignore - table may not exist
+                console.warn('Error inserting into export_logs:', e);
             }
 
-            if (!logged) {
-                // Prefer per-table exports table (computers_components_exports) then fallback to global export_logs
-                const perTableExports = `computers_components_exports`;
-                let insertError = null;
+            // Best-effort: also insert into any per-table or dynamic logging tables if they exist.
+            (async () => {
                 try {
-                    const res = await supabase.from(perTableExports).insert({
-                        exported_by: exportBy || "system",
+                    await supabase.from('dynamic_inventory_export_logs').insert({
+                        export_by: exportBy || "system",
                         file_name: filename,
                         export_date: exportDate,
                         file_path: storagePath,
+                        table_name: 'computers_components',
+                        metadata: { labId: selectedLab },
                     });
-                    insertError = res.error;
-                    if (!insertError) logged = true;
                 } catch (e) {
-                    insertError = e;
+                    // ignore if table doesn't exist or shape differs
                 }
 
-                if (!logged) {
-                    const { error: fallbackErr } = await supabase.from("export_logs").insert({
+                try {
+                    await supabase.from('computers_components_exports').insert({
                         export_by: exportBy || "system",
                         file_name: filename,
                         export_date: exportDate,
                         file_path: storagePath,
                     });
-                    if (fallbackErr) throw fallbackErr;
+                } catch (e) {
+                    // ignore if table doesn't exist
                 }
-            }
+            })();
 
             setExportLogRefreshToken((current) => current + 1);
             setShowExportModal(false);

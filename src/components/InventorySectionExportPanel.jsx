@@ -162,7 +162,7 @@ export default function InventorySectionExportPanel({
   const [error, setError] = useState("");
   const [dateOrder, setDateOrder] = useState("desc");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 7;
   const [exportSchoolYear, setExportSchoolYear] = useState("");
   const [exportSemester, setExportSemester] = useState("");
   const [preparedByName, setPreparedByName] = useState("");
