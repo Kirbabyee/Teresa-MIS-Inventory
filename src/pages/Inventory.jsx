@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/api/supabaseClient";
+import { useAuth } from "@/lib/AuthContext";
 import {
   deleteInventorySection,
   deleteInventoryTab,
@@ -1491,7 +1492,7 @@ function TabModal({ tab, onClose, onSave }) {
             </div>
           </div>
 
-          {isSaving && (
+          {isSaving && Boolean(tab?.id) && (
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm !m-0 !p-0">
               <div className="inline-flex items-center gap-3 rounded-2xl bg-slate-950/95 px-5 py-4 text-sm font-medium text-white shadow-lg">
                 <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
@@ -1672,6 +1673,7 @@ function TabModal({ tab, onClose, onSave }) {
 
 export default function Inventory() {
   const { tabs, loading, error, refetch } = useInventoryCatalog();
+  const { showGlobalLoader, hideGlobalLoader } = useAuth();
   const navigate = useNavigate();
   const [computerLaboratoryCount, setComputerLaboratoryCount] = useState(0);
   const [showModal, setShowModal] = useState(false);
@@ -1703,124 +1705,131 @@ export default function Inventory() {
     }
 
     const currentTab = editingTab;
-    const savedTab = await upsertInventoryTab({
-      id: currentTab?.id,
-      name: form.name.trim(),
-      slug: form.slug || form.name,
-      description: form.description.trim(),
-      sort_order: currentTab?.sort_order || tabs.length + 1,
-    });
+    const creatingNewTab = !currentTab;
+    let savedTab = null;
 
-    const existingSections = currentTab?.sections || [];
-    const keptSectionIds = [];
+    if (creatingNewTab) {
+      showGlobalLoader("Creating a new inventory...");
+    }
 
-    for (let index = 0; index < form.sections.length; index += 1) {
-      const section = form.sections[index];
-      const savedSection = await upsertInventorySection({
-        id: section.id,
-        tabId: savedTab.id,
-        name: section.name.trim(),
-        slug: section.slug || section.name,
-        description: section.description?.trim() || "",
-        sort_order: index + 1,
+    try {
+      savedTab = await upsertInventoryTab({
+        id: currentTab?.id,
+        name: form.name.trim(),
+        slug: form.slug || form.name,
+        description: form.description.trim(),
+        sort_order: currentTab?.sort_order || tabs.length + 1,
       });
-      keptSectionIds.push(savedSection.id);
-    }
 
-    for (const section of existingSections) {
-      if (!keptSectionIds.includes(section.id)) {
-        await deleteInventorySection(section.id);
+      const existingSections = currentTab?.sections || [];
+      const keptSectionIds = [];
+
+      for (let index = 0; index < form.sections.length; index += 1) {
+        const section = form.sections[index];
+        const savedSection = await upsertInventorySection({
+          id: section.id,
+          tabId: savedTab.id,
+          name: section.name.trim(),
+          slug: section.slug || section.name,
+          description: section.description?.trim() || "",
+          sort_order: index + 1,
+        });
+        keptSectionIds.push(savedSection.id);
       }
-    }
 
-    // Handle column modifications for existing tabs
-    if (currentTab) {
-      try {
-        // Get the existing tab config to compare columns
-        const existingConfig = await getTabTableConfig(currentTab.id);
-        const existingColumns = (existingConfig?.columns || []).filter(col => col && col.key);
-        const updatedColumns = (form.columns || [])
-          .filter((col) => col && col.key)
-          .map((col) => normalizeColumnConfig(col));
-        const tabConfig = { tableName: existingConfig?.tableName, columns: updatedColumns };
+      for (const section of existingSections) {
+        if (!keptSectionIds.includes(section.id)) {
+          await deleteInventorySection(section.id);
+        }
+      }
 
-        const tableName = existingConfig?.tableName;
-        if (tableName) {
-          const modifyEndpoint = getInventoryModifyTableEndpoint();
+      // Handle column modifications for existing tabs
+      if (currentTab) {
+        try {
+          // Get the existing tab config to compare columns
+          const existingConfig = await getTabTableConfig(currentTab.id);
+          const existingColumns = (existingConfig?.columns || []).filter(col => col && col.key);
+          const updatedColumns = (form.columns || [])
+            .filter((col) => col && col.key)
+            .map((col) => normalizeColumnConfig(col));
+          const tabConfig = { tableName: existingConfig?.tableName, columns: updatedColumns };
 
-          // Create maps for easy comparison
-          const existingColumnMap = new Map();
-          existingColumns.forEach(col => {
-            if (col.key) existingColumnMap.set(col.key, col);
-          });
+          const tableName = existingConfig?.tableName;
+          if (tableName) {
+            const modifyEndpoint = getInventoryModifyTableEndpoint();
 
-          const updatedColumnMap = new Map();
-          updatedColumns.forEach(col => {
-            if (col.key) updatedColumnMap.set(col.key, col);
-          });
+            // Create maps for easy comparison
+            const existingColumnMap = new Map();
+            existingColumns.forEach(col => {
+              if (col.key) existingColumnMap.set(col.key, col);
+            });
 
-          // Determine which columns to add and which to remove
-          const columnsToAdd = [];
-          const columnsToRemove = [];
+            const updatedColumnMap = new Map();
+            updatedColumns.forEach(col => {
+              if (col.key) updatedColumnMap.set(col.key, col);
+            });
 
-          // Find columns to add (in updated but not in existing)
-          updatedColumns.forEach(col => {
-            if (!existingColumnMap.has(col.key)) {
-              columnsToAdd.push({ key: col.key, type: col.data_type || col.type || "text" });
+            // Determine which columns to add and which to remove
+            const columnsToAdd = [];
+            const columnsToRemove = [];
+
+            // Find columns to add (in updated but not in existing)
+            updatedColumns.forEach(col => {
+              if (!existingColumnMap.has(col.key)) {
+                columnsToAdd.push({ key: col.key, type: col.data_type || col.type || "text" });
+              }
+            });
+
+            // Find columns to remove (in existing but not in updated)
+            existingColumns.forEach(col => {
+              if (!updatedColumnMap.has(col.key)) {
+                columnsToRemove.push(col.key);
+              }
+            });
+
+            // Add new columns
+            if (columnsToAdd.length > 0) {
+              const flattenedAdd = flattenColumnsForDDL(columnsToAdd);
+              console.log("Adding columns to table:", tableName, "with columns:", flattenedAdd);
+              await callModifyInventoryTable(modifyEndpoint, tableName, "add", flattenedAdd);
+              console.log("Columns added successfully");
             }
-          });
 
-          // Find columns to remove (in existing but not in updated)
-          existingColumns.forEach(col => {
-            if (!updatedColumnMap.has(col.key)) {
-              columnsToRemove.push(col.key);
+            // Remove deleted columns
+            if (columnsToRemove.length > 0) {
+              console.log("Removing columns from table:", tableName, "columns:", columnsToRemove);
+              await callModifyInventoryTable(modifyEndpoint, tableName, "remove", columnsToRemove);
+              console.log("Columns removed successfully");
             }
-          });
 
-          // Add new columns
-          if (columnsToAdd.length > 0) {
-            const flattenedAdd = flattenColumnsForDDL(columnsToAdd);
-            console.log("Adding columns to table:", tableName, "with columns:", flattenedAdd);
-            await callModifyInventoryTable(modifyEndpoint, tableName, "add", flattenedAdd);
-            console.log("Columns added successfully");
+            console.log("Table columns modified successfully");
           }
 
-          // Remove deleted columns
-          if (columnsToRemove.length > 0) {
-            console.log("Removing columns from table:", tableName, "columns:", columnsToRemove);
-            await callModifyInventoryTable(modifyEndpoint, tableName, "remove", columnsToRemove);
-            console.log("Columns removed successfully");
+          // Always persist the latest column config, including nested field metadata.
+          try {
+            window.localStorage.setItem(`inventory.tab_table.${currentTab.id}`, JSON.stringify(tabConfig));
+            console.log("Tab config saved to localStorage");
+          } catch (storageErr) {
+            console.warn("Failed to update localStorage config:", storageErr);
           }
 
-          console.log("Table columns modified successfully");
+          try {
+            const settingResult = await upsertSetting(`inventory.tab_table.${currentTab.id}`, tabConfig);
+            console.log("Tab config persisted to inventory_settings:", settingResult);
+          } catch (settingErr) {
+            console.error("Failed to update inventory_settings config:", settingErr);
+            alert(`Warning: Column config may not have saved. Error: ${settingErr.message}`);
+          }
+        } catch (err) {
+          console.error("Failed to modify table columns:", err);
+          alert(`Failed to modify table columns: ${err.message || err}`);
+          refetch();
+          return;
         }
-
-        // Always persist the latest column config, including nested field metadata.
-        try {
-          window.localStorage.setItem(`inventory.tab_table.${currentTab.id}`, JSON.stringify(tabConfig));
-          console.log("Tab config saved to localStorage");
-        } catch (storageErr) {
-          console.warn("Failed to update localStorage config:", storageErr);
-        }
-
-        try {
-          const settingResult = await upsertSetting(`inventory.tab_table.${currentTab.id}`, tabConfig);
-          console.log("Tab config persisted to inventory_settings:", settingResult);
-        } catch (settingErr) {
-          console.error("Failed to update inventory_settings config:", settingErr);
-          alert(`Warning: Column config may not have saved. Error: ${settingErr.message}`);
-        }
-      } catch (err) {
-        console.error("Failed to modify table columns:", err);
-        alert(`Failed to modify table columns: ${err.message || err}`);
-        refetch();
-        return;
       }
-    }
 
-    // If creating a new tab, create the physical table and persist tab->table mapping
-    if (!currentTab) {
-      try {
+      // If creating a new tab, create the physical table and persist tab->table mapping
+      if (creatingNewTab) {
         const tableName = `inventory_${String(savedTab.name || "tab")
           .toLowerCase()
           .trim()
@@ -1874,11 +1883,15 @@ export default function Inventory() {
           // Don't rollback on settings error - the physical table was created successfully
           alert(`Warning: Table created but settings may not have saved. Error: ${settingError.message}`);
         }
-      } catch (err) {
+      }
+    } catch (err) {
+      if (creatingNewTab) {
         // keep tab creation strict: rollback tab if physical table setup fails
         console.error("Table creation failed, rolling back:", err);
         try {
-          await deleteInventoryTab(savedTab.id);
+          if (savedTab?.id) {
+            await deleteInventoryTab(savedTab.id);
+          }
         } catch (rollbackError) {
           console.warn("Rollback failed after table creation error:", rollbackError);
         }
@@ -1887,6 +1900,15 @@ export default function Inventory() {
         alert(`Tab creation failed: ${err.message || err}`);
         refetch();
         return;
+      }
+
+      console.error("Failed to save inventory tab:", err);
+      alert(`Failed to save inventory tab: ${err.message || err}`);
+      refetch();
+      return;
+    } finally {
+      if (creatingNewTab) {
+        hideGlobalLoader();
       }
     }
 
@@ -1904,6 +1926,7 @@ export default function Inventory() {
   const confirmDelete = async () => {
     if (!pendingDeleteTab?.id) return;
     setIsDeleting(true);
+    showGlobalLoader("Deleting inventory table...");
     try {
       await deleteInventoryTab(pendingDeleteTab.id);
       setPendingDeleteTab(null);
@@ -1916,6 +1939,7 @@ export default function Inventory() {
       console.error("Delete failed:", err);
       alert(`Delete failed: ${err.message || err}`);
     } finally {
+      hideGlobalLoader();
       setIsDeleting(false);
     }
   };
@@ -2170,14 +2194,6 @@ export default function Inventory() {
                   {isDeleting ? "Deleting..." : "Delete"}
                 </button>
               </div>
-              {isDeleting && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm !m-0 !p-0">
-                  <div className="inline-flex items-center gap-3 rounded-2xl bg-slate-950/95 px-5 py-4 text-sm font-medium text-white shadow-lg">
-                    <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
-                    Deleting tab...
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}

@@ -356,57 +356,57 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Tab Selection */}
-      {!tabsLoading && !tabsError && dashboardTabs.length > 0 ? (
-        <div className="mb-6">
-          <div className="flex flex-wrap items-center gap-2">
-            {dashboardTabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => {
-                  setSelectedTabSlug(tab.slug);
-                  // Update URL params to reflect selection
-                  const params = new URLSearchParams(searchParams);
-                  params.set("tab", tab.slug);
-                  setSearchParams(params, { replace: true });
-                }}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  tab.slug === selectedTabSlug
-                    ? "bg-[#4a1111] text-white"
-                    : "bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-                }`}
-              >
-                {tab.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : tabsLoading ? (
-        <div className="mb-6">
-          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-2 text-sm text-slate-500 animate-pulse">
-            Loading tabs...
-          </div>
-        </div>
-      ) : tabsError ? (
-        <div className="mb-6">
-          <div className="rounded-md bg-rose-50 p-4 text-sm text-rose-700 border border-rose-100">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4" />
-              <span>{tabsError}</span>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="mb-6">
-          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-2 text-sm text-slate-500">
-            No inventory tabs found. Add one from the inventory manager.
-          </div>
-        </div>
-      )}
-
       <div className="md:flex md:gap-6">
-        <div className="md:w-1/2 space-y-4">
+        <div className="md:w-1/2 min-w-0 space-y-4">
+          {/* Tab Selection */}
+          {!tabsLoading && !tabsError && dashboardTabs.length > 0 ? (
+            <div className="max-w-full overflow-x-auto pb-1">
+              <div className="flex flex-wrap items-center gap-2">
+                {dashboardTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedTabSlug(tab.slug);
+                      // Update URL params to reflect selection
+                      const params = new URLSearchParams(searchParams);
+                      params.set("tab", tab.slug);
+                      setSearchParams(params, { replace: true });
+                    }}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                      tab.slug === selectedTabSlug
+                        ? "bg-[#4a1111] text-white"
+                        : "bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                    }`}
+                  >
+                    {tab.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : tabsLoading ? (
+            <div>
+              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-2 text-sm text-slate-500 animate-pulse">
+                Loading tabs...
+              </div>
+            </div>
+          ) : tabsError ? (
+            <div>
+              <div className="rounded-md bg-rose-50 p-4 text-sm text-rose-700 border border-rose-100">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>{tabsError}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-2 text-sm text-slate-500">
+                No inventory tabs found. Add one from the inventory manager.
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {/* Total PCs Card */}
             <div className="group rounded-xl bg-gradient-to-r from-white to-slate-50 p-6 shadow-lg border border-transparent hover:shadow-xl transition relative overflow-visible">
@@ -526,7 +526,7 @@ export default function Dashboard() {
         </div>
 
         {/* Borrowing Overview */}
-        <div className="md:w-1/2">
+        <div className="md:w-1/2 min-w-0">
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div
