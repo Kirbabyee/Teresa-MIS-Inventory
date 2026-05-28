@@ -1,12 +1,31 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(dir *)",
+      "Bash(Get-ChildItem \"C:\\\\Users\\\\leele\\\\.claude\\\\projects\\\\C--Users-leele-OneDrive-Desktop-Ark-ST-TERESA-MIS-Teresa-MIS-Inventory\\\\memory\" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object Name)"
+    ]
+  },
   "allow": [
     "Bash(npm run *)",
     "Bash(Select-Object \"-First\" 30)"
   ],
   "claudeCode.environmentVariables": [
-    { "name": "ANTHROPIC_BASE_URL", "value": "http://localhost:8082" },
-    { "name": "ANTHROPIC_AUTH_TOKEN", "value": "freecc" },
-    { "name": "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY", "value": "1" },
-    { "name": "CLAUDE_CODE_AUTO_COMPACT_WINDOW", "value": "190000" }
+    {
+      "name": "ANTHROPIC_BASE_URL",
+      "value": "http://localhost:8082"
+    },
+    {
+      "name": "ANTHROPIC_AUTH_TOKEN",
+      "value": "freecc"
+    },
+    {
+      "name": "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY",
+      "value": "1"
+    },
+    {
+      "name": "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+      "value": "190000"
+    }
   ]
 }

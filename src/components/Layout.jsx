@@ -50,10 +50,6 @@ const readSession = () => {
 
 function NavItem({ item, collapsed, setMobileOpen }) {
   const location = useLocation();
-  const [isOpen, setIsOpen] = useState(() => item.label === "Inventory");
-  const Icon = item.icon;
-
-  // Check if current path matches this item or any of its children
   const isDirectActive = item.path ? location.pathname === item.path : false;
   const isChildActive = item.children?.some((child) => {
     const childPathname = child.path.split("?")[0];
@@ -61,10 +57,8 @@ function NavItem({ item, collapsed, setMobileOpen }) {
   });
   const isActive = isDirectActive || isChildActive;
 
-  // Auto-expand if a child is active
-  useEffect(() => {
-    if (item.children && isActive) setIsOpen(true);
-  }, [isActive, item.children]);
+  const [isOpen, setIsOpen] = useState(() => item.children && isActive);
+  const Icon = item.icon;
 
   return (
     <div className="relative w-full">
