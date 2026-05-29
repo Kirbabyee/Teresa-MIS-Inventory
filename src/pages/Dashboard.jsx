@@ -346,7 +346,7 @@ export default function Dashboard() {
               role="status"
               aria-label="Loading dashboard data"
             />
-            
+
           </div>
         </div>
       </div>
@@ -381,11 +381,10 @@ export default function Dashboard() {
                       params.set("tab", tab.slug);
                       setSearchParams(params, { replace: true });
                     }}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                      tab.slug === selectedTabSlug
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${tab.slug === selectedTabSlug
                         ? "bg-[#4a1111] text-white"
                         : "bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-                    }`}
+                      }`}
                   >
                     {tab.name}
                   </button>
@@ -418,32 +417,35 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {/* Total PCs Card */}
             <div className="group rounded-xl bg-gradient-to-r from-white to-slate-50 p-6 shadow-lg border border-transparent hover:shadow-xl transition relative overflow-visible">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[#4a1111]">
+                    {isComputerLabsSelected ? (
+                      <Cpu className="h-4 w-4 text-white" />
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-white">
+                        <rect width="9" height="6" x="6" y="14" rx="2" />
+                        <rect width="16" height="6" x="6" y="4" rx="2" />
+                        <path d="M2 2v20" />
+                      </svg>
+                    )}
+                  </div>
                   <p className="text-xs font-semibold text-slate-500">{isComputerLabsSelected ? "Total PCs" : "Total Items"}</p>
-                  <p className="mt-2 text-3xl font-extrabold text-slate-900">
+                </div>
+                <div className="flex items-baseline gap-1 justify-center">
+                  <p className="text-3xl font-extrabold text-slate-900 text-center">
                     {overall.total.toLocaleString()}
                   </p>
-                  <p className="mt-2 text-xs text-slate-400">{isComputerLabsSelected ? "Across all labs" : "Across selected tab"}</p>
                 </div>
-                <div className="absolute top-3 right-3 sm:static flex h-10 w-10 sm:h-11 sm:w-11 flex-none items-center justify-center overflow-hidden rounded-full bg-[#4a1111]">
-                  {isComputerLabsSelected ? (
-                    <Cpu className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 sm:h-6 sm:w-6 text-white">
-                      <rect width="9" height="6" x="6" y="14" rx="2" />
-                      <rect width="16" height="6" x="6" y="4" rx="2" />
-                      <path d="M2 2v20" />
-                    </svg>
-                  )}
-                </div>
+
+              {/*<p className="text-xs text-slate-400">{isComputerLabsSelected ? "Across all labs" : "Across selected tab"}</p> */}  
               </div>
               {overall.total > 0 && (
                 <div className="mt-4">
                   <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-2 bg-[#4a1111]" 
-                      style={{ width: `${Math.min(defectiveRate, 100)}%` }} 
+                    <div
+                      className="h-2 bg-[#4a1111]"
+                      style={{ width: `${Math.min(defectiveRate, 100)}%` }}
                     />
                   </div>
                   <p className="mt-2 text-xs text-slate-400">Defective rate: {defectiveRate}%</p>
@@ -453,33 +455,37 @@ export default function Dashboard() {
 
             {/* Defective Components Card */}
             <div className="group rounded-xl bg-white p-6 shadow-lg border border-transparent hover:shadow-xl transition relative overflow-visible">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
+                <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-rose-500">
+                    <AlertCircle className="h-4 w-4 text-white" />
+                  </div>
                   <p className="text-xs font-semibold text-slate-500">{isComputerLabsSelected ? "Defective Components" : "Defective Items"}</p>
-                  <p className="mt-2 text-3xl font-extrabold text-rose-600">
+                </div>
+                <div className="flex items-baseline gap-1 justify-center">
+                  <p className="text-3xl font-extrabold text-rose-600 text-center">
                     {overall.defective.toLocaleString()}
                   </p>
-                  <p className="mt-2 text-xs text-slate-400">{isComputerLabsSelected ? "Total defective parts" : "Marked defective"}</p>
                 </div>
-                <div className="absolute top-3 right-3 sm:static flex h-10 w-10 sm:h-11 sm:w-11 flex-none items-center justify-center overflow-hidden rounded-full bg-rose-500">
-                  <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                </div>
+                <p className="text-xs text-slate-400">{isComputerLabsSelected ? "Total defective parts" : "Marked defective"}</p>
               </div>
             </div>
 
             {/* Labs Card */}
             <div className="group rounded-xl bg-white p-6 shadow-lg border border-transparent hover:shadow-xl transition relative overflow-visible">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
+                <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-slate-700">
+                    <Package className="h-4 w-4 text-white" />
+                  </div>
                   <p className="text-xs font-semibold text-slate-500">{isComputerLabsSelected ? "Labs" : "Sections"}</p>
-                  <p className="mt-2 text-3xl font-extrabold text-slate-900">
+                </div>
+                <div className="flex items-baseline gap-1 justify-center">
+                  <p className="text-3xl font-extrabold text-slate-900 text-center">
                     {labs.length.toLocaleString()}
                   </p>
-                  <p className="mt-2 text-xs text-slate-400">{isComputerLabsSelected ? "Active laboratories" : "Active sections"}</p>
                 </div>
-                <div className="absolute top-3 right-3 sm:static flex h-10 w-10 sm:h-11 sm:w-11 flex-none items-center justify-center overflow-hidden rounded-full bg-slate-700">
-                  <Package className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                </div>
+                <p className="text-xs text-slate-400">{isComputerLabsSelected ? "Active laboratories" : "Active sections"}</p>
               </div>
             </div>
           </div>
@@ -544,17 +550,19 @@ export default function Dashboard() {
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate("/borrowing"); }}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[#4a1111]">
+                      <ClipboardList className="h-4 w-4 text-white" />
+                    </div>
                     <p className="text-xs font-semibold text-slate-500">Borrowed Today</p>
-                    <p className="mt-2 text-3xl font-extrabold text-slate-900">
-                      {borrowingStats.borrowedToday.toLocaleString()}
-                    </p>
-                    <p className="mt-2 text-xs text-slate-400">Total items</p>
                   </div>
-                  <div className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-[#4a1111]">
-                    <ClipboardList className="h-5 w-5 text-white" />
-                  </div>
+                <div className="flex items-baseline gap-1 justify-center">
+                  <p className="text-3xl font-extrabold text-slate-900 text-center">
+                    {borrowingStats.borrowedToday.toLocaleString()}
+                  </p>
+                </div>
+                  <p className="text-xs text-slate-400">Total items</p>
                 </div>
               </div>
 
@@ -565,17 +573,19 @@ export default function Dashboard() {
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate("/borrowing"); }}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-rose-500">
+                      <RotateCcw className="h-4 w-4 text-white" />
+                    </div>
                     <p className="text-xs font-semibold text-slate-500">Unreturned</p>
-                    <p className="mt-2 text-3xl font-extrabold text-rose-600">
-                      {borrowingStats.unreturned.toLocaleString()}
-                    </p>
-                    <p className="mt-2 text-xs text-slate-400">Still borrowed</p>
                   </div>
-                  <div className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-rose-500">
-                    <RotateCcw className="h-5 w-5 text-white" />
-                  </div>
+                <div className="flex items-baseline gap-1 justify-center">
+                  <p className="text-3xl font-extrabold text-rose-600 text-center">
+                    {borrowingStats.unreturned.toLocaleString()}
+                  </p>
+                </div>
+                  <p className="text-xs text-slate-400">Still borrowed</p>
                 </div>
               </div>
 
@@ -586,21 +596,23 @@ export default function Dashboard() {
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate("/borrowing"); }}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-amber-500">
+                      <Trophy className="h-4 w-4 text-white" />
+                    </div>
                     <p className="text-xs font-semibold text-slate-500">Most Borrowed</p>
-                    <p className="mt-2 truncate text-lg font-extrabold text-slate-900">
-                      {borrowingStats.mostBorrowedItem?.label || "No items yet"}
-                    </p>
-                    <p className="mt-2 text-xs text-slate-400">
-                      {borrowingStats.mostBorrowedItem
-                        ? `${borrowingStats.mostBorrowedItem.count.toLocaleString()} borrowed`
-                        : "No borrowing records"}
-                    </p>
                   </div>
-                  <div className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-amber-500">
-                    <Trophy className="h-5 w-5 text-white" />
-                  </div>
+                <div className="flex items-baseline gap-1 justify-center">
+                  <p className="truncate text-lg font-extrabold text-slate-900 text-center">
+                    {borrowingStats.mostBorrowedItem?.label || "No items yet"}
+                  </p>
+                </div>
+                  <p className="text-xs text-slate-400">
+                    {borrowingStats.mostBorrowedItem
+                      ? `${borrowingStats.mostBorrowedItem.count.toLocaleString()} borrowed`
+                      : "No borrowing records"}
+                  </p>
                 </div>
               </div>
             </div>

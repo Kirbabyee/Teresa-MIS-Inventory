@@ -253,7 +253,7 @@ const applyExportHeader = (worksheet, titleText, exportDate, headerColor, logoIm
 };
 
 export default function ComputerLaboratoryInventory() {
-    const { user } = useAuth();
+    const { user, showGlobalLoader, hideGlobalLoader } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const [labOptions, setLabOptions] = useState(INITIAL_LAB_OPTIONS);
     const [selectedLab, setSelectedLab] = useState(null);
@@ -1126,6 +1126,7 @@ export default function ComputerLaboratoryInventory() {
         if (labsToExport.length === 0) return;
 
         setExporting(true);
+        showGlobalLoader("Exporting inventory...");
         try {
             // Load logo image
             let logoBuffer = null;
@@ -1270,6 +1271,7 @@ export default function ComputerLaboratoryInventory() {
             console.error('Export failed:', err);
             setError(err.message || 'Export failed');
         } finally {
+            hideGlobalLoader();
             setExporting(false);
         }
     };

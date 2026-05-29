@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/api/supabaseClient";
 import { createEmployeeInviteAndSendEmail } from "@/lib/employeeInvites";
+import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export default function UserAccountModal({ account, onClose, onSaved }) {
+  const { showGlobalLoader, hideGlobalLoader } = useAuth();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [middleName, setMiddleName] = useState("");
@@ -134,6 +136,7 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
     try {
       setSaving(true);
       setError("");
+      showGlobalLoader(account ? "Updating user account..." : "Creating user account...");
         console.log("Starting save with:", { firstName, lastName, email, accountType });
 
       const payload = {
@@ -186,6 +189,7 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
       console.error("Save failed:", err);
       setError(err.message || "Failed to save account.");
     } finally {
+      hideGlobalLoader();
       setSaving(false);
     }
   };

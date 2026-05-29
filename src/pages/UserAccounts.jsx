@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/api/supabaseClient";
 import { createEmployeeInviteAndSendEmail } from "@/lib/employeeInvites";
+import { useAuth } from "@/lib/AuthContext";
 import {
   Plus,
   Search,
@@ -55,6 +56,7 @@ const sortAccountsByStatus = (items) => {
 };
 
 export default function UserAccounts() {
+  const { showGlobalLoader, hideGlobalLoader } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -142,6 +144,7 @@ export default function UserAccounts() {
 
     try {
       setInviteActionLoading("resend");
+      showGlobalLoader("Resending invitation...");
       await revokeExistingInvites(account);
 
       await createEmployeeInviteAndSendEmail({
@@ -158,6 +161,7 @@ export default function UserAccounts() {
       console.error("Resend invite failed:", error.message);
       alert(`Failed to resend invitation: ${error.message}`);
     } finally {
+      hideGlobalLoader();
       setInviteActionLoading("");
     }
   };
@@ -167,6 +171,7 @@ export default function UserAccounts() {
 
     try {
       setInviteActionLoading("cancel");
+      showGlobalLoader("Canceling invitation...");
       await revokeExistingInvites(account);
       await removeAccountInvites(account);
 
@@ -184,6 +189,7 @@ export default function UserAccounts() {
       console.error("Cancel invite failed:", error.message);
       alert(`Failed to cancel invitation: ${error.message}`);
     } finally {
+      hideGlobalLoader();
       setInviteActionLoading("");
     }
   };
@@ -258,6 +264,7 @@ export default function UserAccounts() {
 
     try {
       setStatusChanging(true);
+      showGlobalLoader(statusCandidate.is_active === false ? "Reactivating account..." : "Deactivating account...");
       const { error } = await supabase
         .from("user_accounts")
         .update({ is_active: !Boolean(statusCandidate.is_active) })
@@ -270,6 +277,7 @@ export default function UserAccounts() {
       console.error("Account status update failed:", error.message);
       alert(`Failed to update account status: ${error.message}`);
     } finally {
+      hideGlobalLoader();
       setStatusChanging(false);
     }
   };
