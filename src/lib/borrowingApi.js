@@ -80,6 +80,91 @@ export const fetchBorrowingRecords = async ({ status = "borrowed" } = {}) => {
   return (data || []).map(mapBorrowingRecord);
 };
 
+/**
+ * Fetches borrowing velocity data for the last N days.
+ * Replicates the Supabase SQL aggregation client-side:
+ *
+ *   SELECT to_char(br.borrowed_at, 'Mon DD') AS display_date,
+ *          DATE(br.borrowed_at) AS raw_date,
+ *          COUNT(DISTINCT br.id) AS total_transactions,
+ *          SUM(CASE WHEN br.returned_at IS NOT NULL THEN COALESCE(bi.quantity,1) ELSE 0 END) AS items_returned,
+ *          SUM(CASE WHEN br.returned_at IS NULL     THEN COALESCE(bi.quantity,1) ELSE 0 END) AS items_outstanding,
+ *          SUM(COALESCE(bi.quantity,1)) AS total_items_borrowed
+ *   FROM borrowing_records br
+ *   LEFT JOIN borrowing_items bi ON br.id = bi.borrowing_record_id
+ *   WHERE br.borrowed_at >= NOW() - INTERVAL '30 days'
+ *   GROUP BY DATE(br.borrowed_at), to_char(br.borrowed_at, 'Mon DD')
+ *   ORDER BY raw_date ASC
+ */
+export const fetchBorrowingVelocity = async ({ days = 30 } = {}) => {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  cutoff.setHours(0, 0, 0, 0);
+
+  const { data, error } = await supabase
+    .from("borrowing_records")
+    .select(
+      "id, borrowed_at, returned_at, borrowing_items(id, quantity)"
+    )
+    .gte("borrowed_at", cutoff.toISOString())
+    .order("borrowed_at", { ascending: true });
+
+  if (error) throw error;
+
+  const rows = data || [];
+
+  // Group by local date string YYYY-MM-DD
+  const byDate = new Map();
+
+  for (const record of rows) {
+    const borrowedAt = record.borrowed_at ? new Date(record.borrowed_at) : null;
+    if (!borrowedAt || Number.isNaN(borrowedAt.getTime())) continue;
+
+    const rawKey = borrowedAt.toISOString().slice(0, 10); // YYYY-MM-DD
+    const displayDate = borrowedAt.toLocaleDateString("en-US", {
+      month: "short",
+      day: "2-digit",
+    }); // e.g. "Jun 10"
+
+    if (!byDate.has(rawKey)) {
+      byDate.set(rawKey, {
+        display_date: displayDate,
+        raw_date: rawKey,
+        transactionIds: new Set(),
+        items_returned: 0,
+        items_outstanding: 0,
+        total_items_borrowed: 0,
+      });
+    }
+
+    const bucket = byDate.get(rawKey);
+    bucket.transactionIds.add(record.id);
+
+    const items = record.borrowing_items || [];
+    for (const item of items) {
+      const qty = Number(item.quantity) && item.quantity > 0 ? item.quantity : 1;
+      bucket.total_items_borrowed += qty;
+      if (record.returned_at) {
+        bucket.items_returned += qty;
+      } else {
+        bucket.items_outstanding += qty;
+      }
+    }
+  }
+
+  // Convert map to sorted array
+  return [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, v]) => ({
+      display_date: v.display_date,
+      raw_date: v.raw_date,
+      total_transactions: v.transactionIds.size,
+      items_returned: v.items_returned,
+      items_outstanding: v.items_outstanding,
+      total_items_borrowed: v.total_items_borrowed,
+    }));
+};
+
 export const markOverdueBorrowingRecords = async ({ days = 3 } = {}) => {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);

@@ -3,7 +3,13 @@
     "allow": [
       "Bash(dir *)",
       "Bash(Get-ChildItem \"C:\\\\Users\\\\leele\\\\.claude\\\\projects\\\\C--Users-leele-OneDrive-Desktop-Ark-ST-TERESA-MIS-Teresa-MIS-Inventory\\\\memory\" -ErrorAction SilentlyContinue)",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "Bash(Select-String '\"scripts\"' -Context 10)",
+      "Bash(npm run *)",
+      "Bash(git *)",
+      "Bash(npx eslint *)",
+      "Bash(npx vite *)",
+      "Bash(Select-Object -First 30)"
     ]
   },
   "allow": [

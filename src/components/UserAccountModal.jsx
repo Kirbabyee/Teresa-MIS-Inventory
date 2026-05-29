@@ -1,9 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/api/supabaseClient";
 import { createEmployeeInviteAndSendEmail } from "@/lib/employeeInvites";
 import { useAuth } from "@/lib/AuthContext";
-
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,9 +28,38 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
 
-export default function UserAccountModal({ account, onClose, onSaved }) {
-  const { showGlobalLoader, hideGlobalLoader } = useAuth();
+// ─── Validation ────────────────────────────────────────────────────────────
+const validators = {
+  firstName: (value) => {
+    if (!value.trim()) return "First name is required";
+    if (value.trim().length < 2) return "Must be at least 2 characters";
+    return "";
+  },
+  lastName: (value) => {
+    if (!value.trim()) return "Last name is required";
+    if (value.trim().length < 2) return "Must be at least 2 characters";
+    return "";
+  },
+  email: (value) => {
+    if (!value.trim()) return "Email is required";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()))
+      return "Please enter a valid email";
+    return "";
+  },
+};
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+const capitalizeName = (value) =>
+  String(value).replace(/\b\w/g, (char) => char.toUpperCase());
+
+const isNameField = (field) =>
+  ["firstName", "lastName", "middleName", "suffix"].includes(field);
+
+export default function UserAccountModal({ open, account, onClose, onSaved }) {
+  const { showGlobalLoader: _showGlobalLoader, hideGlobalLoader } = useAuth();
+
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [middleName, setMiddleName] = useState("");
@@ -26,8 +69,7 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
-  
-  // Validation state
+
   const [touched, setTouched] = useState({
     firstName: false,
     lastName: false,
@@ -39,6 +81,10 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
     email: "",
   });
 
+  // Track cursor position for name fields
+  const cursorRefs = useRef({});
+
+  // ─── Populate / reset on account change ──────────────────────────────
   useEffect(() => {
     if (account) {
       setFirstName(account.first_name || "");
@@ -60,79 +106,62 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
     setFieldErrors({ firstName: "", lastName: "", email: "" });
   }, [account]);
 
-  // Validation functions
-  const validateFirstName = (value) => {
-    if (!value.trim()) return "First name is required";
-    if (value.trim().length < 2) return "First name must be at least 2 characters";
-    return "";
-  };
+  // ─── Cursor-safe name field handler ──────────────────────────────────
+  // Stores the selection range before React re-renders so we can restore
+  // it after state update, preventing the cursor from snapping to the end.
+  const handleNameChange = useCallback((field, rawValue, setter) => {
+    const input = cursorRefs.current[field];
+    const selectionStart = input?.selectionStart ?? rawValue.length;
+    const selectionEnd = input?.selectionEnd ?? rawValue.length;
 
-  const validateLastName = (value) => {
-    if (!value.trim()) return "Last name is required";
-    if (value.trim().length < 2) return "Last name must be at least 2 characters";
-    return "";
-  };
+    setter(rawValue);
 
-  const validateEmail = (value) => {
-    if (!value.trim()) return "Email is required";
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(value.trim())) return "Please enter a valid email";
-    return "";
-  };
-
-  // Auto-capitalize first letter of each word
-  const capitalizeName = (value) => {
-    return String(value).replace(/\b\w/g, (char) => char.toUpperCase());
-  };
-
-  // Handle field change and real-time validation
-  const handleFieldChange = (field, value, setter) => {
-    // Auto-capitalize name fields
-    const capitalized = (field === "firstName" || field === "lastName" || field === "middleName" || field === "suffix")
-      ? capitalizeName(value)
-      : value;
-    setter(capitalized);
-
-    // Validate on change if field has been touched
+    // Re-validate on change only if already touched
     if (touched[field]) {
-      let error = "";
-      if (field === "firstName") error = validateFirstName(capitalized);
-      else if (field === "lastName") error = validateLastName(capitalized);
-      else if (field === "email") error = validateEmail(capitalized);
-
-      setFieldErrors(prev => ({ ...prev, [field]: error }));
-    }
-  };
-
-  // Handle field blur (mark as touched, capitalize, validate)
-  const handleFieldBlur = (field, value) => {
-    setTouched(prev => ({ ...prev, [field]: true }));
-
-    // Re-apply capitalization on blur for name fields
-    if (field === "firstName" || field === "lastName" || field === "middleName" || field === "suffix") {
-      const capitalized = capitalizeName(value);
-      if (field === "firstName") setFirstName(capitalized);
-      else if (field === "lastName") setLastName(capitalized);
-      else if (field === "middleName") setMiddleName(capitalized);
-      else if (field === "suffix") setSuffix(capitalized);
+      setFieldErrors((prev) => ({ ...prev, [field]: validators[field](rawValue) }));
     }
 
-    let error = "";
-    if (field === "firstName") error = validateFirstName(value);
-    else if (field === "lastName") error = validateLastName(value);
-    else if (field === "email") error = validateEmail(value);
+    // Restore cursor after React commits the state update
+    requestAnimationFrame(() => {
+      if (input) {
+        input.selectionStart = selectionStart;
+        input.selectionEnd = selectionEnd;
+      }
+    });
+  }, [touched]);
 
-    setFieldErrors(prev => ({ ...prev, [field]: error }));
-  };
+  // ─── Blur: capitalize + validate ────────────────────────────────────
+  const handleBlur = useCallback((field, value, setter) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
 
+    let finalValue = value;
+    if (isNameField(field)) {
+      finalValue = capitalizeName(value);
+      setter(finalValue);
+    }
 
-  const isValid = () => {
-    const firstNameError = validateFirstName(firstName);
-    const lastNameError = validateLastName(lastName);
-    const emailError = validateEmail(email);
-    return !firstNameError && !lastNameError && !emailError;
-  };
+    setFieldErrors((prev) => ({
+      ...prev,
+      [field]: validators[field] ? validators[field](finalValue) : "",
+    }));
+  }, []);
 
+  // ─── Email change (no capitalization) ───────────────────────────────
+  const handleEmailChange = useCallback((rawValue) => {
+    setEmail(rawValue);
+    if (touched.email) {
+      setFieldErrors((prev) => ({ ...prev, email: validators.email(rawValue) }));
+    }
+  }, [touched.email]);
+
+  // ─── Validity ───────────────────────────────────────────────────────
+  const isValid = useCallback(() => {
+    return !validators.firstName(firstName) &&
+           !validators.lastName(lastName) &&
+           !validators.email(email);
+  }, [firstName, lastName, email]);
+
+  // ─── Save ───────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!isValid()) {
       setError("First name, last name, and email are required.");
@@ -142,7 +171,6 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
     try {
       setSaving(true);
       setError("");
-        console.log("Starting save with:", { firstName, lastName, email, accountType });
 
       const payload = {
         first_name: capitalizeName(firstName.trim()),
@@ -192,150 +220,170 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
     }
   };
 
+  // ─── Input class helper ─────────────────────────────────────────────
+  const inputClasses = (field) => {
+    const hasError = touched[field] && fieldErrors[field];
+    const isValidField = touched[field] && !fieldErrors[field];
+    return cn(
+      hasError &&
+        "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive",
+      isValidField &&
+        "border-emerald-500 bg-emerald-50/40 focus-visible:ring-emerald-500"
+    );
+  };
+
+  // ─── Render ─────────────────────────────────────────────────────────
   return (
     <>
-      <div
-        className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm !m-0 !p-0"
-        onClick={onClose}
-      />
-      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-        <div className="relative flex w-full max-w-2xl max-h-[85vh] flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl ring-1 ring-slate-200">
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8 rounded-t-[28px]">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">
-                {account ? "Edit User Account" : "Add User Account"}
-              </h3>
-              <p className="mt-1 text-sm text-slate-500">
-                {account ? "Update user account details below." : "Fill in the details to create a new user account."}
-              </p>
-            </div>
-          </div>
+      <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+        <DialogContent
+          className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
+          onPointerDownOutside={(e) => e.preventDefault()}
+        >
+          {/* ── Header ─────────────────────────────────────────────── */}
+          <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
+            <DialogTitle className="text-lg font-semibold text-slate-900">
+              {account ? "Edit User Account" : "Add User Account"}
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-sm">
+              {account
+                ? "Update user account details below."
+                : "Fill in the details to create a new user account."}
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className="flex-1 min-h-0 px-6 py-5 space-y-4 overflow-y-auto">
+          {/* ── Body ───────────────────────────────────────────────── */}
+          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5 sm:px-8">
             {error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
                 {error}
               </div>
             )}
 
+            {/* First & Middle Name */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label className="mb-1 block text-sm font-medium text-slate-700">
                   First Name *
                 </label>
                 <Input
                   type="text"
                   value={firstName}
-                  onChange={(e) => handleFieldChange("firstName", e.target.value, setFirstName)}
-                  onBlur={() => handleFieldBlur("firstName", firstName)}
                   placeholder="Enter first name"
-                  className={`${
-                    touched.firstName
-                      ? fieldErrors.firstName
-                        ? "border-red-500 bg-red-50 focus:border-red-500"
-                        : "border-green-500 bg-green-50 focus:border-green-500"
-                      : ""
-                  }`}
+                  className={inputClasses("firstName")}
+                  ref={(el) => (cursorRefs.current.firstName = el)}
+                  onChange={(e) =>
+                    handleNameChange("firstName", e.target.value, setFirstName)
+                  }
+                  onBlur={() => handleBlur("firstName", firstName, setFirstName)}
                 />
                 {touched.firstName && fieldErrors.firstName && (
-                  <p className="mt-1 text-xs text-red-600 font-medium">{fieldErrors.firstName}</p>
+                  <p className="mt-1 text-xs font-medium text-destructive">
+                    {fieldErrors.firstName}
+                  </p>
                 )}
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label className="mb-1 block text-sm font-medium text-slate-700">
                   Middle Name
                 </label>
                 <Input
                   type="text"
                   value={middleName}
-                  onChange={(e) => handleFieldChange("middleName", e.target.value, setMiddleName)}
                   placeholder="Optional"
+                  ref={(el) => (cursorRefs.current.middleName = el)}
+                  onChange={(e) =>
+                    handleNameChange("middleName", e.target.value, setMiddleName)
+                  }
+                  onBlur={() => handleBlur("middleName", middleName, setMiddleName)}
                 />
               </div>
             </div>
 
+            {/* Last Name & Suffix */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label className="mb-1 block text-sm font-medium text-slate-700">
                   Last Name *
                 </label>
                 <Input
                   type="text"
                   value={lastName}
-                  onChange={(e) => handleFieldChange("lastName", e.target.value, setLastName)}
-                  onBlur={() => handleFieldBlur("lastName", lastName)}
                   placeholder="Enter last name"
-                  className={`${
-                    touched.lastName
-                      ? fieldErrors.lastName
-                        ? "border-red-500 bg-red-50 focus:border-red-500"
-                        : "border-green-500 bg-green-50 focus:border-green-500"
-                      : ""
-                  }`}
+                  className={inputClasses("lastName")}
+                  ref={(el) => (cursorRefs.current.lastName = el)}
+                  onChange={(e) =>
+                    handleNameChange("lastName", e.target.value, setLastName)
+                  }
+                  onBlur={() => handleBlur("lastName", lastName, setLastName)}
                 />
                 {touched.lastName && fieldErrors.lastName && (
-                  <p className="mt-1 text-xs text-red-600 font-medium">{fieldErrors.lastName}</p>
+                  <p className="mt-1 text-xs font-medium text-destructive">
+                    {fieldErrors.lastName}
+                  </p>
                 )}
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label className="mb-1 block text-sm font-medium text-slate-700">
                   Suffix
                 </label>
                 <Input
                   type="text"
                   value={suffix}
-                  onChange={(e) => handleFieldChange("suffix", e.target.value, setSuffix)}
                   placeholder="Jr., Sr., III"
+                  ref={(el) => (cursorRefs.current.suffix = el)}
+                  onChange={(e) =>
+                    handleNameChange("suffix", e.target.value, setSuffix)
+                  }
+                  onBlur={() => handleBlur("suffix", suffix, setSuffix)}
                 />
               </div>
             </div>
 
+            {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+              <label className="mb-1 block text-sm font-medium text-slate-700">
                 Email *
               </label>
               <Input
                 type="email"
                 value={email}
-                onChange={(e) => handleFieldChange("email", e.target.value, setEmail)}
-                onBlur={() => handleFieldBlur("email", email)}
                 placeholder="Enter email address"
-                className={`${
-                  touched.email
-                    ? fieldErrors.email
-                      ? "border-red-500 bg-red-50 focus:border-red-500"
-                      : "border-green-500 bg-green-50 focus:border-green-500"
-                    : ""
-                }`}
+                className={inputClasses("email")}
+                onChange={(e) => handleEmailChange(e.target.value)}
+                onBlur={() => handleBlur("email", email, setEmail)}
               />
               {touched.email && fieldErrors.email && (
-                <p className="mt-1 text-xs text-red-600 font-medium">{fieldErrors.email}</p>
+                <p className="mt-1 text-xs font-medium text-destructive">
+                  {fieldErrors.email}
+                </p>
               )}
             </div>
 
+            {/* Account Type */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+              <label className="mb-1 block text-sm font-medium text-slate-700">
                 Account Type
               </label>
-              <select
-                value={accountType}
-                onChange={(e) => setAccountType(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              >
-                <option value="staff">Staff</option>
-                <option value="admin">Admin</option>
-              </select>
+              <Select value={accountType} onValueChange={setAccountType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="staff">Staff</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-4 border-t border-slate-200 bg-white px-6 py-4 sm:px-8 rounded-b-[28px]">
+          {/* ── Footer ──────────────────────────────────────────────── */}
+          <DialogFooter className="flex-row items-center justify-end gap-4 border-t border-slate-200 px-6 py-4 sm:px-8">
             <button
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg border border-[#4a1111] px-6 py-2 text-sm text-[#4a1111] transition hover:bg-[#4a1111] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               CANCEL
             </button>
@@ -343,14 +391,15 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
               type="button"
               onClick={() => setShowConfirm(true)}
               disabled={saving || !isValid()}
-              className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-[#4a1111] px-6 py-2 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? "Saving..." : account ? "UPDATE" : "PROCEED"}
             </button>
-          </div>
-        </div>
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
+      {/* ── Confirmation dialog ──────────────────────────────────────── */}
       <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -366,16 +415,14 @@ export default function UserAccountModal({ account, onClose, onSaved }) {
           <AlertDialogFooter className="gap-4">
             <AlertDialogCancel
               disabled={saving}
-              className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition m-0"
+              className="m-0 rounded-lg border border-[#4a1111] px-6 py-2 text-sm text-[#4a1111] transition hover:bg-[#4a1111] hover:text-white"
             >
               CANCEL
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                handleSave();
-              }}
+              onClick={handleSave}
               disabled={saving}
-              className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition m-0"
+              className="m-0 rounded-lg bg-[#4a1111] px-6 py-2 text-sm text-white transition hover:opacity-90"
             >
               {saving ? "Saving..." : "CONFIRM"}
             </AlertDialogAction>

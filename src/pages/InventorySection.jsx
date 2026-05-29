@@ -20,6 +20,7 @@ import {
 import arkLogoUrl from "@/assets/imgs/ark-logo.png";
 import InventorySectionHistoryView from "@/components/InventorySectionHistoryView";
 import InventorySectionExportPanel from "@/components/InventorySectionExportPanel";
+import { useAuth } from "@/lib/AuthContext";
 import {
   INVENTORY_ITEMS_CHANGED_EVENT,
   deleteInventoryItem,
@@ -1098,6 +1099,7 @@ export default function InventorySection() {
   const [searchParams, setSearchParams] = useSearchParams();
   const isDefectiveOnlyView = Boolean(searchParams.get("defectiveOnly"));
   const { tabs, loading: tabsLoading, error: tabsError } = useInventoryCatalog();
+  const { showGlobalLoader, hideGlobalLoader } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedSectionSlug, setSelectedSectionSlug] = useState("");
@@ -1632,6 +1634,7 @@ export default function InventorySection() {
 
     try {
       setExporting(true);
+      showGlobalLoader("Exporting inventory...");
       let logoBuffer = null;
       let separatorBuffer = null;
 
@@ -1843,6 +1846,7 @@ export default function InventorySection() {
       setShowExportModal(false);
       setExportLogRefreshToken((current) => current + 1);
     } finally {
+      hideGlobalLoader();
       setExporting(false);
     }
   };

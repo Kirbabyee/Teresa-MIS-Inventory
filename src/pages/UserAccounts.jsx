@@ -16,8 +16,8 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
-  DialogTitle,
 } from "@/components/ui/dialog";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -483,16 +483,15 @@ export default function UserAccounts() {
 
       {/* Global loader used via AuthContext; local overlay removed to avoid positioning issues */}
 
-      {showModal && (
-        <UserAccountModal
-          account={editAccount}
-          onClose={() => setShowModal(false)}
-          onSaved={() => {
-            setShowModal(false);
-            load();
-          }}
-        />
-      )}
+      <UserAccountModal
+        open={showModal}
+        account={editAccount}
+        onClose={() => setShowModal(false)}
+        onSaved={() => {
+          setShowModal(false);
+          load();
+        }}
+      />
 
       <AlertDialog
         open={Boolean(statusCandidate)}
