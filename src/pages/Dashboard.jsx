@@ -540,11 +540,11 @@ export default function Dashboard() {
         </div>
 
         {/* Borrowing Overview */}
-        <div className="md:w-1/2 min-w-0">
+        <div className="md:w-1/2 min-w-0 mt-12">
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div
-                className="rounded-xl bg-white p-5 shadow-lg border border-transparent transition hover:shadow-xl cursor-pointer"
+                className="group rounded-xl bg-white p-6 pb-11 shadow-lg border border-transparent hover:shadow-xl transition relative overflow-visible"
                 onClick={() => navigate("/borrowing")}
                 role="button"
                 tabIndex={0}
@@ -567,7 +567,7 @@ export default function Dashboard() {
               </div>
 
               <div
-                className="rounded-xl bg-white p-5 shadow-lg border border-transparent transition hover:shadow-xl cursor-pointer"
+                className="group rounded-xl bg-white p-6 shadow-lg border border-transparent hover:shadow-xl transition relative overflow-visible"
                 onClick={() => navigate("/borrowing")}
                 role="button"
                 tabIndex={0}
@@ -590,7 +590,7 @@ export default function Dashboard() {
               </div>
 
               <div
-                className="rounded-xl bg-white p-5 shadow-lg border border-transparent transition hover:shadow-xl cursor-pointer"
+                className="group rounded-xl bg-white p-6 shadow-lg border border-transparent hover:shadow-xl transition relative overflow-visible"
                 onClick={() => navigate("/borrowing")}
                 role="button"
                 tabIndex={0}
@@ -604,7 +604,7 @@ export default function Dashboard() {
                     <p className="text-xs font-semibold text-slate-500">Most Borrowed</p>
                   </div>
                 <div className="flex items-baseline gap-1 justify-center">
-                  <p className="truncate text-lg font-extrabold text-slate-900 text-center">
+                  <p className="truncate text-[25px] font-extrabold text-slate-900 text-center">
                     {borrowingStats.mostBorrowedItem?.label || "No items yet"}
                   </p>
                 </div>

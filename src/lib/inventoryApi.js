@@ -778,39 +778,21 @@ export const adjustInventoryItemQuantity = async ({
     throw new Error("Inventory quantity adjustment must be a valid number.");
   }
 
-  if (tableName) {
-    const { data: existingItem, error: existingError } = await supabase
-      .from(tableName)
-      .select("quantity")
-      .eq("id", id)
-      .eq("section_id", sectionId)
-      .single();
-
-    if (existingError) throw existingError;
-
-    const currentQuantity = Number(existingItem?.quantity ?? 0);
-    if (!Number.isFinite(currentQuantity)) {
-      throw new Error("Current inventory quantity is invalid.");
-    }
-
-    return updateInventoryItemQuantity({
-      id,
-      sectionId,
-      tableName,
-      quantity: Math.max(0, currentQuantity + quantityDelta),
-    });
+  const resolvedTableName = String(tableName || "").trim();
+  if (!resolvedTableName) {
+    throw new Error("Inventory table name is missing for this borrowing record.");
   }
 
   const { data: existingItem, error: existingError } = await supabase
-    .from("inventory_items")
-    .select("data")
+    .from(resolvedTableName)
+    .select("quantity")
     .eq("id", id)
     .eq("section_id", sectionId)
     .single();
 
   if (existingError) throw existingError;
 
-  const currentQuantity = Number(existingItem?.data?.quantity ?? 0);
+  const currentQuantity = Number(existingItem?.quantity ?? 0);
   if (!Number.isFinite(currentQuantity)) {
     throw new Error("Current inventory quantity is invalid.");
   }
@@ -818,8 +800,177 @@ export const adjustInventoryItemQuantity = async ({
   return updateInventoryItemQuantity({
     id,
     sectionId,
-    tableName,
+    tableName: resolvedTableName,
     quantity: Math.max(0, currentQuantity + quantityDelta),
+  });
+};
+
+const GENERATED_INVENTORY_FIELDS = new Set([
+  "id",
+  "section_id",
+  "created_at",
+  "updated_at",
+  "sort_order",
+]);
+
+const isQuantityFieldKey = (key = "") => {
+  const normalizedKey = String(key || "").trim().toLowerCase();
+  return normalizedKey === "quantity" || normalizedKey.endsWith("_quantity");
+};
+
+const isDefectFieldKey = (key = "") => {
+  const normalizedKey = String(key || "").trim().toLowerCase();
+  return (
+    normalizedKey.includes("condition") ||
+    normalizedKey.includes("status") ||
+    normalizedKey.includes("remarks")
+  );
+};
+
+const normalizeInventoryMatchValue = (value) => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value).trim().toLowerCase();
+};
+
+const isDefectiveInventoryRow = (record = {}) =>
+  Object.entries(record || {}).some(([key, value]) => {
+    if (GENERATED_INVENTORY_FIELDS.has(key) || isQuantityFieldKey(key)) return false;
+    if (value && typeof value === "object") return isDefectiveInventoryRow(value);
+
+    const normalizedValue = String(value || "").trim().toLowerCase();
+    return normalizedValue.includes("defect") || normalizedValue.includes("broken");
+  });
+
+const doInventoryRowsMatchSameItem = (sourceItem = {}, candidateItem = {}) => {
+  const comparisonKeys = Object.keys(sourceItem || {}).filter((key) => {
+    if (GENERATED_INVENTORY_FIELDS.has(key)) return false;
+    if (isQuantityFieldKey(key)) return false;
+    if (isDefectFieldKey(key)) return false;
+    return sourceItem[key] !== null && sourceItem[key] !== undefined && String(sourceItem[key]).trim() !== "";
+  });
+
+  if (comparisonKeys.length === 0) return false;
+
+  return comparisonKeys.every(
+    (key) =>
+      normalizeInventoryMatchValue(sourceItem[key]) ===
+      normalizeInventoryMatchValue(candidateItem[key])
+  );
+};
+
+const getDefectFieldKey = (record = {}) => {
+  const keys = Object.keys(record || {});
+  const exactMatch = [
+    "condition",
+    "status",
+    "remarks",
+    "return_condition",
+    "item_status",
+  ].find((key) => keys.includes(key));
+
+  if (exactMatch) return exactMatch;
+
+  return keys.find((key) => {
+    const normalizedKey = String(key || "").toLowerCase();
+    return (
+      normalizedKey.includes("condition") ||
+      normalizedKey.includes("status") ||
+      normalizedKey.includes("remarks")
+    );
+  });
+};
+
+const getDefectiveFieldValue = (fieldKey = "", remarks = "") => {
+  const normalizedKey = String(fieldKey || "").toLowerCase();
+  const cleanRemarks = String(remarks || "").trim();
+
+  if (normalizedKey.includes("remarks")) {
+    return cleanRemarks ? `Defective` : "Defective";
+  }
+
+  return "Defective";
+};
+
+export const createReturnedDefectiveInventoryItem = async ({
+  id,
+  sectionId,
+  tableName = null,
+  quantity,
+  remarks = "",
+}) => {
+  if (!id) throw new Error("Inventory item is required.");
+  if (!sectionId) throw new Error("Inventory section is required.");
+
+  const returnedQuantity = Number(quantity);
+  if (!Number.isFinite(returnedQuantity) || returnedQuantity <= 0) {
+    throw new Error("Returned defective quantity must be a valid positive number.");
+  }
+
+  const resolvedTableName = String(tableName || "").trim();
+  if (!resolvedTableName) {
+    throw new Error("Inventory table name is missing for this borrowing record.");
+  }
+
+  const { data: sourceItem, error: sourceError } = await supabase
+    .from(resolvedTableName)
+    .select("*")
+    .eq("id", id)
+    .eq("section_id", sectionId)
+    .single();
+
+  if (sourceError) throw sourceError;
+
+  const defectFieldKey = getDefectFieldKey(sourceItem);
+  const { data: sectionItems, error: sectionItemsError } = await supabase
+    .from(resolvedTableName)
+    .select("*")
+    .eq("section_id", sectionId);
+
+  if (sectionItemsError) throw sectionItemsError;
+
+  const existingDefectiveItem = (sectionItems || []).find(
+    (candidateItem) =>
+      String(candidateItem?.id) !== String(sourceItem?.id) &&
+      isDefectiveInventoryRow(candidateItem) &&
+      doInventoryRowsMatchSameItem(sourceItem, candidateItem)
+  );
+
+  if (existingDefectiveItem?.id) {
+    const currentDefectiveQuantity = Number(existingDefectiveItem.quantity ?? 0);
+
+    if (!Number.isFinite(currentDefectiveQuantity)) {
+      throw new Error("Existing defective inventory quantity is invalid.");
+    }
+
+    return updateInventoryItemQuantity({
+      id: existingDefectiveItem.id,
+      sectionId,
+      tableName: resolvedTableName,
+      quantity: currentDefectiveQuantity + returnedQuantity,
+    });
+  }
+
+  const recordData = Object.entries(sourceItem || {}).reduce((payload, [key, value]) => {
+    if (GENERATED_INVENTORY_FIELDS.has(key)) return payload;
+    payload[key] = value;
+    return payload;
+  }, {});
+
+  recordData.quantity = returnedQuantity;
+
+  if (defectFieldKey) {
+    recordData[defectFieldKey] = getDefectiveFieldValue(defectFieldKey, remarks);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(recordData, "remarks")) {
+    recordData.remarks = getDefectiveFieldValue("remarks", remarks);
+  }
+
+  return upsertInventoryItem({
+    sectionId,
+    tableName: resolvedTableName,
+    recordData,
   });
 };
 

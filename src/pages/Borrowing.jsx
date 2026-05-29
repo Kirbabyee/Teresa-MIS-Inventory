@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Download, History } from "lucide-react";
+import { ChevronDown, Download, History } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
@@ -16,12 +16,14 @@ import {
 } from "@/components/ui/dialog";
 import {
   adjustInventoryItemQuantity,
+  createReturnedDefectiveInventoryItem,
   fetchInventoryItems,
   getTabTableConfig,
   updateInventoryItemQuantity,
   useInventoryCatalog,
 } from "@/lib/inventoryApi";
 import {
+  appendBorrowingRecordItems,
   createBorrowingRecord,
   fetchBorrowingRecords,
   markOverdueBorrowingRecords,
@@ -148,6 +150,49 @@ const getBorrowedQuantity = (item = {}) => {
   return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
 };
 
+const getReturnDefectiveQuantity = (item = {}) => {
+  const rawQuantity =
+    item.returnDefectiveQuantity ??
+    item.details?.find(
+      (detail) => String(detail.key || "").toLowerCase() === "return_defective_quantity"
+    )?.value ??
+    0;
+  const quantity = Number(rawQuantity);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 0;
+};
+
+const getReturnWorkingQuantity = (item = {}) => {
+  const rawQuantity =
+    item.returnWorkingQuantity ??
+    item.details?.find(
+      (detail) => String(detail.key || "").toLowerCase() === "return_working_quantity"
+    )?.value ??
+    0;
+  const quantity = Number(rawQuantity);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 0;
+};
+
+const getReturnConditionLabel = (item = {}) => {
+  const borrowedQuantity = getBorrowedQuantity(item);
+  const defectiveQuantity = getReturnDefectiveQuantity(item);
+  const workingQuantity = getReturnWorkingQuantity(item);
+  const condition = getBorrowingItemCondition(item);
+
+  if (defectiveQuantity > 0) {
+    if (workingQuantity > 0) {
+      return `Defective: ${defectiveQuantity} / Working: ${workingQuantity}`;
+    }
+
+    if (defectiveQuantity < borrowedQuantity) {
+      return `Defective: ${defectiveQuantity} / Working: ${borrowedQuantity - defectiveQuantity}`;
+    }
+
+    return `Defective: ${defectiveQuantity}`;
+  }
+
+  return condition === "defective" ? "Defective" : "Working";
+};
+
 const getBorrowingItemCondition = (item = {}) => {
   const explicitCondition = String(item.returnCondition || "").trim();
   if (explicitCondition) return explicitCondition.toLowerCase();
@@ -207,6 +252,44 @@ const getColumnLetter = (columnNumber) => {
   return letters;
 };
 
+const getInventorySelectionKey = ({ inventoryTabId, inventorySectionId, id }) =>
+  [inventoryTabId || "", inventorySectionId || "", id || ""].map(String).join("::");
+
+const SEMESTER_OPTIONS = ["1st", "2nd", "Summer"];
+
+const getCurrentSchoolYear = (referenceDate = new Date()) => {
+  const month = referenceDate.getMonth();
+  const year = referenceDate.getFullYear();
+  const startYear = month >= 5 ? year : year - 1;
+  return `${startYear} - ${startYear + 1}`;
+};
+
+const generateSchoolYearOptions = (back = 3, forward = 3, referenceDate = new Date()) => {
+  const currentSchoolYear = getCurrentSchoolYear(referenceDate);
+  const currentStartYear = Number(currentSchoolYear.slice(0, 4));
+  const start = currentStartYear - back;
+  const end = currentStartYear + forward;
+  const options = [];
+
+  for (let year = start; year <= end; year += 1) {
+    options.push(`${year} - ${year + 1}`);
+  }
+
+  return options.reverse();
+};
+
+const borrowingExportColumnOptions = [
+  { key: "name", label: "Borrower" },
+  { key: "studentId", label: "Student ID" },
+  { key: "role", label: "Role" },
+  { key: "status", label: "Status" },
+  { key: "date", label: "Date" },
+  { key: "item", label: "Item" },
+  { key: "quantity", label: "Quantity" },
+  { key: "condition", label: "Condition" },
+  { key: "remark", label: "Item Remark" },
+];
+
 const createHeaderSeparatorBase64 = () => {
   if (typeof document === "undefined") return null;
 
@@ -224,7 +307,7 @@ const createHeaderSeparatorBase64 = () => {
   return canvas.toDataURL("image/png").split(",")[1];
 };
 
-const applyExportHeader = (worksheet, titleText, exportDate, separatorImage, totalColumns) => {
+const applyExportHeader = (worksheet, titleText, exportDate, separatorImage, totalColumns, options = {}) => {
   const headerColor = { argb: "FF4A1111" };
   const endColumnNumber = Math.max(13, totalColumns + 1);
   const endColumnLetter = getColumnLetter(endColumnNumber);
@@ -295,6 +378,14 @@ const applyExportHeader = (worksheet, titleText, exportDate, separatorImage, tot
       .replace(/^[A-Za-z]+/, (month) => month.toUpperCase());
   dateCell.alignment = { horizontal: "center", vertical: "middle" };
   dateCell.font = { bold: true, size: 11, color: headerColor, name: "Arial" };
+
+  worksheet.mergeCells(`B9:${endColumnLetter}9`);
+  const schoolYearCell = worksheet.getCell("B9");
+  const schoolYearText = (options.schoolYear || "").toString().trim() || "____________________";
+  const semesterText = (options.semester || "").toString().trim() || "____________________";
+  schoolYearCell.value = `${semesterText} Semester | S.Y ${schoolYearText}`;
+  schoolYearCell.alignment = { horizontal: "center", vertical: "middle", wrapText: false };
+  schoolYearCell.font = { bold: true, size: 11, color: headerColor, name: "Arial" };
 };
 
 export default function Borrowing() {
@@ -309,6 +400,7 @@ export default function Borrowing() {
   const [selectedSectionId, setSelectedSectionId] = useState("");
   const [selectedItemIds, setSelectedItemIds] = useState([]);
   const [selectedItemQuantities, setSelectedItemQuantities] = useState({});
+  const [selectedInventoryItems, setSelectedInventoryItems] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState("");
@@ -321,6 +413,7 @@ export default function Borrowing() {
   const [savingBorrow, setSavingBorrow] = useState(false);
   const [returningBorrow, setReturningBorrow] = useState(false);
   const [returnError, setReturnError] = useState("");
+  const [mergeWithLastBorrow, setMergeWithLastBorrow] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState(() =>
     searchParams.get("view") === "history" ? "all" : "borrowed"
@@ -345,8 +438,12 @@ export default function Borrowing() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportDate, setExportDate] = useState(new Date().toISOString().slice(0, 10));
+  const [exportSchoolYear, setExportSchoolYear] = useState("");
+  const [exportSemester, setExportSemester] = useState("");
   const [preparedByName, setPreparedByName] = useState("");
   const [inspectedByName, setInspectedByName] = useState("");
+  const [selectedExportColumns, setSelectedExportColumns] = useState([]);
+  const [showColumnOptions, setShowColumnOptions] = useState(true);
 
   const selectedTab = useMemo(
     () => tabs.find((tab) => String(tab.id) === String(selectedTabId)) || null,
@@ -359,13 +456,11 @@ export default function Borrowing() {
   );
   const selectedItems = useMemo(
     () =>
-      inventoryItems
-        .filter((item) => selectedItemIds.includes(String(item.id)))
-        .map((item) => ({
-          ...item,
-          selectedQuantity: Number(selectedItemQuantities[String(item.id)] || 1),
-        })),
-    [inventoryItems, selectedItemIds, selectedItemQuantities]
+      selectedInventoryItems.map((item) => ({
+        ...item,
+        selectedQuantity: Number(selectedItemQuantities[item.selectionKey] || item.selectedQuantity || 1),
+      })),
+    [selectedInventoryItems, selectedItemQuantities]
   );
   const inventoryNameLookup = useMemo(() => {
     const tabNames = {};
@@ -404,6 +499,26 @@ export default function Borrowing() {
 
   const pageCount = Math.ceil(filteredData.length / pageSize);
   const currentPageData = filteredData.slice(page * pageSize, page * pageSize + pageSize);
+  const latestActiveBorrowForBorrower = useMemo(() => {
+    const borrowerId = String(form.studentId || "").trim().toLowerCase();
+    const borrowerName = String(form.name || "").trim().toLowerCase();
+
+    if (!borrowerId && !borrowerName) return null;
+
+    return [...data]
+      .filter((record) => {
+        const status = String(record.status || "").toLowerCase();
+        const sameId =
+          borrowerId &&
+          String(record.studentId || "").trim().toLowerCase() === borrowerId;
+        const sameName =
+          borrowerName &&
+          String(record.name || "").trim().toLowerCase() === borrowerName;
+
+        return ["borrowed", "not_returned"].includes(status) && (sameId || sameName);
+      })
+      .sort((a, b) => new Date(b.date) - new Date(a.date))[0] || null;
+  }, [data, form.name, form.studentId]);
 
   const loadBorrowings = async (cancelToken = { current: false }) => {
     setBorrowingsLoading(true);
@@ -479,8 +594,6 @@ export default function Borrowing() {
   useEffect(() => {
     if (!selectedSectionId) {
       setInventoryItems([]);
-      setSelectedItemIds([]);
-      setSelectedItemQuantities({});
       return;
     }
 
@@ -489,7 +602,6 @@ export default function Borrowing() {
     const loadItems = async () => {
       setItemsLoading(true);
       setItemsError("");
-      setSelectedItemIds([]);
 
       try {
         const loadedItems = await fetchInventoryItems(
@@ -525,6 +637,7 @@ export default function Borrowing() {
     setSelectedSectionId("");
     setSelectedItemIds([]);
     setSelectedItemQuantities({});
+    setSelectedInventoryItems([]);
     setInventoryItems([]);
     setCustomItems([]);
     setCustomItemForm({
@@ -537,6 +650,7 @@ export default function Borrowing() {
     setItemsError("");
     setFormError("");
     setFormErrors({});
+    setMergeWithLastBorrow(false);
   };
 
   const closeBorrowModal = () => {
@@ -573,8 +687,10 @@ export default function Borrowing() {
     setReturnRemarksByItem(
       (record.items || []).reduce((acc, item) => {
         const condition = getBorrowingItemCondition(item);
+        const borrowedQuantity = getBorrowedQuantity(item);
         acc[item.id] = {
           condition: condition === "defective" ? "Defective" : "Working",
+          defectiveQuantity: condition === "defective" ? borrowedQuantity : 0,
           remarks: item.returnRemarks || "",
         };
         return acc;
@@ -584,14 +700,22 @@ export default function Borrowing() {
 
   const openExportModal = () => {
     if (!filteredData.length) return;
+    setSelectedExportColumns(borrowingExportColumnOptions.map((column) => column.key));
+    setShowColumnOptions(false);
     setExportDate(new Date().toISOString().slice(0, 10));
+    setExportSchoolYear(getCurrentSchoolYear());
+    setExportSemester(SEMESTER_OPTIONS[0]);
     setPreparedByName("");
     setInspectedByName("");
     setShowExportModal(true);
   };
 
   const handleExportBorrowings = async () => {
-    if (!filteredData.length) return;
+    if (!filteredData.length || selectedExportColumns.length === 0) return;
+
+    const columns = borrowingExportColumnOptions.filter((column) =>
+      selectedExportColumns.includes(column.key)
+    );
 
     setExporting(true);
     try {
@@ -599,17 +723,10 @@ export default function Borrowing() {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet("Borrowings");
 
-      const columns = [
-        { key: "name", label: "Borrower" },
-        { key: "studentId", label: "Student ID" },
-        { key: "role", label: "Role" },
-        { key: "status", label: "Status" },
-        { key: "date", label: "Date" },
-        { key: "item", label: "Item" },
-        { key: "remark", label: "Item Remark" },
-      ];
-
-      applyExportHeader(worksheet, "BORROWING RECORDS", exportDate, separatorBuffer, columns.length);
+      applyExportHeader(worksheet, "BORROWING RECORDS", exportDate, separatorBuffer, columns.length, {
+        schoolYear: exportSchoolYear,
+        semester: exportSemester,
+      });
 
       worksheet.addRow([]);
       const startColumn = 2;
@@ -634,11 +751,19 @@ export default function Borrowing() {
       let currentRowIndex = headerRowIndex + 1;
       filteredData.forEach((record, recordIndex) => {
         const itemLabels = (record.items || []).map((item) => getExportItemLabel(item));
+        const itemQuantities = (record.items || []).map((item) => getItemQuantity(item) || "");
+        const itemConditions = (record.items || []).map((item) => getReturnConditionLabel(item));
         const itemRemarks = (record.items || []).map((item) => {
           const condition = getBorrowingItemCondition(item);
           return item.returnRemarks || (condition === "defective" ? "Defective" : "Working");
         });
-        const rowCount = Math.max(itemLabels.length, itemRemarks.length, 1);
+        const rowCount = Math.max(
+          itemLabels.length,
+          itemQuantities.length,
+          itemConditions.length,
+          itemRemarks.length,
+          1
+        );
         const rowFill = {
           type: "pattern",
           pattern: "solid",
@@ -647,15 +772,18 @@ export default function Borrowing() {
 
         for (let itemIndex = 0; itemIndex < rowCount; itemIndex += 1) {
           const excelRow = worksheet.getRow(currentRowIndex + itemIndex);
-          const values = [
-            record.name,
-            record.studentId,
-            record.role,
-            formatBorrowingStatus(record.status || statusFilter),
-            formatExportDate(record.date),
-            itemLabels[itemIndex] || "",
-            itemRemarks[itemIndex] || "",
-          ];
+          const valueByColumn = {
+            name: record.name,
+            studentId: record.studentId,
+            role: record.role,
+            status: formatBorrowingStatus(record.status || statusFilter),
+            date: formatExportDate(record.date),
+            item: itemLabels[itemIndex] || "",
+            quantity: itemQuantities[itemIndex] || "",
+            condition: itemConditions[itemIndex] || "",
+            remark: itemRemarks[itemIndex] || "",
+          };
+          const values = columns.map((column) => valueByColumn[column.key] || "");
 
           values.forEach((value, colIndex) => {
             const cell = excelRow.getCell(startColumn + colIndex);
@@ -677,9 +805,9 @@ export default function Borrowing() {
         }
 
         if (rowCount > 1) {
-          const mergedColumns = ["name", "studentId", "role", "status", "date"].map((key) => {
-            return columns.findIndex((column) => column.key === key);
-          });
+          const mergedColumns = ["name", "studentId", "role", "status", "date"]
+            .map((key) => columns.findIndex((column) => column.key === key))
+            .filter((colIndex) => colIndex >= 0);
 
           mergedColumns.forEach((colIndex) => {
             const startCell = `${getColumnLetter(startColumn + colIndex)}${currentRowIndex}`;
@@ -714,6 +842,22 @@ export default function Borrowing() {
             return Math.max(max, remarkMax);
           }
 
+          if (column.key === "quantity") {
+            const quantityMax = (record.items || []).reduce(
+              (itemMax, item) => Math.max(itemMax, String(getItemQuantity(item) || "").length),
+              0
+            );
+            return Math.max(max, quantityMax);
+          }
+
+          if (column.key === "condition") {
+            const conditionMax = (record.items || []).reduce(
+              (itemMax, item) => Math.max(itemMax, String(getReturnConditionLabel(item) || "").length),
+              0
+            );
+            return Math.max(max, conditionMax);
+          }
+
           if (column.key === "date") {
             return Math.max(max, String(formatExportDate(record.date)).length);
           }
@@ -726,7 +870,7 @@ export default function Borrowing() {
         worksheet.getColumn(colNumber).width = width;
       });
 
-      const signatoryStart = headerRowIndex + filteredData.length + 5;
+      const signatoryStart = currentRowIndex + 4;
       const safePreparedBy = preparedByName.trim() || "____________________";
       const safeInspectedBy = inspectedByName.trim() || "____________________";
 
@@ -765,17 +909,62 @@ export default function Borrowing() {
   const confirmReturn = async () => {
     if (!pendingReturn?.id || returningBorrow) return;
 
-    const defectiveItems = Object.entries(returnRemarksByItem).filter(
-      ([, data]) => String(data?.condition || "").toLowerCase() === "defective"
-    );
+    const defectiveItems = (pendingReturn.items || []).filter((item) => {
+      const returnData = returnRemarksByItem[item.id] || {};
+      const defectiveQuantity = Number(returnData.defectiveQuantity || 0);
+      return (
+        String(returnData?.condition || "").toLowerCase() === "defective" &&
+        defectiveQuantity > 0
+      );
+    });
     const missingDescriptions = defectiveItems.filter(
-      ([, data]) => !String(data?.remarks || "").trim()
+      (item) => !String(returnRemarksByItem[item.id]?.remarks || "").trim()
     );
+    const invalidDefectiveQuantity = (pendingReturn.items || []).some((item) => {
+      const returnData = returnRemarksByItem[item.id] || {};
+      if (String(returnData?.condition || "").toLowerCase() !== "defective") return false;
+
+      const borrowedQuantity = getBorrowedQuantity(item);
+      const defectiveQuantity = Number(returnData.defectiveQuantity || 0);
+      return (
+        !Number.isInteger(defectiveQuantity) ||
+        defectiveQuantity <= 0 ||
+        defectiveQuantity > borrowedQuantity
+      );
+    });
+
+    if (invalidDefectiveQuantity) {
+      setReturnError("Defective quantity must be between 1 and the borrowed quantity.");
+      return;
+    }
 
     if (missingDescriptions.length > 0) {
       setReturnError("Please describe why the defective item is defective.");
       return;
     }
+
+    const normalizedReturnRemarks = Object.fromEntries(
+      Object.entries(returnRemarksByItem).map(([itemId, data]) => {
+        const matchingItem = (pendingReturn.items || []).find(
+          (item) => String(item.id) === String(itemId)
+        );
+        const borrowedQuantity = matchingItem ? getBorrowedQuantity(matchingItem) : 1;
+        const defectiveQuantity =
+          String(data?.condition || "").toLowerCase() === "defective"
+            ? Math.min(borrowedQuantity, Math.max(0, Number(data.defectiveQuantity || 0)))
+            : 0;
+
+        return [
+          itemId,
+          {
+            ...data,
+            condition: defectiveQuantity > 0 ? "Defective" : "Working",
+            defectiveQuantity,
+            workingQuantity: Math.max(0, borrowedQuantity - defectiveQuantity),
+          },
+        ];
+      })
+    );
 
     setReturningBorrow(true);
     setReturnError("");
@@ -783,16 +972,46 @@ export default function Borrowing() {
       await Promise.all(
         (pendingReturn.items || [])
           .filter((item) => item.inventoryItemId && item.inventorySectionId)
-          .map((item) =>
-            adjustInventoryItemQuantity({
-              id: item.inventoryItemId,
-              sectionId: item.inventorySectionId,
-              tableName: item.tableName || "",
-              delta: getBorrowedQuantity(item),
-            })
-          )
+          .map(async (item) => {
+            const returnData = normalizedReturnRemarks[item.id] || {};
+            const borrowedQuantity = getBorrowedQuantity(item);
+            const defectiveQuantity = Number(returnData.defectiveQuantity || 0);
+            const workingQuantity = Math.max(0, borrowedQuantity - defectiveQuantity);
+            const tableName =
+              item.tableName ||
+              tabTableNames[item.inventoryTabId] ||
+              (await getTabTableConfig(item.inventoryTabId))?.tableName ||
+              "";
+
+            const inventoryUpdates = [];
+
+            if (workingQuantity > 0) {
+              inventoryUpdates.push(
+                adjustInventoryItemQuantity({
+                  id: item.inventoryItemId,
+                  sectionId: item.inventorySectionId,
+                  tableName,
+                  delta: workingQuantity,
+                })
+              );
+            }
+
+            if (defectiveQuantity > 0) {
+              inventoryUpdates.push(
+                createReturnedDefectiveInventoryItem({
+                  id: item.inventoryItemId,
+                  sectionId: item.inventorySectionId,
+                  tableName,
+                  quantity: defectiveQuantity,
+                  remarks: returnData?.remarks || "",
+                })
+              );
+            }
+
+            return Promise.all(inventoryUpdates);
+          })
       );
-      await returnBorrowingRecord(pendingReturn.id, returnRemarksByItem);
+      await returnBorrowingRecord(pendingReturn.id, normalizedReturnRemarks);
       await loadBorrowings();
       setSuccessMessage("Borrowed item returned.");
       setPendingReturn(null);
@@ -815,21 +1034,46 @@ export default function Borrowing() {
     setFormError("");
   };
 
-  const toggleItem = (itemId) => {
-    const normalizedId = String(itemId);
-    const isSelected = selectedItemIds.includes(normalizedId);
+  const toggleItem = (item) => {
+    const selectionKey = getInventorySelectionKey({
+      inventoryTabId: selectedTab?.id,
+      inventorySectionId: selectedSection?.id,
+      id: item?.id,
+    });
+    const isSelected = selectedItemIds.includes(selectionKey);
 
     if (isSelected) {
-      setSelectedItemIds((current) => current.filter((id) => id !== normalizedId));
+      setSelectedItemIds((current) => current.filter((id) => id !== selectionKey));
+      setSelectedInventoryItems((current) =>
+        current.filter((selectedItem) => selectedItem.selectionKey !== selectionKey)
+      );
       setSelectedItemQuantities((current) => {
-        const { [normalizedId]: _, ...next } = current;
+        const { [selectionKey]: _, ...next } = current;
         return next;
       });
     } else {
-      setSelectedItemIds((current) => [...current, normalizedId]);
+      const maxQuantity = Number(item.quantity ?? item.data?.quantity ?? 1);
+      const selectedQuantity = Math.max(1, Math.min(maxQuantity, 1));
+      const originalDetails = getItemDetails(item);
+
+      setSelectedItemIds((current) => [...current, selectionKey]);
+      setSelectedInventoryItems((current) => [
+        ...current,
+        {
+          ...item,
+          selectionKey,
+          inventoryTabId: selectedTab?.id || null,
+          inventoryTabName: selectedTab?.name || "",
+          inventorySectionId: selectedSection?.id || null,
+          inventorySectionName: selectedSection?.name || "",
+          inventoryTableName: tabTableNames[selectedTabId] || "",
+          originalDetails,
+          selectedQuantity,
+        },
+      ]);
       setSelectedItemQuantities((current) => ({
         ...current,
-        [normalizedId]: 1,
+        [selectionKey]: selectedQuantity,
       }));
     }
 
@@ -856,7 +1100,7 @@ export default function Borrowing() {
     }
 
     const invalidQuantity = selectedItems.some((item) => {
-      const chosen = Number(selectedItemQuantities[String(item.id)] || 0);
+      const chosen = Number(item.selectedQuantity || 0);
       const maxAllowed = Number(item.quantity ?? item.data?.quantity ?? 1);
       return !Number.isInteger(chosen) || chosen <= 0 || chosen > maxAllowed;
     });
@@ -912,6 +1156,46 @@ export default function Borrowing() {
 
     setSavingBorrow(true);
     try {
+      const borrowingItems = [
+        ...selectedItems.map((item) => {
+          const details = (item.originalDetails || getItemDetails(item)).filter(
+            (detail) => detail.key !== "quantity"
+          );
+          details.unshift({
+            key: "quantity",
+            label: "Quantity",
+            value: String(item.selectedQuantity || 1),
+          });
+
+          return {
+            inventoryItemId: item.id,
+            inventoryTabId: item.inventoryTabId || null,
+            inventoryTabName: item.inventoryTabName || "",
+            inventorySectionId: item.inventorySectionId || null,
+            inventorySectionName: item.inventorySectionName || "",
+            inventoryTableName: item.inventoryTableName || "",
+            label: getItemLabel(item),
+            details,
+            quantity: item.selectedQuantity || 1,
+          };
+        }),
+        ...customItems.map((item) => {
+          const quantity = Number(
+            item.details?.find((detail) => detail.key === "quantity")?.value || 1
+          );
+          return {
+            inventoryItemId: null,
+            inventoryTabId: null,
+            inventoryTabName: "",
+            inventorySectionId: null,
+            inventorySectionName: "",
+            inventoryTableName: "",
+            label: item.label,
+            details: item.details,
+            quantity,
+          };
+        }),
+      ];
       const inventoryQuantityUpdates = selectedItems.map((item) => {
         const currentQuantity = Number(item.quantity ?? item.data?.quantity ?? 0);
         const borrowedQuantity = Number(item.selectedQuantity || 1);
@@ -941,106 +1225,55 @@ export default function Borrowing() {
         inventoryQuantityUpdates.map(({ item, remainingQuantity }) =>
           updateInventoryItemQuantity({
             id: item.id,
-            sectionId: selectedSection?.id,
-            tableName: tabTableNames[selectedTabId] || null,
+            sectionId: item.inventorySectionId,
+            tableName: item.inventoryTableName || null,
             quantity: remainingQuantity,
           })
         )
       );
 
-      const savedRecord = await createBorrowingRecord({
-        borrowerName: form.name.trim(),
-        borrowerIdNumber: form.studentId.trim(),
-        borrowerRole: form.role,
-        items: [...selectedItems.map((item) => {
-          const details = getItemDetails(item).filter((detail) => detail.key !== "quantity");
-          details.unshift({
-            key: "quantity",
-            label: "Quantity",
-            value: String(item.selectedQuantity || 1),
-          });
+      const shouldMerge = mergeWithLastBorrow && latestActiveBorrowForBorrower?.id;
 
-          return {
-            inventoryItemId: item.id,
-            inventoryTabId: selectedTab?.id || null,
-            inventoryTabName: selectedTab?.name || "",
-            inventorySectionId: selectedSection?.id || null,
-            inventorySectionName: selectedSection?.name || "",
-            inventoryTableName: tabTableNames[selectedTabId] || "",
-            label: getItemLabel(item),
-            details,
-            quantity: item.selectedQuantity || 1,
-          };
-        }), ...customItems.map((item) => {
-          const quantity = Number(
-            item.details?.find((detail) => detail.key === "quantity")?.value || 1
-          );
-          return {
-            inventoryItemId: null,
-            inventoryTabId: null,
-            inventoryTabName: "",
-            inventorySectionId: null,
-            inventorySectionName: "",
-            inventoryTableName: "",
-            label: item.label,
-            details: item.details,
-            quantity,
-          };
-        })],
-      });
+      if (shouldMerge) {
+        const appendedItems = await appendBorrowingRecordItems({
+          recordId: latestActiveBorrowForBorrower.id,
+          items: borrowingItems,
+        });
 
-      const newEntry = {
-        ...savedRecord,
-        items: [...selectedItems.map((item) => {
-          const details = getItemDetails(item).filter((detail) => detail.key !== "quantity");
-          details.unshift({
-            key: "quantity",
-            label: "Quantity",
-            value: String(item.selectedQuantity || 1),
-          });
+        setData((prev) =>
+          prev.map((record) =>
+            String(record.id) === String(latestActiveBorrowForBorrower.id)
+              ? { ...record, items: [...(record.items || []), ...appendedItems] }
+              : record
+          )
+        );
+      } else {
+        const savedRecord = await createBorrowingRecord({
+          borrowerName: form.name.trim(),
+          borrowerIdNumber: form.studentId.trim(),
+          borrowerRole: form.role,
+          items: borrowingItems,
+        });
 
-          return {
-            id: item.id,
-            inventoryItemId: item.id,
-            inventoryTabId: selectedTab?.id || null,
-            inventorySectionId: selectedSection?.id || null,
-            label: getItemLabel(item),
-            details,
-            quantity: item.selectedQuantity || 1,
-            tab: selectedTab?.name || "",
-            section: selectedSection?.name || "",
-          };
-        }), ...customItems.map((item) => {
-          const quantity = Number(
-            item.details?.find((detail) => detail.key === "quantity")?.value || 1
-          );
-          return {
-            id: item.id,
-            inventoryItemId: null,
-            inventoryTabId: null,
-            inventorySectionId: null,
-            inventoryTabName: "",
-            inventorySectionName: "",
-            label: item.label,
-            details: item.details,
-            quantity,
-            tab: "",
-            section: "",
-          };
-        })],
-      };
+        setData((prev) => [savedRecord, ...prev]);
+      }
 
-      setData((prev) => [newEntry, ...prev]);
       setInventoryItems((currentItems) =>
         currentItems.map((item) => {
           const update = inventoryQuantityUpdates.find(
-            ({ item: updatedItem }) => String(updatedItem.id) === String(item.id)
+            ({ item: updatedItem }) =>
+              String(updatedItem.id) === String(item.id) &&
+              String(updatedItem.inventorySectionId || "") === String(item.section_id || "")
           );
 
           return update ? { ...item, quantity: update.remainingQuantity } : item;
         })
       );
-      setSuccessMessage("Borrowing record added successfully.");
+      setSuccessMessage(
+        shouldMerge
+          ? "Borrowed item merged with the latest active borrowing record."
+          : "Borrowing record added successfully."
+      );
       closeBorrowModal();
 
       setDepletedItems(
@@ -1206,7 +1439,7 @@ export default function Borrowing() {
               <DialogHeader>
                 <DialogTitle>Export Borrowing Records</DialogTitle>
                 <DialogDescription>
-                  Export filtered borrowing records to Excel with export date and signatory fields.
+                  Select columns to include in export, and set date/signatories.
                 </DialogDescription>
               </DialogHeader>
 
@@ -1219,6 +1452,43 @@ export default function Borrowing() {
                     onChange={(event) => setExportDate(event.target.value)}
                     className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
                   />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500">School Year *</label>
+                    <div className="relative mt-1">
+                      <select
+                        value={exportSchoolYear}
+                        onChange={(event) => setExportSchoolYear(event.target.value)}
+                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+                      >
+                        {generateSchoolYearOptions().map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500">Semester *</label>
+                    <div className="relative mt-1">
+                      <select
+                        value={exportSemester}
+                        onChange={(event) => setExportSemester(event.target.value)}
+                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+                      >
+                        {SEMESTER_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                    </div>
+                  </div>
                 </div>
 
                 <div>
@@ -1242,6 +1512,43 @@ export default function Borrowing() {
                     className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
                   />
                 </div>
+
+                <div className="rounded-lg border border-slate-200 bg-slate-50">
+                  <button
+                    type="button"
+                    onClick={() => setShowColumnOptions((current) => !current)}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left"
+                    aria-expanded={showColumnOptions}
+                  >
+                    <span className="text-xs font-semibold text-slate-500">Columns</span>
+                    <span className="text-xs font-medium text-slate-500">
+                      {showColumnOptions ? "Hide" : "Show"}
+                    </span>
+                  </button>
+                  <div
+                    className={`grid grid-cols-1 gap-2 overflow-hidden px-3 transition-all duration-300 ease-in-out sm:grid-cols-2 ${showColumnOptions ? "max-h-96 pb-3 opacity-100" : "max-h-0 pb-0 opacity-0"}`}
+                  >
+                    {borrowingExportColumnOptions.map((column) => (
+                      <label key={column.key} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedExportColumns.includes(column.key)}
+                          onChange={(event) => {
+                            if (event.target.checked) {
+                              setSelectedExportColumns((current) => [...current, column.key]);
+                            } else {
+                              setSelectedExportColumns((current) =>
+                                current.filter((key) => key !== column.key)
+                              );
+                            }
+                          }}
+                          className="h-4 w-4"
+                        />
+                        <span className="text-sm text-slate-700">{column.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <DialogFooter>
@@ -1255,10 +1562,16 @@ export default function Borrowing() {
                 <button
                   type="button"
                   onClick={handleExportBorrowings}
-                  disabled={exporting || filteredData.length === 0}
+                  disabled={
+                    exporting ||
+                    filteredData.length === 0 ||
+                    selectedExportColumns.length === 0 ||
+                    !exportSchoolYear ||
+                    !exportSemester
+                  }
                   className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
-                  {exporting ? "Exporting..." : "Export"}
+                  {exporting ? "Exporting..." : "Export Selected"}
                 </button>
               </DialogFooter>
             </DialogContent>
@@ -1377,11 +1690,11 @@ export default function Borrowing() {
                       <div className="grid gap-2">
                         {record.items?.map((item) => {
                           const condition = getBorrowingItemCondition(item);
-                          const label = condition === "defective" ? "Defective" : "Working";
+                          const label = getReturnConditionLabel(item);
                           return (
                             <div key={`${record.id}-${item.id}-condition`} className="min-h-[60px] flex items-center justify-center rounded-lg bg-white group-even:bg-slate-50 px-3">
                               <span
-                                className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${
+                                className={`inline-flex rounded-full px-2 py-1 text-center text-[11px] font-semibold ${
                                   condition === "defective"
                                     ? "bg-rose-100 text-rose-700"
                                     : "bg-emerald-100 text-emerald-700"
@@ -1544,7 +1857,6 @@ export default function Borrowing() {
                         setSelectedTabId(event.target.value);
                         setSelectedSectionId("");
                         setInventoryItems([]);
-                        setSelectedItemIds([]);
                         setFormError("");
                       }}
                       disabled={inventoryLoading}
@@ -1600,21 +1912,25 @@ export default function Borrowing() {
                 ) : (
                   <div className="divide-y divide-slate-100">
                     {inventoryItems.map((item) => {
-                      const itemId = String(item.id);
-                      const checked = selectedItemIds.includes(itemId);
+                      const selectionKey = getInventorySelectionKey({
+                        inventoryTabId: selectedTab?.id,
+                        inventorySectionId: selectedSection?.id,
+                        id: item.id,
+                      });
+                      const checked = selectedItemIds.includes(selectionKey);
                       const details = getItemDetails(item);
                       const maxQuantity = Number(item.quantity ?? item.data?.quantity ?? 1);
-                      const selectedQuantity = selectedItemQuantities[itemId] ?? 1;
+                      const selectedQuantity = selectedItemQuantities[selectionKey] ?? 1;
 
                       return (
                         <label
-                          key={item.id}
+                          key={selectionKey}
                           className="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-slate-50"
                         >
                           <input
                             type="checkbox"
                             checked={checked}
-                            onChange={() => toggleItem(itemId)}
+                            onChange={() => toggleItem(item)}
                             className="mt-1"
                           />
                           <span className="flex-1">
@@ -1652,10 +1968,18 @@ export default function Borrowing() {
                                     onChange={(e) => {
                                       const value = Number(e.target.value);
                                       if (Number.isNaN(value)) return;
+                                      const nextQuantity = Math.max(1, Math.min(maxQuantity, value));
                                       setSelectedItemQuantities((current) => ({
                                         ...current,
-                                        [itemId]: Math.max(1, Math.min(maxQuantity, value)),
+                                        [selectionKey]: nextQuantity,
                                       }));
+                                      setSelectedInventoryItems((current) =>
+                                        current.map((selectedItem) =>
+                                          selectedItem.selectionKey === selectionKey
+                                            ? { ...selectedItem, selectedQuantity: nextQuantity }
+                                            : selectedItem
+                                        )
+                                      );
                                     }}
                                     className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
                                   />
@@ -1767,13 +2091,16 @@ export default function Borrowing() {
                   </h4>
                   <div className="space-y-2">
                     {selectedItems.map((item) => (
-                      <div key={item.id} className="flex justify-between items-center">
+                      <div key={item.selectionKey || item.id} className="flex justify-between items-center gap-3">
                         <span className="text-sm">
                           {getItemLabel(item)}{item.selectedQuantity ? ` (Qty: ${item.selectedQuantity})` : ""}
+                          <span className="block text-xs text-slate-400">
+                            {item.inventoryTabName || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / {item.inventorySectionName || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}
+                          </span>
                         </span>
                         <button
                           type="button"
-                          onClick={() => toggleItem(String(item.id))}
+                          onClick={() => toggleItem(item)}
                           className="text-xs text-red-500 hover:underline"
                         >
                           Remove
@@ -1827,6 +2154,23 @@ export default function Borrowing() {
             <p className="mt-2 text-sm text-slate-600">
               Add this borrowing record for {form.name.trim()}?
             </p>
+            {latestActiveBorrowForBorrower ? (
+              <label className="mt-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                <input
+                  type="checkbox"
+                  checked={mergeWithLastBorrow}
+                  onChange={(event) => setMergeWithLastBorrow(event.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="block font-semibold">Merge with latest active borrow</span>
+                  <span className="mt-1 block text-xs text-amber-800">
+                    Latest record borrowed on{" "}
+                    {new Date(latestActiveBorrowForBorrower.date).toLocaleString()} has not been returned yet.
+                  </span>
+                </span>
+              </label>
+            ) : null}
             <ul className="mt-4 space-y-2 text-sm">
               {[...selectedItems, ...customItems].map((item) => {
                 const details = item.details ? item.details : getItemDetails(item);
@@ -1851,8 +2195,13 @@ export default function Borrowing() {
                 ];
 
                 return (
-                  <li key={item.id} className="rounded-lg bg-slate-50 px-3 py-2">
+                  <li key={item.selectionKey || item.id} className="rounded-lg bg-slate-50 px-3 py-2">
                     <span className="font-medium text-slate-800">{item.label || getItemLabel(item)}</span>
+                    {item.inventoryItemId !== null && item.inventoryItemId !== undefined ? (
+                      <span className="mt-1 block text-xs text-slate-400">
+                        {item.inventoryTabName || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / {item.inventorySectionName || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}
+                      </span>
+                    ) : null}
                     {confirmDetails.length > 0 ? (
                       <span className="mt-2 flex flex-wrap gap-1.5">
                         {confirmDetails.map((detail) => (
@@ -1895,66 +2244,126 @@ export default function Borrowing() {
 
       {pendingReturn && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
             <h3 className="text-lg font-bold text-[#4a1111]">Confirm return</h3>
             <p className="mt-2 text-sm text-slate-600">
               Mark borrowed items from {pendingReturn.name} as returned?
             </p>
             {pendingReturn.items?.length > 0 ? (
               <ul className="mt-4 space-y-3 text-sm">
-                {pendingReturn.items.map((item) => (
-                  <li
-                    key={`${pendingReturn.id}-${item.id}`}
-                    className="rounded-lg bg-slate-50 px-3 py-3"
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="font-medium text-slate-800">{item.label}</p>
-                        <p className="text-xs text-slate-400">
-                          {item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / {item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}
-                        </p>
-                      </div>
-                      <select
-                        value={returnRemarksByItem[item.id]?.condition || "Working"}
-                        onChange={(e) =>
-                          setReturnRemarksByItem((current) => ({
-                            ...current,
-                            [item.id]: {
-                              ...(current[item.id] || {}),
-                              condition: e.target.value,
-                            },
-                          }))
-                        }
-                        className="mt-2 w-full max-w-xs border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                      >
-                        <option value="Working">Working</option>
-                        <option value="Defective">Defective</option>
-                      </select>
-                      {returnRemarksByItem[item.id]?.condition === "Defective" && (
-                        <div className="mt-3">
-                          <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                            Describe defect
-                          </label>
-                          <textarea
-                            value={returnRemarksByItem[item.id]?.remarks || ""}
+                {pendingReturn.items.map((item) => {
+                  const borrowedQuantity = getBorrowedQuantity(item);
+                  const returnData = returnRemarksByItem[item.id] || {};
+                  const isDefective = returnData.condition === "Defective";
+                  const defectiveQuantity = Math.min(
+                    borrowedQuantity,
+                    Math.max(0, Number(returnData.defectiveQuantity || 0))
+                  );
+                  const workingQuantity = borrowedQuantity - defectiveQuantity;
+
+                  return (
+                    <li
+                      key={`${pendingReturn.id}-${item.id}`}
+                      className="rounded-lg bg-slate-50 px-3 py-3"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="font-medium text-slate-800">{item.label}</p>
+                            <p className="text-xs text-slate-400">
+                              {item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / {item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}
+                            </p>
+                            <p className="mt-1 text-xs font-medium text-slate-500">
+                              Borrowed qty: {borrowedQuantity}
+                            </p>
+                          </div>
+                          <select
+                            value={returnData.condition || "Working"}
                             onChange={(e) =>
-                              setReturnRemarksByItem((current) => ({
-                                ...current,
-                                [item.id]: {
-                                  ...(current[item.id] || {}),
-                                  remarks: e.target.value,
-                                },
-                              }))
+                              setReturnRemarksByItem((current) => {
+                                const nextCondition = e.target.value;
+                                const currentItem = current[item.id] || {};
+
+                                return {
+                                  ...current,
+                                  [item.id]: {
+                                    ...currentItem,
+                                    condition: nextCondition,
+                                    defectiveQuantity:
+                                      nextCondition === "Defective"
+                                        ? currentItem.defectiveQuantity || borrowedQuantity
+                                        : 0,
+                                  },
+                                };
+                              })
                             }
-                            rows={3}
-                            placeholder="Explain how the item became defective"
-                            className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                          />
+                            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111] sm:max-w-40"
+                          >
+                            <option value="Working">Working</option>
+                            <option value="Defective">Defective</option>
+                          </select>
                         </div>
-                      )}
-                    </div>
-                  </li>
-                ))}
+
+                        {isDefective && (
+                          <div className="space-y-3">
+                            <div className="grid gap-3 sm:grid-cols-[140px_1fr] sm:items-end">
+                              <div>
+                                <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                  Defective qty
+                                </label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max={borrowedQuantity}
+                                  value={returnData.defectiveQuantity || ""}
+                                  onChange={(e) => {
+                                    const nextQuantity = Math.max(
+                                      1,
+                                      Math.min(borrowedQuantity, Number(e.target.value) || 1)
+                                    );
+                                    setReturnRemarksByItem((current) => ({
+                                      ...current,
+                                      [item.id]: {
+                                        ...(current[item.id] || {}),
+                                        condition: "Defective",
+                                        defectiveQuantity: nextQuantity,
+                                      },
+                                    }));
+                                  }}
+                                  className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                                />
+                              </div>
+                              <p className="text-xs text-slate-500">
+                                Working qty to return: {workingQuantity}
+                              </p>
+                            </div>
+
+                            <div>
+                              <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Describe defect
+                              </label>
+                              <textarea
+                                value={returnData.remarks || ""}
+                                onChange={(e) =>
+                                  setReturnRemarksByItem((current) => ({
+                                    ...current,
+                                    [item.id]: {
+                                      ...(current[item.id] || {}),
+                                      remarks: e.target.value,
+                                    },
+                                  }))
+                                }
+                                rows={3}
+                                placeholder="Explain how the item became defective"
+                                className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
             {returnError ? (
