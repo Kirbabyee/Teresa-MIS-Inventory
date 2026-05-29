@@ -1308,7 +1308,7 @@ export default function ComputerLaboratoryInventory() {
                             <button
                                 type="button"
                                 onClick={() => setDeleteConfirmLab(null)}
-                                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                                className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition"
                             >
                                 Cancel
                             </button>
@@ -1316,7 +1316,7 @@ export default function ComputerLaboratoryInventory() {
                                 type="button"
                                 onClick={() => handleDeleteLab(deleteConfirmLab)}
                                 disabled={exporting}
-                                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                className="px-6 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 transition disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 Delete
                             </button>
@@ -1339,7 +1339,7 @@ export default function ComputerLaboratoryInventory() {
                             <button
                                 type="button"
                                 onClick={() => setDeleteConfirmComputer(null)}
-                                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                                className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition"
                             >
                                 Cancel
                             </button>
@@ -1347,7 +1347,7 @@ export default function ComputerLaboratoryInventory() {
                                 type="button"
                                 onClick={() => handleDeleteComputerRow(deleteConfirmComputer)}
                                 disabled={exporting}
-                                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                className="px-6 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 transition disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 Delete
                             </button>
@@ -1372,7 +1372,7 @@ export default function ComputerLaboratoryInventory() {
                                     setConfirmExitEditMode(false);
                                     setPendingAction(null);
                                 }}
-                                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                                className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition"
                             >
                                 Keep Editing
                             </button>
@@ -1496,21 +1496,21 @@ export default function ComputerLaboratoryInventory() {
                             </div>
                         </div>
                     </div>
-                    <DialogFooter className="sticky bottom-0 z-20 border-t border-slate-200 bg-white px-4 py-4">
+                    <DialogFooter className="sticky bottom-0 z-20 border-t border-slate-200 bg-white px-4 py-4 gap-4">
                         <button
                             type="button"
                             onClick={() => setIsAddComponentOpen(false)}
-                            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                            className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition"
                         >
-                            Cancel
+                            CANCEL
                         </button>
                         <button
                             type="button"
                             onClick={() => handleAddComponent({ closeDialog: true })}
                             disabled={exporting}
-                            className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                            className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            Save
+                            SAVE
                         </button>
                     </DialogFooter>
                 </DialogContent>
@@ -1533,21 +1533,21 @@ export default function ComputerLaboratoryInventory() {
                             placeholder="Laboratory 6"
                         />
                     </div>
-                    <DialogFooter>
+                    <DialogFooter className="gap-4">
                         <button
                             type="button"
                             onClick={() => setIsAddLabOpen(false)}
-                            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                            className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition"
                         >
-                            Cancel
+                            CANCEL
                         </button>
                         <button
                             type="button"
                             onClick={handleAddLab}
                             disabled={!newLabName.trim() || exporting}
-                            className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                            className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            Add Laboratory
+                            ADD LABORATORY
                         </button>
                     </DialogFooter>
                 </DialogContent>
@@ -1928,15 +1928,15 @@ export default function ComputerLaboratoryInventory() {
                             </div>
                         </div>
 
-                        <DialogFooter>
+                        <DialogFooter className="gap-4">
                             <button
                                 type="button"
                                 onClick={() => {
                                     setShowExportModal(false);
                                 }}
-                                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                                className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition"
                             >
-                                Cancel
+                                CANCEL
                             </button>
                             <button
                                 type="button"
@@ -1947,9 +1947,9 @@ export default function ComputerLaboratoryInventory() {
                                     !isValidSchoolYear(exportSchoolYear) ||
                                     !String(exportSemester || "").trim()
                                 }
-                                className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                                className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                                {exporting ? 'Exporting...' : 'Export Selected'}
+                                {exporting ? 'Exporting...' : 'EXPORT SELECTED'}
                             </button>
                         </DialogFooter>
                     </DialogContent>

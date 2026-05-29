@@ -307,7 +307,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
   }, [existingColumns, form.subColumns]);
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
       <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-[28px] bg-white shadow-2xl ring-1 ring-slate-200">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 rounded-t-[28px]">
           <div>
@@ -576,18 +576,18 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
       </div>
 
       {showDiscardConfirm && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
           <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
             <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
             <p className="mt-2 text-sm text-slate-600">
               You have unsaved changes. If you close now, those changes will be lost.
             </p>
-            <div className="mt-4 flex justify-end gap-3">
-              <button type="button" onClick={cancelDiscard} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
-                Keep editing
+            <div className="mt-4 flex justify-end gap-4">
+              <button type="button" onClick={cancelDiscard} className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition">
+                KEEP EDITING
               </button>
-              <button type="button" onClick={confirmDiscard} className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700">
-                Discard
+              <button type="button" onClick={confirmDiscard} className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition">
+                DISCARD
               </button>
             </div>
           </div>
@@ -595,7 +595,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
       )}
 
       {showSaveConfirm && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
           <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
             <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
             <p className="mt-2 text-sm text-slate-600">
@@ -714,7 +714,7 @@ function SectionModal({ section, onClose, onSave }) {
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
       <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-[28px] bg-white shadow-2xl ring-1 ring-slate-200">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 rounded-t-[28px]">
           <div>
@@ -750,25 +750,25 @@ function SectionModal({ section, onClose, onSave }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4 rounded-b-[28px]">
+        <div className="flex items-center justify-end gap-4 border-t border-slate-200 px-5 py-4 rounded-b-[28px]">
           <button
             type="button"
             onClick={requestClose}
             disabled={isSaving}
-            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Cancel
+            CANCEL
           </button>
           <button
             type="button"
             onClick={requestSave}
             disabled={isSectionSaveDisabled || isSaving}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#4a1111] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving && (
               <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
             )}
-            {isSaving ? "Saving..." : "Save Section"}
+            {isSaving ? "Saving..." : "SAVE SECTION"}
           </button>
         </div>
 
@@ -783,18 +783,18 @@ function SectionModal({ section, onClose, onSave }) {
       </div>
 
       {showDiscardConfirm && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
           <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
             <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
             <p className="mt-2 text-sm text-slate-600">
               You have unsaved changes. If you close now, those changes will be lost.
             </p>
-            <div className="mt-4 flex justify-end gap-3">
-              <button type="button" onClick={cancelDiscard} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
-                Keep editing
+            <div className="mt-4 flex justify-end gap-4">
+              <button type="button" onClick={cancelDiscard} className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition">
+                KEEP EDITING
               </button>
-              <button type="button" onClick={confirmDiscard} className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700">
-                Discard
+              <button type="button" onClick={confirmDiscard} className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition">
+                DISCARD
               </button>
             </div>
           </div>
@@ -802,7 +802,7 @@ function SectionModal({ section, onClose, onSave }) {
       )}
 
       {showSaveConfirm && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
           <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
             <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
             <p className="mt-2 text-sm text-slate-600">
@@ -1162,7 +1162,7 @@ function TabModal({ tab, onClose, onSave }) {
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
       <div className="relative flex flex-col w-full max-w-3xl max-h-[90vh] rounded-[28px] bg-white shadow-2xl ring-1 ring-slate-200">
         <div className="flex-1 overflow-y-auto">
           {/* Wizard Stepper */}
@@ -1261,10 +1261,17 @@ function TabModal({ tab, onClose, onSave }) {
                       }`}
                     value={tabForm.name}
                     onChange={(event) => {
-                      setTabForm((current) => ({ ...current, name: event.target.value }));
+                      const capitalized = event.target.value.replace(/\b\w/g, (char) => char.toUpperCase());
+                      setTabForm((current) => ({ ...current, name: capitalized }));
                       setHasUserInteracted(true);
                     }}
-                    onBlur={() => setIsTabNameTouched(true)}
+                    onBlur={() => {
+                      setTabForm((current) => ({
+                        ...current,
+                        name: current.name.replace(/\b\w/g, (char) => char.toUpperCase()),
+                      }));
+                      setIsTabNameTouched(true);
+                    }}
                     placeholder=""
                   />
                   {isTabNameTouched && hasUserInteracted && tabValidation.name ? (
@@ -1454,39 +1461,39 @@ function TabModal({ tab, onClose, onSave }) {
           </div>
 
           {/* Navigation Footer with Add Buttons */}
-          <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4 rounded-b-[28px]">
+          <div className="sticky bottom-0 z-20 flex items-center justify-between border-t border-slate-200 bg-white px-5 py-4 rounded-b-[28px]">
             <div>
               {isNewTab && wizardStep > 1 && wizardStep < STEPS.length && (
                 <button
                   type="button"
                   onClick={handlePrev}
-                  className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition"
                 >
                   ← Previous
                 </button>
               )}
             </div>
-            <div className="flex gap-3">
-              <button type="button" onClick={requestClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                Cancel
+            <div className="flex gap-4">
+              <button type="button" onClick={requestClose} className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition">
+                CANCEL
               </button>
               {isNewTab && wizardStep < STEPS.length ? (
                 <button
                   type="button"
                   onClick={handleNext}
                   disabled={!canProceed()}
-                  className="rounded-lg bg-[#4a1111] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Continue →
+                  CONTINUE →
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={requestSave}
                   disabled={isSaveDisabled}
-                  className="rounded-lg bg-[#4a1111] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Save Tab
+                  SAVE TAB
                 </button>
               )}
             </div>
@@ -1503,18 +1510,18 @@ function TabModal({ tab, onClose, onSave }) {
         </div>
 
         {showDiscardConfirm && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
             <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
               <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
               <p className="mt-2 text-sm text-slate-600">
                 You have unsaved changes. If you close now, those changes will be lost.
               </p>
-              <div className="mt-4 flex justify-end gap-3">
-                <button type="button" onClick={cancelDiscard} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
-                  Keep editing
+              <div className="mt-4 flex justify-end gap-4">
+                <button type="button" onClick={cancelDiscard} className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition">
+                  KEEP EDITING
                 </button>
-                <button type="button" onClick={confirmDiscard} className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700">
-                  Discard
+                <button type="button" onClick={confirmDiscard} className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition">
+                  DISCARD
                 </button>
               </div>
             </div>
@@ -1522,26 +1529,26 @@ function TabModal({ tab, onClose, onSave }) {
         )}
 
         {showSaveConfirm && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
             <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
               <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
               <p className="mt-2 text-sm text-slate-600">
                 Are you sure you want to save these changes?
               </p>
-              <div className="mt-4 flex justify-end gap-3">
-                <button type="button" onClick={cancelSave} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
-                  Cancel
+              <div className="mt-4 flex justify-end gap-4">
+                <button type="button" onClick={cancelSave} disabled={isSaving} className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition disabled:cursor-not-allowed disabled:opacity-50">
+                  CANCEL
                 </button>
                 <button
                   type="button"
                   onClick={confirmSave}
                   disabled={isSaving}
-                  className="inline-flex items-center justify-center gap-2 rounded-md bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isSaving && (
                     <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
                   )}
-                  {isSaving ? "Saving..." : "Save"}
+                  {isSaving ? "Saving..." : "SAVE"}
                 </button>
               </div>
             </div>
@@ -2082,7 +2089,7 @@ export default function Inventory() {
               onClick={() => setShowSettingsModal(true)}
               className="gap-2 bg-[#4a1111] hover:bg-[#3f0f0f]"
             >
-              <Wrench className="w-4 h-4" /> Settings
+              <Wrench className="w-4 h-4" /> File Export Settings
             </Button>
           </div>
         </div>
@@ -2170,7 +2177,7 @@ export default function Inventory() {
         )}
 
         {showDeleteConfirm && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
             <div className="relative w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
               <h3 className="text-lg font-semibold text-slate-900">Confirm delete</h3>
               <p className="mt-2 text-sm text-slate-600">
@@ -2199,9 +2206,9 @@ export default function Inventory() {
         )}
 
         {showSettingsModal && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
             <div className="relative w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900">Inventory Settings</h3>
+              <h3 className="text-lg font-semibold text-slate-900">File Export Settings</h3>
 
               <div className="mt-5 space-y-4">
                 <div>

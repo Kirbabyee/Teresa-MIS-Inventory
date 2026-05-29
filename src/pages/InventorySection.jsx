@@ -741,7 +741,7 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
       <div className="w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
@@ -2619,7 +2619,7 @@ export default function InventorySection() {
         </Dialog>
       )}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
             <h3 className="text-lg font-semibold text-slate-900">Confirm delete</h3>
             <p className="mt-2 text-sm text-slate-600">
@@ -2647,7 +2647,7 @@ export default function InventorySection() {
       )}
 
       {confirmExitEditMode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
             <h3 className="text-lg font-semibold text-slate-900">Done Editing?</h3>
             <p className="mt-2 text-sm text-slate-600">

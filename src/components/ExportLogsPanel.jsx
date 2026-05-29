@@ -171,7 +171,7 @@ export default function ExportLogsPanel({ searchQuery = "", refreshToken = 0 }) 
                       <button
                         type="button"
                         onClick={() => downloadLogFile(entry).catch((downloadError) => setError(downloadError.message || "Failed to download export file."))}
-                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-medium text-[#4a1111] transition hover:bg-rose-50 hover:underline"
+                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-medium text-blue-600 transition hover:bg-blue-50 hover:underline"
                         title={`Download ${entry.file_name || "export file"}`}
                       >
                         <Download className="h-3.5 w-3.5" />
