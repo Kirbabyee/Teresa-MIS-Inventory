@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -378,30 +379,33 @@ export default function UserAccountModal({ open, account, onClose, onSaved }) {
           </div>
 
           {/* ── Footer ──────────────────────────────────────────────── */}
-          <DialogFooter className="flex-row items-center justify-end gap-4 border-t border-slate-200 px-6 py-4 sm:px-8">
-            <button
+          <DialogFooter className="flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
+            <Button
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="rounded-lg border border-[#4a1111] px-6 py-2 text-sm text-[#4a1111] transition hover:bg-[#4a1111] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              variant="outline"
+              size="sm"
+              className="rounded-lg"
             >
-              CANCEL
-            </button>
-            <button
+              Cancel
+            </Button>
+            <Button
               type="button"
               onClick={() => setShowConfirm(true)}
               disabled={saving || !isValid()}
-              className="rounded-lg bg-[#4a1111] px-6 py-2 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              size="sm"
+              className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
             >
-              {saving ? "Saving..." : account ? "UPDATE" : "PROCEED"}
-            </button>
+              {saving ? "Saving..." : account ? "Update" : "Proceed"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* ── Confirmation dialog ──────────────────────────────────────── */}
       <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
-        <AlertDialogContent>
+        <AlertDialogContent className="rounded-xl">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {account ? "Update Account" : "Create Account"}
@@ -412,19 +416,19 @@ export default function UserAccountModal({ open, account, onClose, onSaved }) {
                 : `Create account for ${firstName} ${lastName}?`}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="gap-4">
+          <AlertDialogFooter className="gap-3 sm:gap-4">
             <AlertDialogCancel
               disabled={saving}
-              className="m-0 rounded-lg border border-[#4a1111] px-6 py-2 text-sm text-[#4a1111] transition hover:bg-[#4a1111] hover:text-white"
+              className="rounded-lg"
             >
-              CANCEL
+              Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleSave}
               disabled={saving}
-              className="m-0 rounded-lg bg-[#4a1111] px-6 py-2 text-sm text-white transition hover:opacity-90"
+              className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
             >
-              {saving ? "Saving..." : "CONFIRM"}
+              {saving ? "Saving..." : "Confirm"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

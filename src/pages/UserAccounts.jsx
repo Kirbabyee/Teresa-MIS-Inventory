@@ -16,6 +16,10 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 
 import {
@@ -537,16 +541,18 @@ export default function UserAccounts() {
           if (!open && !inviteActionLoading) setInviteActionCandidate(null);
         }}
       >
-        <DialogContent className="max-w-lg overflow-hidden border-0 bg-white p-0 shadow-2xl sm:rounded-3xl">
-          <div className="bg-slate-50 px-6 py-5 text-white sm:px-8">
-            <p className="text-lg font-semibold text-slate-900">
+        <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden rounded-[28px] p-0">
+          <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
+            <DialogTitle className="text-lg font-semibold text-slate-900">
               Account invitation
-            </p>
-            
-          </div>
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-sm">
+              Choose how you want to handle the activation invite for this account.
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className="space-y-4 px-6 py-6">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm">
+          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5 sm:px-8">
+            <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-[#4a1111] text-sm font-semibold text-white">
                   {inviteActionCandidate?.first_name?.[0] || inviteActionCandidate?.email?.[0] || "U"}
@@ -605,17 +611,17 @@ export default function UserAccounts() {
             </div>
           </div>
 
-          <div className="flex justify-end border-t border-slate-200 bg-slate-50 px-6 py-4">
+          <DialogFooter className="border-t border-slate-200 bg-slate-50 px-6 py-4 sm:px-8">
             <Button
               type="button"
               variant="outline"
               onClick={() => setInviteActionCandidate(null)}
               disabled={inviteActionLoading === "resend" || inviteActionLoading === "cancel"}
-              className="rounded-xl border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+              className="rounded-lg"
             >
               Close
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

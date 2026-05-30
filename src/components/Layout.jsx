@@ -428,7 +428,7 @@ export default function Layout() {
           <AlertDialogHeader>
             <AlertDialogTitle className="text-xl">Ready to leave?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to end your current session at Ark Industries?
+              Are you sure you want to end your current session at CSTA MIS?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2">

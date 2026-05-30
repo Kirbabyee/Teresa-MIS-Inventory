@@ -9,7 +9,10 @@
       "Bash(git *)",
       "Bash(npx eslint *)",
       "Bash(npx vite *)",
-      "Bash(Select-Object -First 30)"
+      "Bash(Select-Object -First 30)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\leele\\\\OneDrive\\\\Desktop\\\\Ark\\\\ST TERESA MIS\\\\Teresa-MIS-Inventory\\\\src\" -Recurse -File)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)"
     ]
   },
   "allow": [

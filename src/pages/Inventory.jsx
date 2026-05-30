@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
-import { Edit, FolderOpen, Plus, Trash2, X, Monitor, Armchair, Wrench, FileText, Box, Layers, Tv, Cable } from "lucide-react";
+import { Edit, FolderOpen, Plus, Trash2, X, Check, Monitor, Armchair, Wrench, FileText, Box, Layers, Tv, Cable } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/api/supabaseClient";
 import { useAuth } from "@/lib/AuthContext";
 import {
@@ -308,15 +318,12 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-[28px] bg-white shadow-2xl ring-1 ring-slate-200">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 rounded-t-[28px]">
+      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100 rounded-xl bg-white shadow-2xl ring-1 ring-slate-200">
+        <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 rounded-t-xl">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{column ? "Edit column" : "Add column"}</h3>
-            <p className="text-sm text-slate-500">Define a custom column for this tab.</p>
+            <p className="text-sm text-muted-foreground">Define a custom column for this tab.</p>
           </div>
-          <button type="button" onClick={requestClose} className={iconButtonClass} title="Close">
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
         <div className="grid gap-4 px-5 py-5">
@@ -543,12 +550,12 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4 rounded-b-[28px]">
+        <div className="sticky bottom-0 z-20 flex items-center justify-end gap-3 border-t border-slate-200 bg-slate-50/95 px-5 py-4 backdrop-blur-sm rounded-b-xl">
           <button
             type="button"
             onClick={requestClose}
             disabled={isSaving}
-            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 mt-2 sm:mt-0 rounded-lg"
           >
             Cancel
           </button>
@@ -556,7 +563,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
             type="button"
             onClick={requestSave}
             disabled={isSaving}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#4a1111] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow h-9 py-2 bg-[#4a1111] hover:bg-[#3f0f0f] text-white rounded-lg px-6"
           >
             {isSaving && (
               <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
@@ -576,44 +583,49 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
       </div>
 
       {showDiscardConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-          <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
-            <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              You have unsaved changes. If you close now, those changes will be lost.
-            </p>
-            <div className="mt-4 flex justify-end gap-4">
-              <button type="button" onClick={cancelDiscard} className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition">
-                KEEP EDITING
-              </button>
-              <button type="button" onClick={confirmDiscard} className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition">
-                DISCARD
-              </button>
+        <AlertDialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
+          <AlertDialogContent className="rounded-xl">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+              <AlertDialogDescription>
+                You have unsaved changes. If you close now, those changes will be lost.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="flex justify-end gap-3">
+              <AlertDialogCancel onClick={cancelDiscard} className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 mt-2 sm:mt-0 rounded-lg">
+                Keep Editing
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDiscard} className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow h-9 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg px-6">
+                Discard
+              </AlertDialogAction>
             </div>
-          </div>
-        </div>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
 
       {showSaveConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-          <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
-            <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Are you sure you want to save these changes?
-            </p>
-            <div className="mt-4 flex justify-end gap-3">
-              <button type="button" onClick={cancelSave} disabled={isSaving} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50">
+        <AlertDialog open={showSaveConfirm} onOpenChange={setShowSaveConfirm}>
+          <AlertDialogContent className="rounded-xl">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Save changes?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to save these changes?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="flex justify-end gap-3">
+              <AlertDialogCancel disabled={isSaving} onClick={cancelSave} className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 mt-2 sm:mt-0 rounded-lg">
                 Cancel
-              </button>
-              <button type="button" onClick={confirmSave} disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded-md bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50">
-                {isSaving && (
-                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
-                )}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmSave}
+                disabled={isSaving}
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow h-9 py-2 bg-[#4a1111] hover:bg-[#3f0f0f] text-white rounded-lg px-6"
+              >
                 {isSaving ? "Saving..." : "Save"}
-              </button>
+              </AlertDialogAction>
             </div>
-          </div>
-        </div>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );
@@ -715,18 +727,15 @@ function SectionModal({ section, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-      <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-[28px] bg-white shadow-2xl ring-1 ring-slate-200">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 rounded-t-[28px]">
+      <div className="relative flex w-full max-w-xl max-h-[90vh] flex-col gap-0 overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-slate-200">
+        <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-5">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{section ? "Edit section" : "Add section"}</h3>
             <p className="text-sm text-slate-500">Sections belong to a tab and hold the inventory items.</p>
           </div>
-          <button type="button" onClick={requestClose} className={iconButtonClass} title="Close">
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
-        <div className="grid gap-4 px-5 py-5">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100 grid gap-4 px-6 py-5">
           <div>
             <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Section name</label>
             <Input
@@ -750,30 +759,33 @@ function SectionModal({ section, onClose, onSave }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-4 border-t border-slate-200 px-5 py-4 rounded-b-[28px]">
-          <button
+        <div className="sticky bottom-0 z-20 flex items-center justify-end gap-3 border-t border-slate-200 bg-slate-50/95 px-6 py-4 backdrop-blur-sm">
+          <Button
             type="button"
             onClick={requestClose}
             disabled={isSaving}
-            className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition disabled:cursor-not-allowed disabled:opacity-50"
+            variant="outline"
+            size="sm"
+            className="rounded-lg"
           >
-            CANCEL
-          </button>
-          <button
+            Cancel
+          </Button>
+          <Button
             type="button"
             onClick={requestSave}
             disabled={isSectionSaveDisabled || isSaving}
-            className="inline-flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
+            size="sm"
+            className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
           >
             {isSaving && (
               <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
             )}
-            {isSaving ? "Saving..." : "SAVE SECTION"}
-          </button>
+            {isSaving ? "Saving..." : "Save Section"}
+          </Button>
         </div>
 
         {isSaving && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm !m-0 !p-0">
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/80 backdrop-blur-sm !m-0 !p-0">
             <div className="inline-flex items-center gap-3 rounded-2xl bg-slate-950/95 px-5 py-4 text-sm font-medium text-white shadow-lg">
               <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
               Saving section...
@@ -783,44 +795,50 @@ function SectionModal({ section, onClose, onSave }) {
       </div>
 
       {showDiscardConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-          <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
-            <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              You have unsaved changes. If you close now, those changes will be lost.
-            </p>
-            <div className="mt-4 flex justify-end gap-4">
-              <button type="button" onClick={cancelDiscard} className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition">
-                KEEP EDITING
-              </button>
-              <button type="button" onClick={confirmDiscard} className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition">
-                DISCARD
-              </button>
-            </div>
-          </div>
-        </div>
+        <AlertDialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
+          <AlertDialogContent className="rounded-xl">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+              <AlertDialogDescription>
+                You have unsaved changes. If you close now, those changes will be lost.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="gap-2">
+              <AlertDialogCancel className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 mt-2 sm:mt-0 rounded-lg">Keep Editing</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDiscard}
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow h-9 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg px-6"
+              >
+                Discard
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
 
       {showSaveConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-          <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
-            <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Are you sure you want to save these changes?
-            </p>
-            <div className="mt-4 flex justify-end gap-3">
-              <button type="button" onClick={cancelSave} disabled={isSaving} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50">
+        <AlertDialog open={showSaveConfirm} onOpenChange={setShowSaveConfirm}>
+          <AlertDialogContent className="rounded-xl">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Save changes?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to save these changes?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="flex justify-end gap-3">
+              <AlertDialogCancel disabled={isSaving} className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 mt-2 sm:mt-0 rounded-lg">
                 Cancel
-              </button>
-              <button type="button" onClick={confirmSave} disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded-md bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-50">
-                {isSaving && (
-                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
-                )}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmSave}
+                disabled={isSaving}
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow h-9 py-2 bg-[#4a1111] hover:bg-[#3f0f0f] text-white rounded-lg px-6"
+              >
                 {isSaving ? "Saving..." : "Save"}
-              </button>
+              </AlertDialogAction>
             </div>
-          </div>
-        </div>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );
@@ -900,19 +918,19 @@ function TabModal({ tab, onClose, onSave }) {
 
   const handleNext = () => {
     if (wizardStep < STEPS.length) {
-      setWizardStep((s) => s + 1);
+      setWizardStep((step) => step + 1);
     }
   };
 
   const handlePrev = () => {
     if (wizardStep > 1) {
-      setWizardStep((s) => s - 1);
+      setWizardStep((step) => step - 1);
     }
   };
 
   const tabValidation = useMemo(() => {
-    const errors = { name: "", columns: "", sections: "" };
-    const trimmedName = tabForm.name.trim();
+    const errors = { name: "", sections: "", columns: "" };
+    const trimmedName = String(tabForm.name || "").trim();
 
     if (!trimmedName) {
       errors.name = "Tab name is required.";
@@ -920,18 +938,18 @@ function TabModal({ tab, onClose, onSave }) {
       errors.name = "Tab name may only contain letters, numbers, and spaces.";
     }
 
-    if (!tab?.id && columns.length === 0) {
-      errors.columns = "New tabs must include at least one column.";
-    }
-
     if (sections.length === 0) {
       errors.sections = "At least one section is required.";
     }
 
-    return errors;
-  }, [tabForm.name, columns, sections, tab?.id]);
+    if (isNewTab && columns.length === 0) {
+      errors.columns = "At least one column is required.";
+    }
 
-  const isSaveDisabled = Boolean(tabValidation.name || tabValidation.columns || tabValidation.sections || isSaving);
+    return errors;
+  }, [tabForm.name, columns, sections, isNewTab]);
+
+  const isSaveDisabled = Boolean(tabValidation.name || tabValidation.sections || tabValidation.columns || isSaving);
 
   const buildTabSnapshot = (currentTabForm, currentSections, currentColumns) =>
     JSON.stringify({
@@ -946,19 +964,23 @@ function TabModal({ tab, onClose, onSave }) {
         slug: String(section?.slug || ""),
         description: String(section?.description || ""),
       })),
-      columns: (currentColumns || []).map((column) => {
-        const normalized = normalizeColumnConfig(column);
-        return {
-          key: normalized.key,
-          label: normalized.label,
-          data_type: normalized.data_type,
-          visible: normalized.visible,
-          subColumns: (normalized.subColumns || []).map((subColumn) => ({
-            key: String(subColumn?.key || ""),
-            label: String(subColumn?.label || ""),
-          })),
-        };
-      }),
+      columns: (currentColumns || []).map((column) => ({
+        id: column?.id || null,
+        key: String(column?.key || ""),
+        label: String(column?.label || ""),
+        data_type: String(column?.data_type || column?.type || "text"),
+        visible: column?.visible !== false,
+        fieldType: String(column?.fieldType || "text"),
+        options: Array.isArray(column?.options) ? column.options : [],
+        subColumns: Array.isArray(column?.subColumns)
+          ? column.subColumns.map((subColumn) => ({
+              key: String(subColumn?.key || ""),
+              label: String(subColumn?.label || ""),
+              fieldType: String(subColumn?.fieldType || "text"),
+              options: Array.isArray(subColumn?.options) ? subColumn.options : [],
+            }))
+          : [],
+      })),
     });
 
   const hasUnsavedChanges =
@@ -1161,41 +1183,43 @@ function TabModal({ tab, onClose, onSave }) {
     setShowSaveConfirm(false);
   };
 
+  const tabTitleStickyClass = isNewTab ? "sticky top-[4.5rem] z-20 border-b border-slate-200 bg-slate-50/95 px-6 py-5 sm:px-8 backdrop-blur-sm" : "sticky top-0 z-20 border-b border-slate-200 bg-slate-50/95 px-6 py-5 sm:px-8 backdrop-blur-sm";
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-      <div className="relative flex flex-col w-full max-w-3xl max-h-[90vh] rounded-[28px] bg-white shadow-2xl ring-1 ring-slate-200">
-        <div className="flex-1 overflow-y-auto">
+      <div className="relative flex w-full max-w-2xl max-h-[85vh] flex-col gap-0 overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-slate-200">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
           {/* Wizard Stepper */}
           {isNewTab && (
-            <div className="border-b border-slate-200 bg-slate-50 px-5 py-4 rounded-t-[28px]">
-              <div className="flex items-center justify-between">
+            <div className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50/95 px-6 py-5 sm:px-8 backdrop-blur-sm">
+              <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap sm:gap-5">
                 {STEPS.map((step, idx) => (
-                  <div key={step.num} className="flex items-center">
+                  <div key={step.num} className="flex min-w-0 items-center gap-2 sm:gap-3">
                     <div
-                      className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${wizardStep > step.num
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${wizardStep > step.num
                           ? "bg-[#4a1111] text-white"
                           : wizardStep === step.num
                             ? "bg-[#4a1111] text-white"
                             : "bg-slate-200 text-slate-500"
                         }`}
                     >
-                      {wizardStep > step.num ? "✓" : step.num}
+                      {wizardStep > step.num ? <Check className="h-4 w-4" /> : step.num}
                     </div>
                     <span
-                      className={`ml-2 hidden text-sm font-medium sm:block ${wizardStep === step.num ? "text-slate-900" : "text-slate-500"
+                      className={`hidden whitespace-nowrap text-sm font-medium sm:block ${wizardStep === step.num ? "text-slate-900" : "text-slate-500"
                         }`}
                     >
                       {step.label}
                     </span>
                     {idx < STEPS.length - 1 && (
-                      <div className={`ml-3 h-0.5 w-8 ${wizardStep > step.num ? "bg-[#4a1111]" : "bg-slate-200"}`} />
+                      <div className={`hidden h-0.5 w-8 sm:block ${wizardStep > step.num ? "bg-[#4a1111]" : "bg-slate-200"}`} />
                     )}
                   </div>
                 ))}
               </div>
             </div>
           )}
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 p-5 rounded-t-[28px]">
+          <div className={tabTitleStickyClass}>
             <div>
               <h3 className="text-lg font-semibold text-slate-900">
                 {tab
@@ -1291,7 +1315,7 @@ function TabModal({ tab, onClose, onSave }) {
             )}
 
             {((!isNewTab) || wizardStep === 3 || wizardStep === 5) && tabType === "legacy" && (
-              <div className="border-t border-slate-200 px-5 py-5 rounded-b-[28px]">
+              <div className="border-t border-slate-200 px-5 py-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h4 className="text-sm font-semibold text-slate-900">Sections</h4>
@@ -1306,7 +1330,7 @@ function TabModal({ tab, onClose, onSave }) {
                       setEditingSectionIndex(null);
                       setShowSectionModal(true);
                     }}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
                   >
                     <Plus className="h-4 w-4" />
                     Add Section
@@ -1354,7 +1378,7 @@ function TabModal({ tab, onClose, onSave }) {
             )}
 
             {((isNewTab && wizardStep >= 4) || !isNewTab) && tabType === "legacy" && (
-              <div className="border-t border-slate-200 px-5 py-5 rounded-b-[28px]">
+              <div className="border-t border-slate-200 px-5 py-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
@@ -1369,7 +1393,7 @@ function TabModal({ tab, onClose, onSave }) {
                       setEditingColumnIndex(null);
                       setShowColumnModal(true);
                     }}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
                   >
                     <Plus className="h-4 w-4" />
                     Add Column
@@ -1416,7 +1440,7 @@ function TabModal({ tab, onClose, onSave }) {
             )}
 
             {isNewTab && wizardStep === 5 && (
-              <div className="border-t border-slate-200 px-5 py-5 rounded-b-[28px]">
+              <div className="border-t border-slate-200 px-5 py-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h4 className="text-sm font-semibold text-slate-900">Review</h4>
@@ -1461,46 +1485,59 @@ function TabModal({ tab, onClose, onSave }) {
           </div>
 
           {/* Navigation Footer with Add Buttons */}
-          <div className="sticky bottom-0 z-20 flex items-center justify-between border-t border-slate-200 bg-white px-5 py-4 rounded-b-[28px]">
-            <div>
-              {isNewTab && wizardStep > 1 && wizardStep < STEPS.length && (
-                <button
+          <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-slate-50/95 px-6 py-4 sm:px-8 backdrop-blur-sm">
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div>
+                {isNewTab && wizardStep > 1 && wizardStep < STEPS.length && (
+                  <Button
+                    type="button"
+                    onClick={handlePrev}
+                    variant="outline"
+                    size="sm"
+                    className="rounded-lg"
+                  >
+                    Previous
+                  </Button>
+                )}
+              </div>
+              <div className="flex gap-3 sm:gap-4">
+                <Button
                   type="button"
-                  onClick={handlePrev}
-                  className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition"
+                  onClick={requestClose}
+                  disabled={isSaving}
+                  variant="outline"
+                  size="sm"
+                  className="rounded-lg"
                 >
-                  ← Previous
-                </button>
-              )}
-            </div>
-            <div className="flex gap-4">
-              <button type="button" onClick={requestClose} className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition">
-                CANCEL
-              </button>
-              {isNewTab && wizardStep < STEPS.length ? (
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  disabled={!canProceed()}
-                  className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  CONTINUE →
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={requestSave}
-                  disabled={isSaveDisabled}
-                  className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  SAVE TAB
-                </button>
-              )}
+                  Cancel
+                </Button>
+                {isNewTab && wizardStep < STEPS.length ? (
+                  <Button
+                    type="button"
+                    onClick={handleNext}
+                    disabled={!canProceed()}
+                    size="sm"
+                    className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
+                  >
+                    Continue
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={requestSave}
+                    disabled={isSaveDisabled}
+                    size="sm"
+                    className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
+                  >
+                    Save Tab
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
 
           {isSaving && Boolean(tab?.id) && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm !m-0 !p-0">
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/80 backdrop-blur-sm !m-0 !p-0">
               <div className="inline-flex items-center gap-3 rounded-2xl bg-slate-950/95 px-5 py-4 text-sm font-medium text-white shadow-lg">
                 <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
                 Saving table...
@@ -1510,49 +1547,49 @@ function TabModal({ tab, onClose, onSave }) {
         </div>
 
         {showDiscardConfirm && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-            <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
-              <p className="mt-2 text-sm text-slate-600">
-                You have unsaved changes. If you close now, those changes will be lost.
-              </p>
-              <div className="mt-4 flex justify-end gap-4">
-                <button type="button" onClick={cancelDiscard} className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition">
-                  KEEP EDITING
-                </button>
-                <button type="button" onClick={confirmDiscard} className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition">
-                  DISCARD
-                </button>
+          <AlertDialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
+            <AlertDialogContent className="rounded-xl">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  You have unsaved changes. If you close now, those changes will be lost.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="flex justify-end gap-3">
+                <AlertDialogCancel onClick={cancelDiscard} className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 mt-2 sm:mt-0 rounded-lg">
+                  Keep Editing
+                </AlertDialogCancel>
+                <AlertDialogAction onClick={confirmDiscard} className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow h-9 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg px-6">
+                  Discard
+                </AlertDialogAction>
               </div>
-            </div>
-          </div>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
 
         {showSaveConfirm && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-            <div className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
-              <p className="mt-2 text-sm text-slate-600">
-                Are you sure you want to save these changes?
-              </p>
-              <div className="mt-4 flex justify-end gap-4">
-                <button type="button" onClick={cancelSave} disabled={isSaving} className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition disabled:cursor-not-allowed disabled:opacity-50">
-                  CANCEL
-                </button>
-                <button
-                  type="button"
+          <AlertDialog open={showSaveConfirm} onOpenChange={setShowSaveConfirm}>
+            <AlertDialogContent className="rounded-xl">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Save changes?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to save these changes?
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="flex justify-end gap-3">
+                <AlertDialogCancel disabled={isSaving} className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 mt-2 sm:mt-0 rounded-lg">
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction
                   onClick={confirmSave}
                   disabled={isSaving}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow h-9 py-2 bg-[#4a1111] hover:bg-[#3f0f0f] text-white rounded-lg px-6"
                 >
-                  {isSaving && (
-                    <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
-                  )}
-                  {isSaving ? "Saving..." : "SAVE"}
-                </button>
+                  {isSaving ? "Saving..." : "Save"}
+                </AlertDialogAction>
               </div>
-            </div>
-          </div>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
 
         {showSectionModal && (
@@ -2177,32 +2214,33 @@ export default function Inventory() {
         )}
 
         {showDeleteConfirm && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-            <div className="relative w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900">Confirm delete</h3>
-              <p className="mt-2 text-sm text-slate-600">
-                Are you sure you want to delete {pendingDeleteTab?.name || "this tab"}? This action cannot be undone.
-              </p>
-              <div className="mt-4 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={cancelDelete}
+          <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+            <AlertDialogContent className="rounded-xl">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete tab?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete the tab and its data.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="flex justify-end gap-3">
+                <AlertDialogCancel
                   disabled={isDeleting}
-                  className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={cancelDelete}
+                  className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 mt-2 sm:mt-0 rounded-lg"
                 >
                   Cancel
-                </button>
-                <button
+                </AlertDialogCancel>
+                <AlertDialogAction
                   type="button"
                   onClick={confirmDelete}
                   disabled={isDeleting}
-                  className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 shadow h-9 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg px-6"
                 >
                   {isDeleting ? "Deleting..." : "Delete"}
-                </button>
+                </AlertDialogAction>
               </div>
-            </div>
-          </div>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
 
         {showSettingsModal && (
