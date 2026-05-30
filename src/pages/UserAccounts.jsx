@@ -10,9 +10,17 @@ import {
   Trash2,
   UserCheck,
   UserX,
+  MoreVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -44,6 +52,12 @@ const accountStatusColors = {
   false: "bg-slate-100 text-slate-700 border-slate-200",
 };
 
+const createdAtFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  day: "2-digit",
+  year: "numeric",
+});
+
 const sortAccountsByStatus = (items) => {
   return [...items].sort((left, right) => {
     const leftInactive = left?.is_active === false ? 1 : 0;
@@ -57,6 +71,20 @@ const sortAccountsByStatus = (items) => {
     const rightDate = right?.created_at ? new Date(right.created_at).getTime() : 0;
     return rightDate - leftDate;
   });
+};
+
+const formatCreatedAt = (value) => {
+  if (!value) return "—";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  const parts = createdAtFormatter.formatToParts(date).reduce((accumulator, part) => {
+    accumulator[part.type] = part.value;
+    return accumulator;
+  }, {});
+
+  return `${parts.month}/${parts.day}/${parts.year}`;
 };
 
 export default function UserAccounts() {
@@ -288,10 +316,11 @@ export default function UserAccounts() {
 
   const filtered = accounts.filter((acc) => {
     const name = `${acc.first_name || ""} ${acc.last_name || ""}`.toLowerCase();
+    const searchTerm = search.trim().toLowerCase();
     const matchSearch =
-      !search ||
-      name.includes(search.toLowerCase()) ||
-      (acc.email || "").toLowerCase().includes(search.toLowerCase());
+      !searchTerm ||
+      name.includes(searchTerm) ||
+      (acc.email || "").toLowerCase().includes(searchTerm);
     const matchType = !accountTypeFilter || acc.account_type === accountTypeFilter;
     return matchSearch && matchType;
   });
@@ -302,34 +331,26 @@ export default function UserAccounts() {
   if (loading) {
     return (
       <div className="flex min-h-[calc(100vh-6rem)] items-center justify-center p-6">
-        <div className="flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <div
-              className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-[#4a1111]"
-              role="status"
-              aria-label="Loading user accounts"
-            />
-            
-          </div>
-        </div>
+        <div
+          className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-[#4a1111]"
+          role="status"
+          aria-label="Loading user accounts"
+        />
       </div>
     );
   }
 
   return (
     <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          
-        </div>
+      <div className="flex items-center justify-end">
         <Button
           onClick={() => {
             setEditAccount(null);
             setShowModal(true);
           }}
-          className="gap-2 bg-[#4a1111] hover:bg-[#3f0f0f] text-white"
+          className="gap-2 bg-[#4a1111] text-white hover:bg-[#3f0f0f]"
         >
-          <Plus className="w-4 h-4" /> Add Account
+          <Plus className="h-4 w-4" /> Add Account
         </Button>
       </div>
 
@@ -379,8 +400,7 @@ export default function UserAccounts() {
                     "Email",
                     "Account Type",
                     "Status",
-                    "Created",
-                    "Actions",
+                    "Created At",
                   ].map((h) => (
                     <th
                       key={h}
@@ -389,6 +409,9 @@ export default function UserAccounts() {
                       {h}
                     </th>
                   ))}
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    <span className="sr-only">Row actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -429,52 +452,54 @@ export default function UserAccounts() {
                       </span>
                     </td>
                     <td className={`px-4 py-3 text-sm ${acc.is_active === false ? "text-slate-400" : "text-slate-600"}`}>
-                      {acc.created_at
-                        ? new Date(acc.created_at).toLocaleDateString()
-                        : "—"}
+                      {formatCreatedAt(acc.created_at)}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        
-                        {/* Edit */}
-                        <button
-                          onClick={() => {
-                            setEditAccount(acc);
-                            setShowModal(true);
-                          }}
-                          className={`p-2 rounded-lg transition-all duration-200 ${acc.is_active === false ? "bg-slate-200 text-slate-400 hover:bg-slate-300 hover:text-slate-600" : "bg-blue-100 text-blue-600 hover:bg-blue-600 hover:text-white"}`}
-                          title="Edit Account"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
+                      <div className="flex justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 rounded-md text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                              aria-label={`Open actions for ${acc.first_name || acc.last_name || acc.email || "account"}`}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                setEditAccount(acc);
+                                setShowModal(true);
+                              }}
+                            >
+                              <Edit className="h-4 w-4" />
+                              Edit account
+                            </DropdownMenuItem>
 
-                        {/* Invite actions */}
-                        {(!inviteUsedByAccountId[String(acc.id)] && !(acc.email && inviteUsedByEmail[String(acc.email).toLowerCase()])) && (
-                          <button
-                            onClick={() => {
-                              setInviteActionCandidate(acc);
-                            }}
-                            disabled={!acc.email}
-                            className={`p-2 rounded-lg transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed ${acc.is_active === false ? "bg-slate-200 text-slate-400 hover:bg-slate-300 hover:text-slate-600" : "bg-green-100 text-green-600 hover:bg-green-600 hover:text-white"}`}
-                            title="Invitation actions"
-                          >
-                            <Mail className="w-4 h-4" />
-                          </button>
-                        )}
+                            {(!inviteUsedByAccountId[String(acc.id)] && !(acc.email && inviteUsedByEmail[String(acc.email).toLowerCase()])) && (
+                              <DropdownMenuItem
+                                onSelect={() => setInviteActionCandidate(acc)}
+                                disabled={!acc.email}
+                              >
+                                <Mail className="h-4 w-4" />
+                                Invitation actions
+                              </DropdownMenuItem>
+                            )}
 
-                        {/* Deactivate / Reactivate */}
-                        <button
-                          onClick={() => setStatusCandidate(acc)}
-                          className={`p-2 rounded-lg transition-all duration-200 ${acc.is_active === false ? "bg-emerald-100 text-emerald-600 hover:bg-emerald-600 hover:text-white" : "bg-amber-100 text-amber-700 hover:bg-amber-600 hover:text-white"}`}
-                          title={acc.is_active === false ? "Reactivate Account" : "Deactivate Account"}
-                        >
-                          {acc.is_active === false ? (
-                            <UserCheck className="w-4 h-4" />
-                          ) : (
-                            <UserX className="w-4 h-4" />
-                          )}
-                        </button>
+                            <DropdownMenuSeparator />
 
+                            <DropdownMenuItem onSelect={() => setStatusCandidate(acc)}>
+                              {acc.is_active === false ? (
+                                <UserCheck className="h-4 w-4" />
+                              ) : (
+                                <UserX className="h-4 w-4" />
+                              )}
+                              {acc.is_active === false ? "Reactivate account" : "Deactivate account"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </td>
                   </tr>

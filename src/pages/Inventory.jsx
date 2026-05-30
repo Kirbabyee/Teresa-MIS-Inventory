@@ -1,10 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
-import { Edit, FolderOpen, Plus, Trash2, X, Check, Monitor, Armchair, Wrench, FileText, Box, Layers, Tv, Cable } from "lucide-react";
+import { Edit, MoreVertical, Plus, Trash2, X, Check, Monitor, Armchair, Wrench, FileText, Box, Tv, Cable } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,8 +50,17 @@ import { isCurrentUserAdmin } from "@/lib/inventoryApi";
 const iconButtonClass =
   "inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700";
 
+const rowActionButtonClass =
+  "inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-900";
+
 const sanitizeNameInput = (value = "") => String(value).replace(/[^a-zA-Z0-9 ]/g, "");
 const hasOnlyLettersNumbers = (value = "") => /^(?=.*[a-zA-Z0-9])[a-zA-Z0-9 ]+$/.test(String(value));
+
+const getTabRoute = (tab) => {
+  if (!tab?.slug) return "/inventory";
+
+  return `/inventory/${tab.slug}${tab.sections?.[0]?.slug ? `?section=${tab.sections[0].slug}` : ""}`;
+};
 
 // Pre-built templates for common inventory types
 const INVENTORY_TEMPLATES = [
@@ -1188,13 +1203,13 @@ function TabModal({ tab, onClose, onSave }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
       <div className="relative flex w-full max-w-2xl max-h-[85vh] flex-col gap-0 overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-slate-200">
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
+        <div className="flex-1 overflow-y-auto inventory-modal-scrollbar">
           {/* Wizard Stepper */}
           {isNewTab && (
             <div className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50/95 px-6 py-5 sm:px-8 backdrop-blur-sm">
-              <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap sm:gap-5">
+              <div className="flex w-full items-center gap-3 sm:gap-5">
                 {STEPS.map((step, idx) => (
-                  <div key={step.num} className="flex min-w-0 items-center gap-2 sm:gap-3">
+                  <div key={step.num} className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-1 sm:gap-2">
                     <div
                       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${wizardStep > step.num
                           ? "bg-[#4a1111] text-white"
@@ -1206,14 +1221,19 @@ function TabModal({ tab, onClose, onSave }) {
                       {wizardStep > step.num ? <Check className="h-4 w-4" /> : step.num}
                     </div>
                     <span
-                      className={`hidden whitespace-nowrap text-sm font-medium sm:block ${wizardStep === step.num ? "text-slate-900" : "text-slate-500"
+                      className={`hidden whitespace-nowrap text-center text-sm font-medium sm:block ${wizardStep === step.num ? "text-slate-900" : "text-slate-500"
                         }`}
                     >
                       {step.label}
                     </span>
-                    {idx < STEPS.length - 1 && (
-                      <div className={`hidden h-0.5 w-8 sm:block ${wizardStep > step.num ? "bg-[#4a1111]" : "bg-slate-200"}`} />
-                    )}
+                    <div
+                      className={`hidden h-0.5 w-8 sm:block ${idx < STEPS.length - 1
+                        ? wizardStep > step.num
+                          ? "bg-[#4a1111]"
+                          : "bg-slate-200"
+                        : "opacity-0"
+                        }`}
+                    />
                   </div>
                 ))}
               </div>
@@ -1244,7 +1264,7 @@ function TabModal({ tab, onClose, onSave }) {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
+          <div className="flex-1 overflow-y-auto inventory-modal-scrollbar">
             {/* Wizard Step Content */}
             {isNewTab && wizardStep === 1 && (
               <div className="p-5">
@@ -2139,7 +2159,9 @@ export default function Inventory() {
                   <th className="px-4 py-3">Name</th>
                   <th className="px-4 py-3">Description</th>
                   <th className="px-4 py-3">Sections</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+                  <th className="px-4 py-3 text-right">
+                    <span className="sr-only">Row actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
@@ -2158,41 +2180,61 @@ export default function Inventory() {
                   <td className="px-4 py-3 font-medium text-slate-900">Computer Laboratories</td>
                   <td className="px-4 py-3 text-slate-600">CSTA Computer Laboratories</td>
                   <td className="px-4 py-3 text-slate-600">{computerLaboratoryCount}</td>
-                  <td className="px-4 py-3 text-right text-slate-400">—</td>
+                  <td className="px-4 py-3 text-right text-slate-400">
+                    <span className="sr-only">Open computer laboratories</span>
+                  </td>
                 </tr>
                 {tabs.map((tab) => (
-                  <tr key={tab.id} className="hover:bg-slate-50">
+                  <tr
+                    key={tab.id}
+                    className="cursor-pointer hover:bg-slate-50"
+                    onClick={() => navigate(getTabRoute(tab))}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        navigate(getTabRoute(tab));
+                      }
+                    }}
+                    tabIndex={0}
+                    role="link"
+                  >
                     <td className="px-4 py-3 font-medium text-slate-900">{tab.name}</td>
                     <td className="px-4 py-3 text-slate-600">{tab.description || "—"}</td>
                     <td className="px-4 py-3 text-slate-600">{tab.sections?.length || 0}</td>
                     <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <Link
-                          to={`/inventory/${tab.slug}${tab.sections?.[0]?.slug ? `?section=${tab.sections[0].slug}` : ""}`}
-                          className={iconButtonClass}
-                          title="Open Tab"
-                        >
-                          <FolderOpen className="h-4 w-4" />
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingSlug(tab.slug);
-                            setShowModal(true);
-                          }}
-                          className={iconButtonClass}
-                          title="Edit Tab"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(tab)}
-                          className={iconButtonClass}
-                          title="Delete Tab"
-                        >
-                          <Trash2 className="h-4 w-4 text-rose-500" />
-                        </button>
+                      <div className="flex justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={rowActionButtonClass}
+                              aria-label={`Open actions for ${tab.name}`}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                setEditingSlug(tab.slug);
+                                setShowModal(true);
+                              }}
+                            >
+                              <Edit className="h-4 w-4" />
+                              Edit tab
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onSelect={() => handleDelete(tab)}
+                              className="text-rose-600 focus:text-rose-600"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete tab
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </td>
                   </tr>
@@ -2245,12 +2287,15 @@ export default function Inventory() {
 
         {showSettingsModal && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-            <div className="relative w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl ring-1 ring-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900">File Export Settings</h3>
+            <div className="relative flex w-full max-w-2xl max-h-[85vh] flex-col gap-0 overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-slate-200">
+              <div className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
+                <h3 className="text-lg font-semibold text-slate-900">File Export Settings</h3>
+                <p className="mt-1 text-sm text-slate-500">Set how long export files should remain available before cleanup runs.</p>
+              </div>
 
-              <div className="mt-5 space-y-4">
+              <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5 sm:px-8">
                 <div>
-                  <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
                     Delete export files after
                   </label>
                   <div className="mt-2 flex items-center gap-3">
@@ -2266,28 +2311,32 @@ export default function Inventory() {
                 </div>
 
                 {cleanupStatus ? (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
                     {cleanupStatus}
                   </div>
                 ) : null}
               </div>
 
-              <div className="mt-6 flex justify-end gap-3">
-                <button
+              <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-8 sm:space-x-2">
+                <Button
                   type="button"
                   onClick={() => setShowSettingsModal(false)}
-                  className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  disabled={savingExportRetention || cleaningExportLogs}
+                  variant="outline"
+                  size="sm"
+                  className="rounded-lg"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={saveExportRetentionSetting}
                   disabled={savingExportRetention || cleaningExportLogs}
-                  className="rounded-lg bg-[#4a1111] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  size="sm"
+                  className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
                 >
                   {savingExportRetention || cleaningExportLogs ? "Saving..." : "Save"}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
