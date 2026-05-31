@@ -12,6 +12,8 @@ import InventoryHistoryView from "@/components/InventoryHistoryView";
 import ExportLogsPanel from "@/components/ExportLogsPanel";
 import { useAuth } from "@/lib/AuthContext";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import {
     Dialog,
     DialogContent,
@@ -20,6 +22,30 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const INITIAL_LAB_OPTIONS = [];
 
@@ -50,11 +76,7 @@ const TABLE_COLUMNS = ["COMPUTER #", "", ...TABLE_HEADING.slice(1)];
 const COMPONENT_TYPES = TABLE_HEADING.slice(1);
 const REMARK_OPTIONS = ["WORKING", "DEFECTIVE", "BUILT IN"];
 
-const createInitialComponentSections = () =>
-    COMPONENT_TYPES.reduce((acc, componentType, index) => {
-        acc[componentType] = index === 0;
-        return acc;
-    }, {});
+const INITIAL_OPEN_SECTIONS = [COMPONENT_TYPES[0]];
 
 const formatValue = (value) => {
     if (value === null || value === undefined || value === "") return "-";
@@ -267,6 +289,7 @@ export default function ComputerLaboratoryInventory() {
     const [error, setError] = useState("");
     const [exporting, setExporting] = useState(false);
     const [showExportModal, setShowExportModal] = useState(false);
+    const [showExportConfirm, setShowExportConfirm] = useState(false);
     const [selectedExportLabs, setSelectedExportLabs] = useState([]);
     const [selectedExportColumns, setSelectedExportColumns] = useState(COMPONENT_TYPES.slice());
     const [showColumnOptions, setShowColumnOptions] = useState(false);
@@ -287,7 +310,7 @@ export default function ComputerLaboratoryInventory() {
     const [historyDateRange, setHistoryDateRange] = useState({ from: undefined, to: undefined });
     const [showHistoryDatePicker, setShowHistoryDatePicker] = useState(false);
     const historyDatePickerRef = useRef(null);
-    const [openComponentSections, setOpenComponentSections] = useState(() => createInitialComponentSections());
+    const [openComponentSections, setOpenComponentSections] = useState(() => INITIAL_OPEN_SECTIONS);
     const [cellDrafts, setCellDrafts] = useState({});
     const [savingCellKey, setSavingCellKey] = useState(null);
     const [newComponent, setNewComponent] = useState({
@@ -353,10 +376,11 @@ export default function ComputerLaboratoryInventory() {
     };
 
     const toggleComponentSection = (componentType) => {
-        setOpenComponentSections((current) => ({
-            ...current,
-            [componentType]: !current[componentType],
-        }));
+        setOpenComponentSections((current) =>
+            current.includes(componentType)
+                ? current.filter((s) => s !== componentType)
+                : [...current, componentType]
+        );
     };
 
     const updateHistoryView = (nextOpen) => {
@@ -695,7 +719,7 @@ export default function ComputerLaboratoryInventory() {
                 resetComponent[`${componentType}_remarks`] = "";
             });
             setNewComponent(resetComponent);
-            setOpenComponentSections(createInitialComponentSections());
+            setOpenComponentSections(INITIAL_OPEN_SECTIONS);
             if (closeDialog) {
                 setIsAddComponentOpen(false);
             }
@@ -932,7 +956,7 @@ export default function ComputerLaboratoryInventory() {
 
     useEffect(() => {
         if (isAddComponentOpen) {
-            setOpenComponentSections(createInitialComponentSections());
+            setOpenComponentSections(INITIAL_OPEN_SECTIONS);
         }
     }, [isAddComponentOpen]);
 
@@ -1411,122 +1435,127 @@ export default function ComputerLaboratoryInventory() {
             )}
 
             <Dialog open={isAddComponentOpen} onOpenChange={setIsAddComponentOpen}>
-                <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
-                    <div className="flex-1 overflow-y-auto">
-                        <DialogHeader>
-                            <DialogTitle>Add Computer</DialogTitle>
-                            <DialogDescription>Add a new computer to {selectedLabLabel}.</DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 px-0 py-4">
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-700" htmlFor="computer-number">
+                <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-0">
+                    <DialogHeader className="px-6 pt-6 pb-2">
+                        <DialogTitle>Add Computer</DialogTitle>
+                        <DialogDescription>Add a new computer to {selectedLabLabel}.</DialogDescription>
+                    </DialogHeader>
+
+                    <div className="flex-1 overflow-y-auto px-6 pb-2">
+                        <div className="space-y-4 py-2">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="computer-number" className="text-sm font-medium text-slate-700">
                                     Computer Number *
-                                </label>
-                                <input
+                                </Label>
+                                <Input
                                     id="computer-number"
                                     type="number"
                                     min="1"
                                     value={newComponent.computer_number}
                                     onChange={(e) => setNewComponent({ ...newComponent, computer_number: e.target.value })}
                                     placeholder="1"
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                                    className="focus-visible:ring-[#4a1111]"
                                 />
                             </div>
-                            <div className="border-t pt-4 space-y-2">
-                                {COMPONENT_TYPES.map((componentType) => {
-                                    const isOpen = !!openComponentSections[componentType];
-                                    return (
-                                        <div key={componentType} className="rounded-lg border border-slate-200 bg-slate-50">
-                                            <button
-                                                type="button"
-                                                onClick={() => toggleComponentSection(componentType)}
-                                                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition hover:bg-slate-100"
-                                                aria-expanded={isOpen}
-                                                aria-label={`Toggle ${componentType} fields`}
-                                            >
-                                                <span className="text-xs font-semibold uppercase tracking-wide text-slate-700">{componentType}</span>
-                                                <ChevronDown
-                                                    className={`h-4 w-4 text-slate-500 transition-transform ${isOpen ? "rotate-180" : "rotate-0"}`}
-                                                />
-                                            </button>
 
-                                            {isOpen && (
-                                                <div className="grid gap-3 border-t border-slate-200 p-3">
-                                                    <div>
-                                                        <label className="text-xs font-medium text-slate-600">Brand</label>
-                                                        <input
-                                                            type="text"
-                                                            value={newComponent[`${componentType}_brand`] || ""}
-                                                            onChange={(e) =>
-                                                                setNewComponent((current) => ({
-                                                                    ...current,
-                                                                    [`${componentType}_brand`]: e.target.value,
-                                                                }))
-                                                            }
-                                                            placeholder="e.g., Intel"
-                                                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="text-xs font-medium text-slate-600">Description</label>
-                                                        <input
-                                                            type="text"
-                                                            value={newComponent[`${componentType}_description`] || ""}
-                                                            onChange={(e) =>
-                                                                setNewComponent((current) => ({
-                                                                    ...current,
-                                                                    [`${componentType}_description`]: e.target.value,
-                                                                }))
-                                                            }
-                                                            placeholder="e.g., Core i7"
-                                                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="text-xs font-medium text-slate-600">Remarks</label>
-                                                        <select
-                                                            value={newComponent[`${componentType}_remarks`] || ""}
-                                                            onChange={(e) =>
-                                                                setNewComponent((current) => ({
-                                                                    ...current,
-                                                                    [`${componentType}_remarks`]: e.target.value,
-                                                                }))
-                                                            }
-                                                            className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                                                        >
-                                                            <option value="">Select remarks...</option>
-                                                            {REMARK_OPTIONS.map((remark) => (
-                                                                <option key={remark} value={remark.toLowerCase()}>
-                                                                    {remark}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
+                            <Accordion
+                                type="multiple"
+                                value={openComponentSections}
+                                onValueChange={setOpenComponentSections}
+                                className="space-y-1.5"
+                            >
+                                {COMPONENT_TYPES.map((componentType) => (
+                                    <AccordionItem
+                                        key={componentType}
+                                        value={componentType}
+                                        className="rounded-lg border border-slate-200 bg-slate-50/60 overflow-hidden"
+                                    >
+                                        <AccordionTrigger className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-slate-700 hover:bg-slate-100/80 hover:no-underline data-[state=open]:bg-slate-100/60">
+                                            {componentType}
+                                        </AccordionTrigger>
+                                        <AccordionContent className="px-3 pb-3 pt-1">
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs font-medium text-slate-500">Brand</Label>
+                                                    <Input
+                                                        type="text"
+                                                        value={newComponent[`${componentType}_brand`] || ""}
+                                                        onChange={(e) =>
+                                                            setNewComponent((current) => ({
+                                                                ...current,
+                                                                [`${componentType}_brand`]: e.target.value,
+                                                            }))
+                                                        }
+                                                        placeholder="e.g., Intel"
+                                                        className="h-8 text-xs focus-visible:ring-[#4a1111]"
+                                                    />
                                                 </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs font-medium text-slate-500">Description</Label>
+                                                    <Input
+                                                        type="text"
+                                                        value={newComponent[`${componentType}_description`] || ""}
+                                                        onChange={(e) =>
+                                                            setNewComponent((current) => ({
+                                                                ...current,
+                                                                [`${componentType}_description`]: e.target.value,
+                                                            }))
+                                                        }
+                                                        placeholder="e.g., Core i7"
+                                                        className="h-8 text-xs focus-visible:ring-[#4a1111]"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs font-medium text-slate-500">Remarks</Label>
+                                                    <Select
+                                                        value={newComponent[`${componentType}_remarks`] || ""}
+                                                        onValueChange={(val) =>
+                                                            setNewComponent((current) => ({
+                                                                ...current,
+                                                                [`${componentType}_remarks`]: val,
+                                                            }))
+                                                        }
+                                                    >
+                                                        <SelectTrigger className="h-8 text-xs focus:ring-[#4a1111]">
+                                                            <SelectValue placeholder="Select remarks..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {REMARK_OPTIONS.map((remark) => (
+                                                                <SelectItem key={remark} value={remark.toLowerCase()}>
+                                                                    {remark}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                ))}
+                            </Accordion>
                         </div>
                     </div>
-                    <DialogFooter className="sticky bottom-0 z-20 border-t border-slate-200 bg-white px-4 py-4 gap-4">
-                        <button
+
+                    <div className="sticky bottom-0 z-20 flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
+                        <Button
                             type="button"
+                            variant="outline"
+                            size="sm"
                             onClick={() => setIsAddComponentOpen(false)}
-                            className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition"
+                            className="rounded-lg"
                         >
-                            CANCEL
-                        </button>
-                        <button
+                            Cancel
+                        </Button>
+                        <Button
                             type="button"
+                            size="sm"
                             onClick={() => handleAddComponent({ closeDialog: true })}
                             disabled={exporting}
-                            className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
                         >
-                            SAVE
-                        </button>
-                    </DialogFooter>
+                            Save
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
 
@@ -1723,7 +1752,7 @@ export default function ComputerLaboratoryInventory() {
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search computer #, component, brand, description..."
+                            placeholder="Search..."
                             className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
                         />
                         {searchQuery && (
@@ -1749,7 +1778,7 @@ export default function ComputerLaboratoryInventory() {
                                 type="text"
                                 value={historySearchQuery}
                                 onChange={(e) => setHistorySearchQuery(e.target.value)}
-                                placeholder="Search computer #, component, brand, description, dates..."
+                                placeholder="Search..."
                                 className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
                             />
                             {historySearchQuery && (
@@ -1765,17 +1794,17 @@ export default function ComputerLaboratoryInventory() {
                             )}
                         </div>
 
-                        <div className="relative z-[90]">
+                        <div className="relative z-20">
                             <button
                                 type="button"
                                 onClick={() => setShowHistoryDatePicker((current) => !current)}
-                                className="w-full min-w-[18rem] sm:w-64 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-left text-slate-700 hover:border-slate-300"
+                                className="w-full min-w-[18rem] sm:w-64 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-left text-slate-700 hover:border-slate-300"
                             >
                                 <span className="text-slate-500">{formatPickerLabel(historyDateRange)}</span>
                                 <ChevronDown className="h-4 w-4 text-slate-400" />
                             </button>
                             {showHistoryDatePicker && (
-                                <div ref={historyDatePickerRef} className="absolute left-0 top-full z-[100] mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
+                                <div ref={historyDatePickerRef} className="absolute left-0 top-full z-30 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
                                     <style>{`\n                    .rdp-sidebar-picker {\n                      --rdp-accent-color: #4a1111;\n                      --rdp-background-color: transparent;\n                      --rdp-outline: 2px solid rgba(74, 17, 17, 0.28);\n                      --rdp-outline-selected: 2px solid rgba(74, 17, 17, 0.28);\n                      color: hsl(var(--foreground));\n                      margin: 0;\n                    }\n\n                    .rdp-sidebar-picker .rdp-months {\n                      gap: 0.75rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-month_caption,\n                    .rdp-sidebar-picker .rdp-caption_label {\n                      color: hsl(var(--foreground));\n                      font-size: 0.95rem;\n                      font-weight: 700;\n                      letter-spacing: -0.01em;\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav {\n                      top: 0.1rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav_button_previous {\n                      margin-right: 0.4rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav_button {\n                      width: 2rem;\n                      height: 2rem;\n                      border-radius: 9999px;\n                      border: 1px solid hsl(var(--border));\n                      background: hsl(var(--background));\n                      color: #4a1111;\n                      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);\n                      transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav_button:hover {\n                      border-color: rgba(74, 17, 17, 0.18);\n                      background: rgba(74, 17, 17, 0.06);\n                      transform: translateY(-1px);\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav_button:disabled {\n                      opacity: 0.45;\n                      transform: none;\n                    }\n\n                    .rdp-sidebar-picker .rdp-chevron {\n                      fill: none;\n                      stroke: currentColor;\n                    }\n\n                    .rdp-sidebar-picker .rdp-table {\n                      border-collapse: separate;\n                      border-spacing: 0 0.3rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-head_cell {\n                      color: hsl(var(--muted-foreground));\n                      font-size: 0.68rem;\n                      font-weight: 700;\n                      letter-spacing: 0.18em;\n                      text-transform: uppercase;\n                    }\n\n                    .rdp-sidebar-picker .rdp-day {\n                      width: 2.35rem;\n                      height: 2.35rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-day .rdp-button {\n                      width: 2.35rem;\n                      height: 2.35rem;\n                      border-radius: 9999px;\n                      font-size: 0.85rem;\n                      font-weight: 500;\n                      color: hsl(var(--foreground));\n                      transition: background-color 150ms ease, color 150ms ease, transform 150ms ease, box-shadow 150ms ease;\n                    }\n\n                    .rdp-sidebar-picker .rdp-day .rdp-button:hover {\n                      background: hsl(var(--secondary));\n                      transform: translateY(-1px);\n                    }\n\n                    .rdp-sidebar-picker .rdp-day_selected .rdp-button,\n                    .rdp-sidebar-picker .rdp-day_range_start .rdp-button,\n                    .rdp-sidebar-picker .rdp-day_range_end .rdp-button {\n                      background-color: #4a1111 !important;\n                      color: #ffffff !important;\n                      box-shadow: 0 10px 22px rgba(74, 17, 17, 0.22);\n                    }\n\n                    .rdp-sidebar-picker .rdp-day_range_middle .rdp-button {\n                      background-color: rgba(74, 17, 17, 0.1) !important;\n                      color: #4a1111 !important;\n                    }\n\n                    .rdp-sidebar-picker .rdp-day_today .rdp-button {\n                      box-shadow: inset 0 0 0 1px rgba(74, 17, 17, 0.35);\n                    }\n\n                    .rdp-sidebar-picker .rdp-day_outside .rdp-button,\n                    .rdp-sidebar-picker .rdp-day_disabled .rdp-button {\n                      color: hsl(var(--muted-foreground));\n                      opacity: 0.45;\n                    }\n\n                    .rdp-sidebar-picker .rdp-footer {\n                      margin-top: 0.75rem;\n                      padding-top: 0.75rem;\n                      border-top: 1px solid hsl(var(--border));\n                      color: hsl(var(--muted-foreground));\n                      font-size: 0.75rem;\n                    }\n                  `}</style>
                                     <DayPicker
                                         className="rdp-sidebar-picker text-sm"
@@ -1817,162 +1846,179 @@ export default function ComputerLaboratoryInventory() {
 
             {showExportModal && (
                 <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
-                    <DialogContent className="sm:max-w-lg">
-                        <DialogHeader>
-                            <DialogTitle>Export Laboratories</DialogTitle>
-                            <DialogDescription>Select labs and columns to include in export, and set date.</DialogDescription>
+                    <DialogContent className="flex max-h-[85vh] max-w-lg flex-col gap-0 overflow-hidden rounded-[28px] p-0">
+                        <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
+                            <DialogTitle className="text-lg font-semibold text-slate-900">Export Laboratories</DialogTitle>
+                            <DialogDescription className="mt-1 text-sm">
+                                Select labs and columns to include in export, and set date.
+                            </DialogDescription>
                         </DialogHeader>
 
-                        <div className="max-h-72 overflow-auto px-4 py-2 space-y-3">
-                            <div>
-                                <label className="text-xs font-semibold text-slate-500">Date</label>
-                                <input
+                        <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-8 space-y-4">
+                            <div className="space-y-1.5">
+                                <Label className="text-sm font-medium text-slate-700">Date</Label>
+                                <Input
                                     type="date"
                                     value={exportDate}
                                     onChange={(e) => setExportDate(e.target.value)}
-                                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                                    className="focus-visible:ring-[#4a1111]"
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label className="text-xs font-semibold text-slate-500">School Year *</label>
-                                    <div className="relative mt-1">
-                                        <select
-                                            value={exportSchoolYear}
-                                            onChange={(e) => setExportSchoolYear(e.target.value)}
-                                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
-                                        >
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label className="text-sm font-medium text-slate-700">School Year *</Label>
+                                    <Select value={exportSchoolYear} onValueChange={setExportSchoolYear}>
+                                        <SelectTrigger className="focus:ring-[#4a1111]">
+                                            <SelectValue placeholder="Select year..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
                                             {schoolYearOptions.map((opt) => (
-                                                <option key={opt} value={opt}>
-                                                    {opt}
-                                                </option>
+                                                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                                             ))}
-                                        </select>
-                                        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 h-4 w-4" />
-                                    </div>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
-                                <div>
-                                    <label className="text-xs font-semibold text-slate-500">Semester *</label>
-                                    <div className="relative mt-1">
-                                        <select
-                                            value={exportSemester}
-                                            onChange={(e) => setExportSemester(e.target.value)}
-                                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white appearance-none pr-9 focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
-                                        >
+                                <div className="space-y-1.5">
+                                    <Label className="text-sm font-medium text-slate-700">Semester *</Label>
+                                    <Select value={exportSemester} onValueChange={setExportSemester}>
+                                        <SelectTrigger className="focus:ring-[#4a1111]">
+                                            <SelectValue placeholder="Select semester..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
                                             {SEMESTER_OPTIONS.map((s) => (
-                                                <option key={s} value={s}>
-                                                    {s}
-                                                </option>
+                                                <SelectItem key={s} value={s}>{s}</SelectItem>
                                             ))}
-                                        </select>
-                                        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 h-4 w-4" />
-                                    </div>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="text-xs font-semibold text-slate-500">Prepared and submitted by</label>
-                                <input
-                                    type="text"
+                            <div className="space-y-1.5">
+                                <Label className="text-sm font-medium text-slate-700">Prepared and submitted by</Label>
+                                <Input
                                     value={preparedByName}
                                     onChange={(e) => setPreparedByName(e.target.value)}
                                     placeholder="Enter name"
-                                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                                    className="focus-visible:ring-[#4a1111]"
                                 />
                             </div>
 
-                            <div>
-                                <label className="text-xs font-semibold text-slate-500">Inspected and verified by</label>
-                                <input
-                                    type="text"
+                            <div className="space-y-1.5">
+                                <Label className="text-sm font-medium text-slate-700">Inspected and verified by</Label>
+                                <Input
                                     value={inspectedByName}
                                     onChange={(e) => setInspectedByName(e.target.value)}
                                     placeholder="Enter name"
-                                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                                    className="focus-visible:ring-[#4a1111]"
                                 />
                             </div>
 
-                            <div>
-                                <label className="text-xs font-semibold text-slate-500">Labs</label>
-                                <div className="mt-2 grid gap-2">
+                            <div className="space-y-2">
+                                <Label className="text-sm font-medium text-slate-700">Labs</Label>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-3">
                                     {labOptions.map((lab) => (
-                                        <label key={lab.value} className="flex items-center gap-2">
-                                            <input
-                                                type="checkbox"
+                                        <label key={lab.value} className="flex items-center gap-2.5 cursor-pointer">
+                                            <Checkbox
                                                 checked={selectedExportLabs.includes(lab.value)}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) setSelectedExportLabs((s) => [...s, lab.value]);
+                                                onCheckedChange={(checked) => {
+                                                    if (checked) setSelectedExportLabs((s) => [...s, lab.value]);
                                                     else setSelectedExportLabs((s) => s.filter((v) => v !== lab.value));
                                                 }}
-                                                className="w-4 h-4"
+                                                className="border-slate-300 data-[state=checked]:bg-[#4a1111] data-[state=checked]:border-[#4a1111]"
                                             />
-                                            <span className="text-sm">{lab.label}</span>
+                                            <span className="text-sm text-slate-700">{lab.label}</span>
                                         </label>
                                     ))}
                                 </div>
                             </div>
 
-                            <div className="rounded-lg border border-slate-200 bg-slate-50">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowColumnOptions((current) => !current)}
-                                    className="flex w-full items-center justify-between px-3 py-2 text-left"
-                                    aria-expanded={showColumnOptions}
-                                >
-                                    <span className="text-xs font-semibold text-slate-500">Columns</span>
-                                    <span className="text-xs font-medium text-slate-500">
-                                        {showColumnOptions ? "Hide" : "Show"}
-                                    </span>
-                                </button>
-                                <div
-                                    className={`grid grid-cols-2 gap-2 overflow-hidden px-3 transition-all duration-300 ease-in-out ${showColumnOptions ? "max-h-96 pb-3 opacity-100" : "max-h-0 pb-0 opacity-0"}`}
-                                >
-                                    {COMPONENT_TYPES.map((col) => (
-                                        <label key={col} className="flex items-center gap-2">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedExportColumns.includes(col)}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) setSelectedExportColumns((s) => [...s, col]);
-                                                    else setSelectedExportColumns((s) => s.filter((v) => v !== col));
-                                                }}
-                                                className="w-4 h-4"
-                                            />
-                                            <span className="text-sm">{col}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
+                            <Accordion
+                                type="single"
+                                collapsible
+                                value={showColumnOptions ? "columns" : ""}
+                                onValueChange={(val) => setShowColumnOptions(!!val)}
+                            >
+                                <AccordionItem value="columns" className="rounded-lg border border-slate-200 bg-slate-50/60 overflow-hidden">
+                                    <AccordionTrigger className="px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100/80 hover:no-underline">
+                                        Columns
+                                    </AccordionTrigger>
+                                    <AccordionContent className="px-3 pb-3">
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+                                            {COMPONENT_TYPES.map((col) => (
+                                                <label key={col} className="flex items-center gap-2.5 cursor-pointer">
+                                                    <Checkbox
+                                                        checked={selectedExportColumns.includes(col)}
+                                                        onCheckedChange={(checked) => {
+                                                            if (checked) setSelectedExportColumns((s) => [...s, col]);
+                                                            else setSelectedExportColumns((s) => s.filter((v) => v !== col));
+                                                        }}
+                                                        className="border-slate-300 data-[state=checked]:bg-[#4a1111] data-[state=checked]:border-[#4a1111]"
+                                                    />
+                                                    <span className="text-sm text-slate-700">{col}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </AccordionContent>
+                                </AccordionItem>
+                            </Accordion>
                         </div>
 
-                        <DialogFooter className="gap-4">
-                            <button
+                        <DialogFooter className="flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
+                            <Button
                                 type="button"
-                                onClick={() => {
-                                    setShowExportModal(false);
-                                }}
-                                className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowExportModal(false)}
+                                disabled={exporting}
+                                className="rounded-lg"
                             >
-                                CANCEL
-                            </button>
-                            <button
+                                Cancel
+                            </Button>
+                            <Button
                                 type="button"
-                                onClick={exportLab}
+                                size="sm"
+                                onClick={() => setShowExportConfirm(true)}
                                 disabled={
                                     exporting ||
                                     selectedExportLabs.length === 0 ||
                                     !isValidSchoolYear(exportSchoolYear) ||
                                     !String(exportSemester || "").trim()
                                 }
-                                className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-50"
+                                className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
                             >
-                                {exporting ? 'Exporting...' : 'EXPORT SELECTED'}
-                            </button>
+                                {exporting ? "Exporting..." : "Proceed"}
+                            </Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
             )}
+
+            <AlertDialog open={showExportConfirm} onOpenChange={setShowExportConfirm}>
+                <AlertDialogContent className="rounded-xl">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Export Laboratories</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Export {selectedExportLabs.length} lab{selectedExportLabs.length !== 1 ? "s" : ""} with {selectedExportColumns.length} column{selectedExportColumns.length !== 1 ? "s" : ""}?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter className="gap-3 sm:gap-4">
+                        <AlertDialogCancel
+                            disabled={exporting}
+                            className="rounded-lg"
+                        >
+                            Cancel
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={exportLab}
+                            disabled={exporting}
+                            className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
+                        >
+                            {exporting ? "Exporting..." : "Confirm"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
             <div className={`${isHistoryOpen ? "" : "bg-white rounded-xl shadow-sm border border-slate-200"} overflow-hidden`}> 
                 <div className="min-w-0 overflow-hidden p-0">
                     {error ? (

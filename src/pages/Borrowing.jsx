@@ -6,6 +6,9 @@ import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
 import { format } from "date-fns";
 import "react-day-picker/dist/style.css";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +17,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   adjustInventoryItemQuantity,
   createReturnedDefectiveInventoryItem,
@@ -437,6 +464,7 @@ export default function Borrowing() {
   const [data, setData] = useState([]);
   const [depletedItems, setDepletedItems] = useState(new Set());
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showExportConfirm, setShowExportConfirm] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportDate, setExportDate] = useState(new Date().toISOString().slice(0, 10));
   const [exportSchoolYear, setExportSchoolYear] = useState("");
@@ -1477,17 +1505,17 @@ export default function Borrowing() {
             onChange={(e) => setSearch(e.target.value)}
             className="min-w-[220px] flex-1 border rounded-full px-4 py-2 text-sm"
           />
-          <div ref={datePickerRef} className="relative z-[90]">
+          <div ref={datePickerRef} className="relative z-20">
             <button
               type="button"
               onClick={() => setShowDatePicker((current) => !current)}
-              className="w-full min-w-[18rem] sm:w-64 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-left text-slate-700 hover:border-slate-300"
+              className="w-full min-w-[18rem] sm:w-64 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-left text-slate-700 hover:border-slate-300"
             >
               <span className="text-slate-500">{formatPickerLabel(dateRange)}</span>
               <ChevronDown className="h-4 w-4 text-slate-400" />
             </button>
             {showDatePicker && (
-              <div className="absolute left-0 top-full z-[100] mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
+              <div className="absolute left-0 top-full z-30 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
                 <DayPicker
                   className="rdp-sidebar-picker text-sm"
                   mode="range"
@@ -1569,133 +1597,126 @@ export default function Borrowing() {
 
         {showExportModal && (
           <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Export Borrowing Records</DialogTitle>
-                <DialogDescription>
+            <DialogContent className="flex max-h-[85vh] max-w-lg flex-col gap-0 overflow-hidden rounded-[28px] p-0">
+              <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
+                <DialogTitle className="text-lg font-semibold text-slate-900">Export Borrowing Records</DialogTitle>
+                <DialogDescription className="mt-1 text-sm">
                   Select columns to include in export, and set date/signatories.
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="max-h-72 overflow-auto px-4 py-2 space-y-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-500">Date</label>
-                  <input
+              <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-8 space-y-4">
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium text-slate-700">Date</Label>
+                  <Input
                     type="date"
                     value={exportDate}
                     onChange={(event) => setExportDate(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                    className="focus-visible:ring-[#4a1111]"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-500">School Year *</label>
-                    <div className="relative mt-1">
-                      <select
-                        value={exportSchoolYear}
-                        onChange={(event) => setExportSchoolYear(event.target.value)}
-                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
-                      >
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium text-slate-700">School Year *</Label>
+                    <Select value={exportSchoolYear} onValueChange={setExportSchoolYear}>
+                      <SelectTrigger className="focus:ring-[#4a1111]">
+                        <SelectValue placeholder="Select year..." />
+                      </SelectTrigger>
+                      <SelectContent>
                         {generateSchoolYearOptions().map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
+                          <SelectItem key={option} value={option}>{option}</SelectItem>
                         ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                    </div>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-500">Semester *</label>
-                    <div className="relative mt-1">
-                      <select
-                        value={exportSemester}
-                        onChange={(event) => setExportSemester(event.target.value)}
-                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
-                      >
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium text-slate-700">Semester *</Label>
+                    <Select value={exportSemester} onValueChange={setExportSemester}>
+                      <SelectTrigger className="focus:ring-[#4a1111]">
+                        <SelectValue placeholder="Select semester..." />
+                      </SelectTrigger>
+                      <SelectContent>
                         {SEMESTER_OPTIONS.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
+                          <SelectItem key={option} value={option}>{option}</SelectItem>
                         ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                    </div>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-xs font-semibold text-slate-500">Prepared and submitted by</label>
-                  <input
-                    type="text"
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium text-slate-700">Prepared and submitted by</Label>
+                  <Input
                     value={preparedByName}
                     onChange={(event) => setPreparedByName(event.target.value)}
                     placeholder="Enter name"
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                    className="focus-visible:ring-[#4a1111]"
                   />
                 </div>
 
-                <div>
-                  <label className="text-xs font-semibold text-slate-500">Inspected and verified by</label>
-                  <input
-                    type="text"
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium text-slate-700">Inspected and verified by</Label>
+                  <Input
                     value={inspectedByName}
                     onChange={(event) => setInspectedByName(event.target.value)}
                     placeholder="Enter name"
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                    className="focus-visible:ring-[#4a1111]"
                   />
                 </div>
 
-                <div className="rounded-lg border border-slate-200 bg-slate-50">
-                  <button
-                    type="button"
-                    onClick={() => setShowColumnOptions((current) => !current)}
-                    className="flex w-full items-center justify-between px-3 py-2 text-left"
-                    aria-expanded={showColumnOptions}
-                  >
-                    <span className="text-xs font-semibold text-slate-500">Columns</span>
-                    <span className="text-xs font-medium text-slate-500">
-                      {showColumnOptions ? "Hide" : "Show"}
-                    </span>
-                  </button>
-                  <div
-                    className={`grid grid-cols-1 gap-2 overflow-hidden px-3 transition-all duration-300 ease-in-out sm:grid-cols-2 ${showColumnOptions ? "max-h-96 pb-3 opacity-100" : "max-h-0 pb-0 opacity-0"}`}
-                  >
-                    {borrowingExportColumnOptions.map((column) => (
-                      <label key={column.key} className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedExportColumns.includes(column.key)}
-                          onChange={(event) => {
-                            if (event.target.checked) {
-                              setSelectedExportColumns((current) => [...current, column.key]);
-                            } else {
-                              setSelectedExportColumns((current) =>
-                                current.filter((key) => key !== column.key)
-                              );
-                            }
-                          }}
-                          className="h-4 w-4"
-                        />
-                        <span className="text-sm text-slate-700">{column.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                <Accordion
+                  type="single"
+                  collapsible
+                  defaultValue="columns"
+                  value={showColumnOptions ? "columns" : ""}
+                  onValueChange={(val) => setShowColumnOptions(!!val)}
+                >
+                  <AccordionItem value="columns" className="rounded-lg border border-slate-200 bg-slate-50/60 overflow-hidden">
+                    <AccordionTrigger className="px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100/80 hover:no-underline">
+                      Columns
+                    </AccordionTrigger>
+                    <AccordionContent className="px-3 pb-3">
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                        {borrowingExportColumnOptions.map((column) => (
+                          <label key={column.key} className="flex items-center gap-2.5 cursor-pointer">
+                            <Checkbox
+                              checked={selectedExportColumns.includes(column.key)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedExportColumns((current) => [...current, column.key]);
+                                } else {
+                                  setSelectedExportColumns((current) =>
+                                    current.filter((key) => key !== column.key)
+                                  );
+                                }
+                              }}
+                              className="border-slate-300 data-[state=checked]:bg-[#4a1111] data-[state=checked]:border-[#4a1111]"
+                            />
+                            <span className="text-sm text-slate-700">{column.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
               </div>
 
-              <DialogFooter>
-                <button
+              <DialogFooter className="flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => setShowExportModal(false)}
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  disabled={exporting}
+                  className="rounded-lg"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  onClick={handleExportBorrowings}
+                  size="sm"
+                  onClick={() => setShowExportConfirm(true)}
                   disabled={
                     exporting ||
                     filteredData.length === 0 ||
@@ -1703,14 +1724,40 @@ export default function Borrowing() {
                     !exportSchoolYear ||
                     !exportSemester
                   }
-                  className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
                 >
-                  {exporting ? "Exporting..." : "Export Selected"}
-                </button>
+                  {exporting ? "Exporting..." : "Proceed"}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         )}
+
+        <AlertDialog open={showExportConfirm} onOpenChange={setShowExportConfirm}>
+          <AlertDialogContent className="rounded-xl">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Export Borrowing Records</AlertDialogTitle>
+              <AlertDialogDescription>
+                Export {selectedExportColumns.length} column{selectedExportColumns.length !== 1 ? "s" : ""}?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="gap-3 sm:gap-4">
+              <AlertDialogCancel
+                disabled={exporting}
+                className="rounded-lg"
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleExportBorrowings}
+                disabled={exporting}
+                className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
+              >
+                {exporting ? "Exporting..." : "Confirm"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {borrowingsError ? (
           <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">

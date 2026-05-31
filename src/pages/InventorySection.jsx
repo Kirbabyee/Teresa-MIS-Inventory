@@ -8,7 +8,9 @@ import "react-day-picker/dist/style.css";
 import { format } from "date-fns";
 import { supabase } from "@/api/supabaseClient";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +19,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import arkLogoUrl from "@/assets/imgs/ark-logo.png";
 import InventorySectionHistoryView from "@/components/InventorySectionHistoryView";
 import InventorySectionExportPanel from "@/components/InventorySectionExportPanel";
@@ -767,180 +793,180 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
 
         <div className="flex-1 overflow-y-auto">
           <div className="space-y-4 px-5 py-5">
-          {useTemplate ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              {orderedTemplateColumns.map((column) =>
-              column.subColumns && column.subColumns.length > 0 ? (
-                <div
-                  key={column.key}
-                  className="rounded-lg border border-slate-200 bg-slate-50"
-                >
-                  {column.subColumns.length > 1 ? (
-                    <button
-                      type="button"
-                      onClick={() => toggleSubFieldGroup(column.key)}
-                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition hover:bg-slate-100"
-                      aria-expanded={openSubFieldGroups[column.key] !== false}
-                      aria-label={`Toggle ${column.label} fields`}
+            {useTemplate ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                {orderedTemplateColumns.map((column) =>
+                  column.subColumns && column.subColumns.length > 0 ? (
+                    <div
+                      key={column.key}
+                      className="rounded-lg border border-slate-200 bg-slate-50"
                     >
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                        {column.label}
-                      </span>
-                      <ChevronDown
-                        className={`h-4 w-4 text-slate-500 transition-transform ${openSubFieldGroups[column.key] !== false ? "rotate-180" : "rotate-0"}`}
-                      />
-                    </button>
-                  ) : (
-                    <div className="px-3 py-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                        {column.label}
-                      </span>
-                    </div>
-                  )}
-                  {(column.subColumns.length <= 1 || openSubFieldGroups[column.key] !== false) && (
-                        <div className={`grid gap-3 border-t border-slate-200 p-3 ${isIdentifierField(column.key) ? "md:grid-cols-1" : "md:grid-cols-3"}`}>
-                      {column.subColumns.map((subColumn) => (
-                        <div key={subColumn.physicalKey}>
-                          <label className="text-xs font-medium text-slate-600">
-                            {subColumn.label}
-                          </label>
-                          {renderFieldControl(subColumn.physicalKey, subColumn)}
+                      {column.subColumns.length > 1 ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleSubFieldGroup(column.key)}
+                          className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition hover:bg-slate-100"
+                          aria-expanded={openSubFieldGroups[column.key] !== false}
+                          aria-label={`Toggle ${column.label} fields`}
+                        >
+                          <span className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                            {column.label}
+                          </span>
+                          <ChevronDown
+                            className={`h-4 w-4 text-slate-500 transition-transform ${openSubFieldGroups[column.key] !== false ? "rotate-180" : "rotate-0"}`}
+                          />
+                        </button>
+                      ) : (
+                        <div className="px-3 py-2">
+                          <span className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                            {column.label}
+                          </span>
                         </div>
-                      ))}
+                      )}
+                      {(column.subColumns.length <= 1 || openSubFieldGroups[column.key] !== false) && (
+                        <div className={`grid gap-3 border-t border-slate-200 p-3 ${isIdentifierField(column.key) ? "md:grid-cols-1" : "md:grid-cols-3"}`}>
+                          {column.subColumns.map((subColumn) => (
+                            <div key={subColumn.physicalKey}>
+                              <label className="text-xs font-medium text-slate-600">
+                                {subColumn.label}
+                              </label>
+                              {renderFieldControl(subColumn.physicalKey, subColumn)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              ) : (
-                <div key={column.key} className="space-y-1">
-                  <label className="text-sm font-medium text-slate-700">
-                    {column.label}
-                  </label>
-                  {column.data_type === "boolean" || column.data_type === "bool" ? (
-                    <label className="mt-1 inline-flex items-center gap-2 text-sm text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(dynamicForm[column.key])}
-                        onChange={(event) =>
-                          setDynamicForm((current) => ({
-                            ...current,
-                            [column.key]: event.target.checked,
-                          }))
-                        }
-                      />
-                      <span>{dynamicForm[column.key] ? "True" : "False"}</span>
-                    </label>
-                  ) : isDropdownField(column) ? (
-                    renderFieldControl(column.key, column)
                   ) : (
-                    <Input
-                      className="mt-1"
-                      type={
-                        column.data_type === "date"
-                          ? "date"
-                          : ["int", "integer", "float", "number", "numeric"].includes(
-                              column.data_type
-                            )
-                          ? "number"
-                          : "text"
-                      }
-                      value={dynamicForm[column.key] ?? ""}
-                      onChange={(event) =>
-                        setDynamicForm((current) => ({
-                          ...current,
-                          [column.key]: event.target.value,
-                        }))
-                      }
-                    />
-                  )}
+                    <div key={column.key} className="space-y-1">
+                      <label className="text-sm font-medium text-slate-700">
+                        {column.label}
+                      </label>
+                      {column.data_type === "boolean" || column.data_type === "bool" ? (
+                        <label className="mt-1 inline-flex items-center gap-2 text-sm text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(dynamicForm[column.key])}
+                            onChange={(event) =>
+                              setDynamicForm((current) => ({
+                                ...current,
+                                [column.key]: event.target.checked,
+                              }))
+                            }
+                          />
+                          <span>{dynamicForm[column.key] ? "True" : "False"}</span>
+                        </label>
+                      ) : isDropdownField(column) ? (
+                        renderFieldControl(column.key, column)
+                      ) : (
+                        <Input
+                          className="mt-1"
+                          type={
+                            column.data_type === "date"
+                              ? "date"
+                              : ["int", "integer", "float", "number", "numeric"].includes(
+                                column.data_type
+                              )
+                                ? "number"
+                                : "text"
+                          }
+                          value={dynamicForm[column.key] ?? ""}
+                          onChange={(event) =>
+                            setDynamicForm((current) => ({
+                              ...current,
+                              [column.key]: event.target.value,
+                            }))
+                          }
+                        />
+                      )}
+                    </div>
+                  )
+                )}
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium text-slate-700">
+                    Computer #
+                  </label>
+                  <Input
+                    className="mt-1"
+                    type="number"
+                    min="1"
+                    value={legacyForm.computerNumber}
+                    onChange={(event) =>
+                      setLegacyForm((current) => ({
+                        ...current,
+                        computerNumber: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
-              )
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700">
+                    Type
+                  </label>
+                  <Input
+                    className="mt-1"
+                    value={legacyForm.type}
+                    onChange={(event) =>
+                      setLegacyForm((current) => ({
+                        ...current,
+                        type: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700">
+                    Brand
+                  </label>
+                  <Input
+                    className="mt-1"
+                    value={legacyForm.brand}
+                    onChange={(event) =>
+                      setLegacyForm((current) => ({
+                        ...current,
+                        brand: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700">
+                    Status
+                  </label>
+                  <Input
+                    className="mt-1"
+                    value={legacyForm.status}
+                    onChange={(event) =>
+                      setLegacyForm((current) => ({
+                        ...current,
+                        status: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-sm font-medium text-slate-700">
+                    Description
+                  </label>
+                  <Textarea
+                    className="mt-1 min-h-[120px]"
+                    value={legacyForm.description}
+                    onChange={(event) =>
+                      setLegacyForm((current) => ({
+                        ...current,
+                        description: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
             )}
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="text-sm font-medium text-slate-700">
-                  Computer #
-                </label>
-                <Input
-                  className="mt-1"
-                  type="number"
-                  min="1"
-                  value={legacyForm.computerNumber}
-                  onChange={(event) =>
-                    setLegacyForm((current) => ({
-                      ...current,
-                      computerNumber: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-slate-700">
-                  Type
-                </label>
-                <Input
-                  className="mt-1"
-                  value={legacyForm.type}
-                  onChange={(event) =>
-                    setLegacyForm((current) => ({
-                      ...current,
-                      type: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-slate-700">
-                  Brand
-                </label>
-                <Input
-                  className="mt-1"
-                  value={legacyForm.brand}
-                  onChange={(event) =>
-                    setLegacyForm((current) => ({
-                      ...current,
-                      brand: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-slate-700">
-                  Status
-                </label>
-                <Input
-                  className="mt-1"
-                  value={legacyForm.status}
-                  onChange={(event) =>
-                    setLegacyForm((current) => ({
-                      ...current,
-                      status: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="text-sm font-medium text-slate-700">
-                  Description
-                </label>
-                <Textarea
-                  className="mt-1 min-h-[120px]"
-                  value={legacyForm.description}
-                  onChange={(event) =>
-                    setLegacyForm((current) => ({
-                      ...current,
-                      description: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-            </div>
-          )}
           </div>
         </div>
 
@@ -1128,6 +1154,7 @@ export default function InventorySection() {
   const [showHistoryDatePicker, setShowHistoryDatePicker] = useState(false);
   const [confirmExitEditMode, setConfirmExitEditMode] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showExportConfirm, setShowExportConfirm] = useState(false);
   const [selectedExportColumns, setSelectedExportColumns] = useState([]);
   const [selectedExportSections, setSelectedExportSections] = useState([]);
   const [exportDate, setExportDate] = useState(new Date().toISOString().slice(0, 10));
@@ -1354,20 +1381,20 @@ export default function InventorySection() {
     () =>
       usesTemplateColumns
         ? templateColumns.flatMap((column) =>
-            Array.isArray(column.subColumns) && column.subColumns.length > 0
-              ? column.subColumns.map((subColumn) => ({
-                  key: subColumn.physicalKey,
-                  label: `${column.label} - ${subColumn.label}`,
-                }))
-              : [{ key: column.key, label: column.label }]
-          )
+          Array.isArray(column.subColumns) && column.subColumns.length > 0
+            ? column.subColumns.map((subColumn) => ({
+              key: subColumn.physicalKey,
+              label: `${column.label} - ${subColumn.label}`,
+            }))
+            : [{ key: column.key, label: column.label }]
+        )
         : [
-            { key: "computer_number", label: "Computer #" },
-            { key: "type", label: "Type" },
-            { key: "brand", label: "Brand" },
-            { key: "description", label: "Description" },
-            { key: "status", label: "Status" },
-          ],
+          { key: "computer_number", label: "Computer #" },
+          { key: "type", label: "Type" },
+          { key: "brand", label: "Brand" },
+          { key: "description", label: "Description" },
+          { key: "status", label: "Status" },
+        ],
     [templateColumns, usesTemplateColumns]
   );
   const tableColSpan = displayTemplateColumns.length + 1;
@@ -1423,20 +1450,20 @@ export default function InventorySection() {
       const hasMissing =
         usesTemplateColumns && displayTemplateColumns.length > 0
           ? displayTemplateColumns.some((column) => {
-              if (column.subColumns && column.subColumns.length > 0) {
-                return column.subColumns.some((subColumn) => {
-                  if (isIdentifierLikeField(subColumn.physicalKey)) return false;
-                  return !hasMeaningfulValue(item?.[subColumn.physicalKey]);
-                });
-              }
+            if (column.subColumns && column.subColumns.length > 0) {
+              return column.subColumns.some((subColumn) => {
+                if (isIdentifierLikeField(subColumn.physicalKey)) return false;
+                return !hasMeaningfulValue(item?.[subColumn.physicalKey]);
+              });
+            }
 
-              if (isIdentifierLikeField(column.key)) return false;
-              return !hasMeaningfulValue(item?.[column.key]);
-            })
+            if (isIdentifierLikeField(column.key)) return false;
+            return !hasMeaningfulValue(item?.[column.key]);
+          })
           : ["type", "brand", "description", "status"].some((fieldKey) => {
-              if (isIdentifierLikeField(fieldKey)) return false;
-              return !hasMeaningfulValue(item?.[fieldKey]);
-            });
+            if (isIdentifierLikeField(fieldKey)) return false;
+            return !hasMeaningfulValue(item?.[fieldKey]);
+          });
 
       map[item.id] = { hasDefect, hasMissing };
     });
@@ -1471,9 +1498,8 @@ export default function InventorySection() {
       <button
         type="button"
         onClick={() => requestSort(key)}
-        className={`inline-flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-inherit transition hover:bg-slate-200/70 hover:text-slate-900 ${
-          align === "left" ? "justify-start text-left" : "justify-center text-center"
-        }`}
+        className={`inline-flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-inherit transition hover:bg-slate-200/70 hover:text-slate-900 ${align === "left" ? "justify-start text-left" : "justify-center text-center"
+          }`}
         title={`Sort by ${label}`}
         aria-label={`Sort by ${label}`}
       >
@@ -1950,11 +1976,10 @@ export default function InventorySection() {
                       return params;
                     }, { replace: true });
                   }}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                    section.slug === selectedSectionSlug
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${section.slug === selectedSectionSlug
                       ? "bg-[#4a1111] text-white"
                       : "bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-                  }`}
+                    }`}
                 >
                   {section.name}
                 </button>
@@ -2069,7 +2094,7 @@ export default function InventorySection() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search items, columns, values..."
+                placeholder="Search..."
                 className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
               />
               {searchQuery && (
@@ -2088,7 +2113,7 @@ export default function InventorySection() {
         )}
 
         {isHistoryOpen && (
-          <div className="relative z-[80] mt-3 flex w-full flex-wrap items-center gap-3 overflow-visible">
+          <div className="relative z-20 mt-3 flex w-full flex-wrap items-center gap-3 overflow-visible">
             <div className="relative w-full sm:w-96">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -2111,17 +2136,17 @@ export default function InventorySection() {
               )}
             </div>
 
-            <div ref={historyDatePickerRef} className="relative z-[90]">
+            <div ref={historyDatePickerRef} className="relative z-20">
               <button
                 type="button"
                 onClick={() => setShowHistoryDatePicker((current) => !current)}
-                className="w-full min-w-[18rem] sm:w-64 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-left text-slate-700 hover:border-slate-300"
+                className="w-full min-w-[18rem] sm:w-64 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-left text-slate-700 hover:border-slate-300"
               >
                 <span className="text-slate-500">{formatPickerLabel(historyDateRange)}</span>
                 <ChevronDown className="h-4 w-4 text-slate-400" />
               </button>
               {showHistoryDatePicker && (
-                <div className="absolute left-0 top-full z-[100] mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
+                <div className="absolute left-0 top-full z-30 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
                   <style>{`
                     .rdp-sidebar-picker {
                       --rdp-accent-color: #4a1111;
@@ -2282,282 +2307,283 @@ export default function InventorySection() {
         )}
 
         {!isHistoryOpen && (
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-         
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
 
-          <div className="p-0">
-            {!selectedSection ? (
-              <div className="rounded-xl border border-dashed border-slate-300 py-20 text-center">
-                <p className="text-slate-500 font-medium">
-                  Pick a section to view or add items.
-                </p>
-              </div>
-            ) : itemsError ? (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center text-sm text-rose-700">
-                {itemsError}
-              </div>
-            ) : displayItems.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-300 py-20 text-center">
-                <p className="text-slate-500 font-medium">
-                  {isDefectiveOnlyView ? "No defective records found for this section." : "No records found for this section."}
-                </p>
-              </div>
-            ) : (
-              <div className="computer-lab-scrollbar w-full max-w-full min-h-[18rem] max-h-[calc(100vh-16rem)] overflow-auto sm:max-h-[calc(100vh-18rem)] lg:max-h-[calc(100vh-20rem)]">
-                <table className="w-max min-w-full divide-y divide-slate-200">
-                  <thead className="bg-slate-100">
-                    <tr>
-                      {usesTemplateColumns &&
-                        displayTemplateColumns.map((column) => (
-                          <th
-                            key={column.key}
-                            className="whitespace-nowrap border-r border-slate-300 px-4 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-700 last:border-r-0"
-                          >
-                            {column.label}
-                          </th>
-                        ))}
-                      {gridEditMode && isAdmin && (
-                          <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">
-                          Actions
-                        </th>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white">
-                    {paginatedItems.map((item, rowIndex) => {
-                      const itemStatus = itemStatusMap[item.id] || { hasDefect: false, hasMissing: false };
-                      const rowIndicatorStyle = itemStatus.hasDefect && itemStatus.hasMissing
-                        ? { boxShadow: "inset 4px 0 0 #f43f5e, inset 8px 0 0 #f59e0b" }
-                        : itemStatus.hasDefect
-                          ? { boxShadow: "inset 4px 0 0 #f43f5e" }
-                          : itemStatus.hasMissing
-                            ? { boxShadow: "inset 4px 0 0 #f59e0b" }
-                            : undefined;
-                      return (
-                      <tr
-                        key={item.id}
-                        style={rowIndicatorStyle}
-                        className={`${rowIndex % 2 === 0 ? "bg-slate-50" : "bg-white"}`}
-                      >
+
+            <div className="p-0">
+              {!selectedSection ? (
+                <div className="rounded-xl border border-dashed border-slate-300 py-20 text-center">
+                  <p className="text-slate-500 font-medium">
+                    Pick a section to view or add items.
+                  </p>
+                </div>
+              ) : itemsError ? (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center text-sm text-rose-700">
+                  {itemsError}
+                </div>
+              ) : displayItems.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 py-20 text-center">
+                  <p className="text-slate-500 font-medium">
+                    {isDefectiveOnlyView ? "No defective records found for this section." : "No records found for this section."}
+                  </p>
+                </div>
+              ) : (
+                <div className="computer-lab-scrollbar w-full max-w-full min-h-[18rem] max-h-[calc(100vh-16rem)] overflow-auto sm:max-h-[calc(100vh-18rem)] lg:max-h-[calc(100vh-20rem)]">
+                  <table className="w-max min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-100">
+                      <tr>
                         {usesTemplateColumns &&
-                          displayTemplateColumns.map((column) => {
-                            const columnKey = column.key;
-                            const columnEditorType = getEditorType(column);
-                            const columnValue = item?.[columnKey];
-                            const columnDraftKey = getCellDraftKey(item.id, columnKey);
-                            const columnDraftValue = cellDrafts[columnDraftKey] ?? normalizeCellValue(columnValue);
-
-                            const isMissingColumn = (() => {
-                              if (column.subColumns && column.subColumns.length > 0) {
-                                return column.subColumns.some((subColumn) => {
-                                  const v = item?.[subColumn.physicalKey];
-                                  return v === null || v === undefined || String(v).trim() === "" || String(v) === "-";
-                                });
-                              }
-                              const v = columnValue;
-                              return v === null || v === undefined || String(v).trim() === "" || String(v) === "-";
-                            })();
-
-                            return (
-                              <td key={`${item.id}-${column.key}`} className={`px-4 py-4 align-top text-sm text-slate-700 ${isMissingColumn ? "bg-amber-100" : ""}`}>
-                                {column.subColumns && column.subColumns.length > 0 ? (
-                                  <div className="space-y-3">
-                                    {column.subColumns.map((subColumn) => {
-                                      const fieldKey = subColumn.physicalKey;
-                                      const fieldEditorType = getEditorType(subColumn);
-                                      const fieldValue = item?.[fieldKey];
-                                      const fieldDraftKey = getCellDraftKey(item.id, fieldKey);
-                                      const fieldDraftValue = cellDrafts[fieldDraftKey] ?? normalizeCellValue(fieldValue);
-
-                                      return (
-                                        <div key={subColumn.physicalKey} className="space-y-1">
-                                          <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                                            {subColumn.label}
-                                          </div>
-                                          {gridEditMode ? (
-                                            fieldEditorType === "dropdown" ? (
-                                              <select
-                                                value={fieldDraftValue}
-                                                disabled={savingCellKey === fieldDraftKey || deletingId !== null}
-                                                onChange={(event) => handleCellDraftChange(item.id, fieldKey, event.target.value)}
-                                                onBlur={() => handleInlineCellSave(item, fieldKey, subColumn)}
-                                                className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100"
-                                              >
-                                                <option value="">Select option...</option>
-                                                {(subColumn.options || []).map((option) => (
-                                                  <option key={option} value={option}>
-                                                    {option}
-                                                  </option>
-                                                ))}
-                                              </select>
-                                            ) : fieldEditorType === "boolean" ? (
-                                              <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={fieldDraftValue === true || fieldDraftValue === "true"}
-                                                  disabled={savingCellKey === fieldDraftKey || deletingId !== null}
-                                                  onChange={(event) => {
-                                                    handleCellDraftChange(item.id, fieldKey, event.target.checked ? "true" : "false");
-                                                    handleInlineCellSave(item, fieldKey, subColumn);
-                                                  }}
-                                                />
-                                                <span>{fieldDraftValue === true || fieldDraftValue === "true" ? "Yes" : "No"}</span>
-                                              </label>
-                                            ) : (
-                                              <input
-                                                type={fieldEditorType === "date" ? "date" : ["int", "integer", "float", "number", "numeric"].includes(fieldEditorType) ? "number" : "text"}
-                                                value={fieldDraftValue}
-                                                disabled={savingCellKey === fieldDraftKey || deletingId !== null}
-                                                onChange={(event) => handleCellDraftChange(item.id, fieldKey, event.target.value)}
-                                                onBlur={() => handleInlineCellSave(item, fieldKey, subColumn)}
-                                                onKeyDown={(event) => {
-                                                  if (event.key === "Enter") event.currentTarget.blur();
-                                                  if (event.key === "Escape") {
-                                                    setCellDrafts((current) => {
-                                                      const next = { ...current };
-                                                      delete next[fieldDraftKey];
-                                                      return next;
-                                                    });
-                                                    event.currentTarget.blur();
-                                                  }
-                                                }}
-                                                className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100"
-                                              />
-                                            )
-                                          ) : (
-                                            <div className={`font-medium ${String(fieldValue || "").toUpperCase().includes("DEFECT") || String(fieldValue || "").toUpperCase().includes("BROKEN") ? "text-red-600" : "text-slate-900"}`}>
-                                              {formatCellValue(fieldValue)}
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                ) : gridEditMode ? (
-                                  columnEditorType === "dropdown" ? (
-                                    <select
-                                      value={columnDraftValue}
-                                      disabled={savingCellKey === columnDraftKey || deletingId !== null}
-                                      onChange={(event) => handleCellDraftChange(item.id, columnKey, event.target.value)}
-                                      onBlur={() => handleInlineCellSave(item, columnKey, column)}
-                                      className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100"
-                                    >
-                                      <option value="">Select option...</option>
-                                      {(column.options || []).map((option) => (
-                                        <option key={option} value={option}>
-                                          {option}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  ) : columnEditorType === "boolean" ? (
-                                    <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                                      <input
-                                        type="checkbox"
-                                        checked={columnDraftValue === true || columnDraftValue === "true"}
-                                        disabled={savingCellKey === columnDraftKey || deletingId !== null}
-                                        onChange={(event) => {
-                                          handleCellDraftChange(item.id, columnKey, event.target.checked ? "true" : "false");
-                                          handleInlineCellSave(item, columnKey, column);
-                                        }}
-                                      />
-                                      <span>{columnDraftValue === true || columnDraftValue === "true" ? "Yes" : "No"}</span>
-                                    </label>
-                                  ) : (
-                                    <input
-                                      type={columnEditorType === "date" ? "date" : ["int", "integer", "float", "number", "numeric"].includes(columnEditorType) ? "number" : "text"}
-                                      value={columnDraftValue}
-                                      disabled={savingCellKey === columnDraftKey || deletingId !== null}
-                                      onChange={(event) => handleCellDraftChange(item.id, columnKey, event.target.value)}
-                                      onBlur={() => handleInlineCellSave(item, columnKey, column)}
-                                      onKeyDown={(event) => {
-                                        if (event.key === "Enter") event.currentTarget.blur();
-                                        if (event.key === "Escape") {
-                                          setCellDrafts((current) => {
-                                            const next = { ...current };
-                                            delete next[columnDraftKey];
-                                            return next;
-                                          });
-                                          event.currentTarget.blur();
-                                        }
-                                      }}
-                                      className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100"
-                                    />
-                                  )
-                                ) : (
-                                  <span className={String(columnValue || "").toUpperCase().includes("DEFECT") || String(columnValue || "").toUpperCase().includes("BROKEN") ? "text-red-600" : ""}>
-                                    {formatCellValue(columnValue)}
-                                  </span>
-                                )}
-                              </td>
-                            );
-                          })}
-                        {gridEditMode && isAdmin && (
-                          <td className="px-4 py-4 align-middle text-center">
-                            <button
-                              type="button"
-                              disabled={deletingId === item.id}
-                              onClick={() => handleDelete(item.id)}
-                              className="inline-flex items-center justify-center rounded-lg bg-red-500 p-2 text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:bg-slate-300"
-                              title="Delete item"
-                              aria-label="Delete item"
+                          displayTemplateColumns.map((column) => (
+                            <th
+                              key={column.key}
+                              className="whitespace-nowrap border-r border-slate-300 px-4 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-700 last:border-r-0"
                             >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </td>
+                              {column.label}
+                            </th>
+                          ))}
+                        {gridEditMode && isAdmin && (
+                          <th className="whitespace-nowrap px-4 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">
+                            Actions
+                          </th>
                         )}
                       </tr>
-                    );})}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white">
+                      {paginatedItems.map((item, rowIndex) => {
+                        const itemStatus = itemStatusMap[item.id] || { hasDefect: false, hasMissing: false };
+                        const rowIndicatorStyle = itemStatus.hasDefect && itemStatus.hasMissing
+                          ? { boxShadow: "inset 4px 0 0 #f43f5e, inset 8px 0 0 #f59e0b" }
+                          : itemStatus.hasDefect
+                            ? { boxShadow: "inset 4px 0 0 #f43f5e" }
+                            : itemStatus.hasMissing
+                              ? { boxShadow: "inset 4px 0 0 #f59e0b" }
+                              : undefined;
+                        return (
+                          <tr
+                            key={item.id}
+                            style={rowIndicatorStyle}
+                            className={`${rowIndex % 2 === 0 ? "bg-slate-50" : "bg-white"}`}
+                          >
+                            {usesTemplateColumns &&
+                              displayTemplateColumns.map((column) => {
+                                const columnKey = column.key;
+                                const columnEditorType = getEditorType(column);
+                                const columnValue = item?.[columnKey];
+                                const columnDraftKey = getCellDraftKey(item.id, columnKey);
+                                const columnDraftValue = cellDrafts[columnDraftKey] ?? normalizeCellValue(columnValue);
+
+                                const isMissingColumn = (() => {
+                                  if (column.subColumns && column.subColumns.length > 0) {
+                                    return column.subColumns.some((subColumn) => {
+                                      const v = item?.[subColumn.physicalKey];
+                                      return v === null || v === undefined || String(v).trim() === "" || String(v) === "-";
+                                    });
+                                  }
+                                  const v = columnValue;
+                                  return v === null || v === undefined || String(v).trim() === "" || String(v) === "-";
+                                })();
+
+                                return (
+                                  <td key={`${item.id}-${column.key}`} className={`px-4 py-4 align-top text-sm text-slate-700 ${isMissingColumn ? "bg-amber-100" : ""}`}>
+                                    {column.subColumns && column.subColumns.length > 0 ? (
+                                      <div className="space-y-3">
+                                        {column.subColumns.map((subColumn) => {
+                                          const fieldKey = subColumn.physicalKey;
+                                          const fieldEditorType = getEditorType(subColumn);
+                                          const fieldValue = item?.[fieldKey];
+                                          const fieldDraftKey = getCellDraftKey(item.id, fieldKey);
+                                          const fieldDraftValue = cellDrafts[fieldDraftKey] ?? normalizeCellValue(fieldValue);
+
+                                          return (
+                                            <div key={subColumn.physicalKey} className="space-y-1">
+                                              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                                                {subColumn.label}
+                                              </div>
+                                              {gridEditMode ? (
+                                                fieldEditorType === "dropdown" ? (
+                                                  <select
+                                                    value={fieldDraftValue}
+                                                    disabled={savingCellKey === fieldDraftKey || deletingId !== null}
+                                                    onChange={(event) => handleCellDraftChange(item.id, fieldKey, event.target.value)}
+                                                    onBlur={() => handleInlineCellSave(item, fieldKey, subColumn)}
+                                                    className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100"
+                                                  >
+                                                    <option value="">Select option...</option>
+                                                    {(subColumn.options || []).map((option) => (
+                                                      <option key={option} value={option}>
+                                                        {option}
+                                                      </option>
+                                                    ))}
+                                                  </select>
+                                                ) : fieldEditorType === "boolean" ? (
+                                                  <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={fieldDraftValue === true || fieldDraftValue === "true"}
+                                                      disabled={savingCellKey === fieldDraftKey || deletingId !== null}
+                                                      onChange={(event) => {
+                                                        handleCellDraftChange(item.id, fieldKey, event.target.checked ? "true" : "false");
+                                                        handleInlineCellSave(item, fieldKey, subColumn);
+                                                      }}
+                                                    />
+                                                    <span>{fieldDraftValue === true || fieldDraftValue === "true" ? "Yes" : "No"}</span>
+                                                  </label>
+                                                ) : (
+                                                  <input
+                                                    type={fieldEditorType === "date" ? "date" : ["int", "integer", "float", "number", "numeric"].includes(fieldEditorType) ? "number" : "text"}
+                                                    value={fieldDraftValue}
+                                                    disabled={savingCellKey === fieldDraftKey || deletingId !== null}
+                                                    onChange={(event) => handleCellDraftChange(item.id, fieldKey, event.target.value)}
+                                                    onBlur={() => handleInlineCellSave(item, fieldKey, subColumn)}
+                                                    onKeyDown={(event) => {
+                                                      if (event.key === "Enter") event.currentTarget.blur();
+                                                      if (event.key === "Escape") {
+                                                        setCellDrafts((current) => {
+                                                          const next = { ...current };
+                                                          delete next[fieldDraftKey];
+                                                          return next;
+                                                        });
+                                                        event.currentTarget.blur();
+                                                      }
+                                                    }}
+                                                    className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100"
+                                                  />
+                                                )
+                                              ) : (
+                                                <div className={`font-medium ${String(fieldValue || "").toUpperCase().includes("DEFECT") || String(fieldValue || "").toUpperCase().includes("BROKEN") ? "text-red-600" : "text-slate-900"}`}>
+                                                  {formatCellValue(fieldValue)}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : gridEditMode ? (
+                                      columnEditorType === "dropdown" ? (
+                                        <select
+                                          value={columnDraftValue}
+                                          disabled={savingCellKey === columnDraftKey || deletingId !== null}
+                                          onChange={(event) => handleCellDraftChange(item.id, columnKey, event.target.value)}
+                                          onBlur={() => handleInlineCellSave(item, columnKey, column)}
+                                          className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100"
+                                        >
+                                          <option value="">Select option...</option>
+                                          {(column.options || []).map((option) => (
+                                            <option key={option} value={option}>
+                                              {option}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      ) : columnEditorType === "boolean" ? (
+                                        <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                                          <input
+                                            type="checkbox"
+                                            checked={columnDraftValue === true || columnDraftValue === "true"}
+                                            disabled={savingCellKey === columnDraftKey || deletingId !== null}
+                                            onChange={(event) => {
+                                              handleCellDraftChange(item.id, columnKey, event.target.checked ? "true" : "false");
+                                              handleInlineCellSave(item, columnKey, column);
+                                            }}
+                                          />
+                                          <span>{columnDraftValue === true || columnDraftValue === "true" ? "Yes" : "No"}</span>
+                                        </label>
+                                      ) : (
+                                        <input
+                                          type={columnEditorType === "date" ? "date" : ["int", "integer", "float", "number", "numeric"].includes(columnEditorType) ? "number" : "text"}
+                                          value={columnDraftValue}
+                                          disabled={savingCellKey === columnDraftKey || deletingId !== null}
+                                          onChange={(event) => handleCellDraftChange(item.id, columnKey, event.target.value)}
+                                          onBlur={() => handleInlineCellSave(item, columnKey, column)}
+                                          onKeyDown={(event) => {
+                                            if (event.key === "Enter") event.currentTarget.blur();
+                                            if (event.key === "Escape") {
+                                              setCellDrafts((current) => {
+                                                const next = { ...current };
+                                                delete next[columnDraftKey];
+                                                return next;
+                                              });
+                                              event.currentTarget.blur();
+                                            }
+                                          }}
+                                          className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100"
+                                        />
+                                      )
+                                    ) : (
+                                      <span className={String(columnValue || "").toUpperCase().includes("DEFECT") || String(columnValue || "").toUpperCase().includes("BROKEN") ? "text-red-600" : ""}>
+                                        {formatCellValue(columnValue)}
+                                      </span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            {gridEditMode && isAdmin && (
+                              <td className="px-4 py-4 align-middle text-center">
+                                <button
+                                  type="button"
+                                  disabled={deletingId === item.id}
+                                  onClick={() => handleDelete(item.id)}
+                                  className="inline-flex items-center justify-center rounded-lg bg-red-500 p-2 text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                  title="Delete item"
+                                  aria-label="Delete item"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+            </div>
+
+            {displayItems.length > 0 && (
+              <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
+                <div className="text-sm text-slate-500">
+                  Showing {Math.min(pageStartIndex + 1, displayItems.length)}–{Math.min(
+                    pageEndIndex,
+                    displayItems.length
+                  )} of {displayItems.length}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  {visiblePageNumbers.map((pageNumber) => {
+                    const isActive = page === pageNumber;
+                    return (
+                      <button
+                        key={pageNumber}
+                        type="button"
+                        onClick={() => setPage(pageNumber)}
+                        className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
+                      >
+                        {pageNumber}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages || totalPages === 0}
+                    className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Next page"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             )}
-
           </div>
-
-          {displayItems.length > 0 && (
-            <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
-              <div className="text-sm text-slate-500">
-                Showing {Math.min(pageStartIndex + 1, displayItems.length)}–{Math.min(
-                  pageEndIndex,
-                  displayItems.length
-                )} of {displayItems.length}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label="Previous page"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                {visiblePageNumbers.map((pageNumber) => {
-                  const isActive = page === pageNumber;
-                  return (
-                  <button
-                    key={pageNumber}
-                    type="button"
-                    onClick={() => setPage(pageNumber)}
-                    className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
-                  >
-                    {pageNumber}
-                  </button>
-                  );
-                })}
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages || totalPages === 0}
-                  className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label="Next page"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
         )}
 
       </div>
@@ -2601,107 +2627,96 @@ export default function InventorySection() {
           item={editingItem}
           tableName={tabTableName}
           templateColumns={templateColumns}
-            items={items}
+          items={items}
           onClose={() => setShowModal(false)}
           onSaved={handleSaved}
         />
       )}
       {showExportModal && (
         <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Export Section</DialogTitle>
-              <DialogDescription>
+          <DialogContent className="flex max-h-[85vh] max-w-lg flex-col gap-0 overflow-hidden rounded-[28px] p-0">
+            <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
+              <DialogTitle className="text-lg font-semibold text-slate-900">Export Section</DialogTitle>
+              <DialogDescription className="mt-1 text-sm">
                 Select columns to include in export, and set date/signatories.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="max-h-72 overflow-auto px-4 py-2 space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-500">Date</label>
-                <input
+            <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-8 space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">Date</Label>
+                <Input
                   type="date"
                   value={exportDate}
                   onChange={(event) => setExportDate(event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                  className="focus-visible:ring-[#4a1111]"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-semibold text-slate-500">School Year *</label>
-                  <div className="relative mt-1">
-                    <select
-                      value={exportSchoolYear}
-                      onChange={(event) => setExportSchoolYear(event.target.value)}
-                      className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
-                    >
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium text-slate-700">School Year *</Label>
+                  <Select value={exportSchoolYear} onValueChange={setExportSchoolYear}>
+                    <SelectTrigger className="focus:ring-[#4a1111]">
+                      <SelectValue placeholder="Select year..." />
+                    </SelectTrigger>
+                    <SelectContent>
                       {generateSchoolYearOptions().map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
+                        <SelectItem key={option} value={option}>{option}</SelectItem>
                       ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                  </div>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500">Semester *</label>
-                  <div className="relative mt-1">
-                    <select
-                      value={exportSemester}
-                      onChange={(event) => setExportSemester(event.target.value)}
-                      className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
-                    >
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium text-slate-700">Semester *</Label>
+                  <Select value={exportSemester} onValueChange={setExportSemester}>
+                    <SelectTrigger className="focus:ring-[#4a1111]">
+                      <SelectValue placeholder="Select semester..." />
+                    </SelectTrigger>
+                    <SelectContent>
                       {SEMESTER_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
+                        <SelectItem key={option} value={option}>{option}</SelectItem>
                       ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                  </div>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-500">Prepared and submitted by</label>
-                <input
-                  type="text"
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">Prepared and submitted by</Label>
+                <Input
                   value={preparedByName}
                   onChange={(event) => setPreparedByName(event.target.value)}
                   placeholder="Enter name"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                  className="focus-visible:ring-[#4a1111]"
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-500">Inspected and verified by</label>
-                <input
-                  type="text"
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">Inspected and verified by</Label>
+                <Input
                   value={inspectedByName}
                   onChange={(event) => setInspectedByName(event.target.value)}
                   placeholder="Enter name"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                  className="focus-visible:ring-[#4a1111]"
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-500">Sections</label>
-                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-slate-700">Sections</Label>
+                <div className="grid grid-cols-1 gap-2.5 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-3 sm:grid-cols-2">
                   {sections.map((sec) => (
-                    <label key={sec.slug} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
+                    <label key={sec.slug} className="flex items-center gap-2.5 cursor-pointer">
+                      <Checkbox
                         checked={selectedExportSections.includes(sec.slug)}
-                        onChange={(event) => {
-                          if (event.target.checked) {
+                        onCheckedChange={(checked) => {
+                          if (checked) {
                             setSelectedExportSections((current) => [...current, sec.slug]);
                           } else {
                             setSelectedExportSections((current) => current.filter((s) => s !== sec.slug));
                           }
                         }}
-                        className="h-4 w-4"
+                        className="border-slate-300 data-[state=checked]:bg-[#4a1111] data-[state=checked]:border-[#4a1111]"
                       />
                       <span className="text-sm text-slate-700">{sec.name}</span>
                     </label>
@@ -2709,64 +2724,93 @@ export default function InventorySection() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-slate-200 bg-slate-50">
-                <button
-                  type="button"
-                  onClick={() => setShowColumnOptions((current) => !current)}
-                  className="flex w-full items-center justify-between px-3 py-2 text-left"
-                  aria-expanded={showColumnOptions}
-                >
-                  <span className="text-xs font-semibold text-slate-500">Columns</span>
-                  <span className="text-xs font-medium text-slate-500">
-                    {showColumnOptions ? "Hide" : "Show"}
-                  </span>
-                </button>
-                <div
-                  className={`grid grid-cols-1 gap-2 overflow-hidden px-3 transition-all duration-300 ease-in-out sm:grid-cols-2 ${showColumnOptions ? "max-h-96 pb-3 opacity-100" : "max-h-0 pb-0 opacity-0"}`}
-                >
-                  {exportColumnOptions.map((column) => (
-                    <label key={column.key} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedExportColumns.includes(column.key)}
-                        onChange={(event) => {
-                          if (event.target.checked) {
-                            setSelectedExportColumns((current) => [...current, column.key]);
-                          } else {
-                            setSelectedExportColumns((current) =>
-                              current.filter((key) => key !== column.key)
-                            );
-                          }
-                        }}
-                        className="h-4 w-4"
-                      />
-                      <span className="text-sm text-slate-700">{column.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <Accordion
+                type="single"
+                collapsible
+                defaultValue="columns"
+                value={showColumnOptions ? "columns" : ""}
+                onValueChange={(val) => setShowColumnOptions(!!val)}
+              >
+                <AccordionItem value="columns" className="rounded-lg border border-slate-200 bg-slate-50/60 overflow-hidden">
+                  <AccordionTrigger className="px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100/80 hover:no-underline">
+                    Columns
+                  </AccordionTrigger>
+                  <AccordionContent className="px-3 pb-3">
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                      {exportColumnOptions.map((column) => (
+                        <label key={column.key} className="flex items-center gap-2.5 cursor-pointer">
+                          <Checkbox
+                            checked={selectedExportColumns.includes(column.key)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedExportColumns((current) => [...current, column.key]);
+                              } else {
+                                setSelectedExportColumns((current) =>
+                                  current.filter((key) => key !== column.key)
+                                );
+                              }
+                            }}
+                            className="border-slate-300 data-[state=checked]:bg-[#4a1111] data-[state=checked]:border-[#4a1111]"
+                          />
+                          <span className="text-sm text-slate-700">{column.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             </div>
 
-            <DialogFooter>
-              <button
+            <DialogFooter className="flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => setShowExportModal(false)}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                disabled={exporting}
+                className="rounded-lg"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                onClick={handleExportSection}
+                size="sm"
+                onClick={() => setShowExportConfirm(true)}
                 disabled={exporting || selectedExportColumns.length === 0 || !exportSchoolYear || !exportSemester}
-                className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
               >
-                {exporting ? "Exporting..." : "Export Selected"}
-              </button>
+                {exporting ? "Exporting..." : "Proceed"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       )}
+
+      <AlertDialog open={showExportConfirm} onOpenChange={setShowExportConfirm}>
+        <AlertDialogContent className="rounded-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Export Section</AlertDialogTitle>
+            <AlertDialogDescription>
+              Export {selectedExportSections.length} section{selectedExportSections.length !== 1 ? "s" : ""} with {selectedExportColumns.length} column{selectedExportColumns.length !== 1 ? "s" : ""}?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-3 sm:gap-4">
+            <AlertDialogCancel
+              disabled={exporting}
+              className="rounded-lg"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleExportSection}
+              disabled={exporting}
+              className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
+            >
+              {exporting ? "Exporting..." : "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
@@ -2786,7 +2830,7 @@ export default function InventorySection() {
                 type="button"
                 onClick={confirmDelete}
                 disabled={!!deletingId}
-                            className="rounded-md bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#5a1717] disabled:opacity-50"
+                className="rounded-md bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#5a1717] disabled:opacity-50"
               >
                 Delete
               </button>

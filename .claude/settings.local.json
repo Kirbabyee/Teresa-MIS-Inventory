@@ -12,7 +12,11 @@
       "Bash(Select-Object -First 30)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\leele\\\\OneDrive\\\\Desktop\\\\Ark\\\\ST TERESA MIS\\\\Teresa-MIS-Inventory\\\\src\" -Recurse -File)",
       "Bash(Select-Object -ExpandProperty FullName)",
-      "Bash(Sort-Object)"
+      "Bash(Sort-Object)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\leele\\\\OneDrive\\\\Desktop\\\\Ark\\\\ST TERESA MIS\\\\Teresa-MIS-Inventory\\\\src\" -Recurse -Exclude node_modules)",
+      "Bash(Select-Object FullName, Length)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(powershell *)"
     ]
   },
   "allow": [
