@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Edit, MoreVertical, Plus, Trash2, X, Check, Monitor, Armchair, Wrench, FileText, Box, Tv, Cable, ChevronLeft, ChevronRight } from "lucide-react";
+import { Edit, MoreVertical, Plus, Trash2, X, CheckCircle, Monitor, Armchair, Wrench, FileText, Box, Tv, Cable, ChevronLeft, ChevronRight, Columns2, FolderOpen, LayoutTemplate } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/api/supabaseClient";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
 import {
   deleteInventorySection,
@@ -333,7 +334,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto inventory-modal-scrollbar rounded-xl bg-white shadow-2xl ring-1 ring-slate-200">
+      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto inventory-modal-scrollbar rounded-[28px] sm:rounded-lg bg-white shadow-2xl ring-1 ring-slate-200">
         <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 rounded-t-xl">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{column ? "Edit column" : "Add column"}</h3>
@@ -588,7 +589,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
         </div>
 
         {isSaving && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-sm !m-0 !p-0">
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[28px] sm:rounded-lg bg-white/80 backdrop-blur-sm !m-0 !p-0">
             <div className="inline-flex items-center gap-3 rounded-2xl bg-slate-950/95 px-5 py-4 text-sm font-medium text-white shadow-lg">
               <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
               Saving column...
@@ -742,7 +743,7 @@ function SectionModal({ section, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-      <div className="relative flex w-full max-w-xl max-h-[90vh] flex-col gap-0 overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-slate-200">
+      <div className="relative flex w-full max-w-xl max-h-[90vh] flex-col gap-0 overflow-hidden rounded-[28px] sm:rounded-lg bg-white shadow-2xl ring-1 ring-slate-200">
         <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-5">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{section ? "Edit section" : "Add section"}</h3>
@@ -899,6 +900,21 @@ function TabModal({ tab, onClose, onSave }) {
       { num: 2, label: "Sections" },
       { num: 3, label: "Columns" },
       { num: 4, label: "Review" },
+    ];
+
+  const stepIcons = isNewTab
+    ? [
+      { key: "template", Icon: LayoutTemplate },
+      { key: "basic", Icon: FileText },
+      { key: "sections", Icon: FolderOpen },
+      { key: "columns", Icon: Columns2 },
+      { key: "review", Icon: CheckCircle },
+    ]
+    : [
+      { key: "basic", Icon: FileText },
+      { key: "sections", Icon: FolderOpen },
+      { key: "columns", Icon: Columns2 },
+      { key: "review", Icon: CheckCircle },
     ];
 
   const canProceed = () => {
@@ -1202,40 +1218,53 @@ function TabModal({ tab, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-      <div className="relative flex w-full max-w-2xl max-h-[85vh] flex-col gap-0 overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-slate-200">
+      <div className="relative flex w-full max-w-2xl max-h-[85vh] flex-col gap-0 overflow-hidden rounded-[28px] sm:rounded-lg bg-white shadow-2xl ring-1 ring-slate-200">
         <div className="flex-1 overflow-y-auto inventory-modal-scrollbar">
           {/* Wizard Stepper */}
           {isNewTab && (
-            <div className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50/95 px-6 py-5 sm:px-8 backdrop-blur-sm">
-              <div className="flex w-full items-center gap-3 sm:gap-5">
-                {STEPS.map((step, idx) => (
-                  <div key={step.num} className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-1 sm:gap-2">
-                    <div
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${wizardStep > step.num
-                          ? "bg-[#4a1111] text-white"
-                          : wizardStep === step.num
-                            ? "bg-[#4a1111] text-white"
-                            : "bg-slate-200 text-slate-500"
-                        }`}
-                    >
-                      {wizardStep > step.num ? <Check className="h-4 w-4" /> : step.num}
+            <div className="sticky top-0 z-30 shrink-0 border-b border-slate-200 bg-slate-50 px-6 pt-5 pb-4 sm:px-8">
+              <div className="flex items-center justify-center">
+                {STEPS.map((step, idx) => {
+                  const stepNum = idx + 1;
+                  const isActive = wizardStep === stepNum;
+                  const isCompleted = wizardStep > stepNum;
+                  const { Icon } = stepIcons[idx];
+
+                  return (
+                    <div key={stepIcons[idx].key} className="flex shrink-0 items-center">
+                      <div className="flex w-[88px] flex-col items-center gap-1.5 text-center">
+                        <div
+                          className={cn(
+                            "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors",
+                            isActive && "border-[#4a1111] bg-[#4a1111] text-white",
+                            isCompleted && "border-[#4a1111] bg-[#4a1111] text-white",
+                            !isActive && !isCompleted && "border-slate-200 bg-white text-slate-400"
+                          )}
+                        >
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <span
+                          className={cn(
+                            "w-full whitespace-nowrap text-[11px] font-medium leading-none tracking-wide text-center",
+                            isActive && "text-[#4a1111]",
+                            isCompleted && "text-[#4a1111]/60",
+                            !isActive && !isCompleted && "text-slate-400"
+                          )}
+                        >
+                          {step.label}
+                        </span>
+                      </div>
+                      {idx < STEPS.length - 1 && (
+                        <div
+                          className={cn(
+                            "mx-2 mb-5 h-0.5 w-8 rounded-full transition-colors",
+                            wizardStep > stepNum ? "bg-[#4a1111]" : "bg-slate-200"
+                          )}
+                        />
+                      )}
                     </div>
-                    <span
-                      className={`hidden whitespace-nowrap text-center text-sm font-medium sm:block ${wizardStep === step.num ? "text-slate-900" : "text-slate-500"
-                        }`}
-                    >
-                      {step.label}
-                    </span>
-                    <div
-                      className={`hidden h-0.5 w-8 sm:block ${idx < STEPS.length - 1
-                        ? wizardStep > step.num
-                          ? "bg-[#4a1111]"
-                          : "bg-slate-200"
-                        : "opacity-0"
-                        }`}
-                    />
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1531,16 +1560,28 @@ function TabModal({ tab, onClose, onSave }) {
                 >
                   Cancel
                 </Button>
-                {isNewTab && wizardStep < STEPS.length ? (
-                  <Button
-                    type="button"
-                    onClick={handleNext}
-                    disabled={!canProceed()}
-                    size="sm"
-                    className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
-                  >
-                    Continue
-                  </Button>
+                {isNewTab ? (
+                  wizardStep > 1 && wizardStep < STEPS.length ? (
+                    <Button
+                      type="button"
+                      onClick={handleNext}
+                      disabled={!canProceed()}
+                      size="sm"
+                      className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
+                    >
+                      Continue
+                    </Button>
+                  ) : wizardStep === STEPS.length ? (
+                    <Button
+                      type="button"
+                      onClick={requestSave}
+                      disabled={isSaveDisabled}
+                      size="sm"
+                      className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
+                    >
+                      Save Tab
+                    </Button>
+                  ) : null
                 ) : (
                   <Button
                     type="button"
@@ -2378,7 +2419,7 @@ export default function Inventory() {
 
         {showSettingsModal && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-            <div className="relative flex w-full max-w-2xl max-h-[85vh] flex-col gap-0 overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-slate-200">
+            <div className="relative flex w-full max-w-2xl max-h-[85vh] flex-col gap-0 overflow-hidden rounded-[28px] sm:rounded-lg bg-white shadow-2xl ring-1 ring-slate-200">
               <div className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
                 <h3 className="text-lg font-semibold text-slate-900">File Export Settings</h3>
                 <p className="mt-1 text-sm text-slate-500">Set how long export files should remain available before cleanup runs.</p>

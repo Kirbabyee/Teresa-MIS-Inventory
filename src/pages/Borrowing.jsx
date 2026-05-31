@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ChevronDown, ChevronLeft, ChevronRight, Download, History, Search, X } from "lucide-react";
+import { CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Download, History, Minus, Package, Plus, Search, User, X } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
@@ -56,6 +56,7 @@ import {
   markOverdueBorrowingRecords,
   returnBorrowingRecord,
 } from "@/lib/borrowingApi";
+import { cn } from "@/lib/utils";
 
 const initialForm = {
   name: "",
@@ -420,7 +421,6 @@ export default function Borrowing() {
   const { tabs, loading: inventoryLoading, error: inventoryError } = useInventoryCatalog();
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [form, setForm] = useState(initialForm);
   const [selectedTabId, setSelectedTabId] = useState("");
@@ -474,6 +474,18 @@ export default function Borrowing() {
   const [inspectedByName, setInspectedByName] = useState("");
   const [selectedExportColumns, setSelectedExportColumns] = useState([]);
   const [showColumnOptions, setShowColumnOptions] = useState(true);
+
+  // ── 3-Step Wizard State ──────────────────────────────────────────────────
+  const [activeStep, setActiveStep] = useState(1);
+  const [borrowCart, setBorrowCart] = useState([]);
+  const [allItems, setAllItems] = useState([]);
+  const [allItemsLoading, setAllItemsLoading] = useState(true);
+  const [globalFetchInit, setGlobalFetchInit] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [filterTabId, setFilterTabId] = useState("");
+  const [filterSectionId, setFilterSectionId] = useState("");
+  const [qtyDialogItem, setQtyDialogItem] = useState(null);
+  const [qtyDialogValue, setQtyDialogValue] = useState(1);
 
   const selectedTab = useMemo(
     () => tabs.find((tab) => String(tab.id) === String(selectedTabId)) || null,
@@ -698,6 +710,71 @@ export default function Borrowing() {
     };
   }, [selectedSectionId, selectedTabId, tabTableNames]);
 
+  // ── Pre-fetch ALL inventory items for Step 2 global search ─────────────
+  useEffect(() => {
+    if (!showModal || globalFetchInit) return;
+
+    let cancelled = false;
+
+    const loadAllItems = async () => {
+      setAllItemsLoading(true);
+
+      try {
+        const sectionQueries = [];
+
+        tabs.forEach((tab) => {
+          const tableName = tabTableNames[tab.id] || null;
+          (tab.sections || []).forEach((section) => {
+            sectionQueries.push(
+              fetchInventoryItems(section.id, tableName).then((items) =>
+                (items || []).map((item) => ({
+                  ...item,
+                  tabId: tab.id,
+                  tabName: tab.name,
+                  sectionId: section.id,
+                  sectionName: section.name,
+                  tableName: tableName || "",
+                }))
+              )
+            );
+          });
+        });
+
+        const results = await Promise.allSettled(sectionQueries);
+        const flat = [];
+
+        results.forEach((result) => {
+          if (result.status === "fulfilled") {
+            flat.push(...result.value);
+          }
+        });
+
+        if (!cancelled) {
+          setAllItems(flat);
+          setGlobalFetchInit(true);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAllItems([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setAllItemsLoading(false);
+        }
+      }
+    };
+
+    if (tabs.length > 0) {
+      loadAllItems();
+    } else {
+      setAllItemsLoading(false);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showModal, globalFetchInit, tabs, tabTableNames]);
+
   const resetBorrowForm = () => {
     setForm(initialForm);
     setSelectedTabId("");
@@ -718,6 +795,16 @@ export default function Borrowing() {
     setFormError("");
     setFormErrors({});
     setMergeWithLastBorrow(false);
+    // Reset wizard
+    setActiveStep(1);
+    setBorrowCart([]);
+    setGlobalFetchInit(false);
+    setAllItems([]);
+    setGlobalSearch("");
+    setFilterTabId("");
+    setFilterSectionId("");
+    setQtyDialogItem(null);
+    setQtyDialogValue(1);
   };
 
   const closeBorrowModal = () => {
@@ -1223,49 +1310,50 @@ export default function Borrowing() {
 
     setSavingBorrow(true);
     try {
+      // Split cart into inventory items and custom items
+      const inventoryCartItems = borrowCart.filter((c) => !c.isCustom);
+      const customCartItems = borrowCart.filter((c) => c.isCustom);
+
       const borrowingItems = [
-        ...selectedItems.map((item) => {
-          const details = (item.originalDetails || getItemDetails(item)).filter(
+        ...inventoryCartItems.map((item) => {
+          const originalDetails = item.originalDetails || getItemDetails(item);
+          const details = originalDetails.filter(
             (detail) => detail.key !== "quantity"
           );
           details.unshift({
             key: "quantity",
             label: "Quantity",
-            value: String(item.selectedQuantity || 1),
+            value: String(item.quantity || 1),
           });
 
           return {
             inventoryItemId: item.id,
-            inventoryTabId: item.inventoryTabId || null,
-            inventoryTabName: item.inventoryTabName || "",
-            inventorySectionId: item.inventorySectionId || null,
-            inventorySectionName: item.inventorySectionName || "",
-            inventoryTableName: item.inventoryTableName || "",
+            inventoryTabId: item.tabId || null,
+            inventoryTabName: item.tabName || "",
+            inventorySectionId: item.sectionId || null,
+            inventorySectionName: item.sectionName || "",
+            inventoryTableName: item.tableName || "",
             label: getItemLabel(item),
             details,
-            quantity: item.selectedQuantity || 1,
+            quantity: item.quantity || 1,
           };
         }),
-        ...customItems.map((item) => {
-          const quantity = Number(
-            item.details?.find((detail) => detail.key === "quantity")?.value || 1
-          );
-          return {
-            inventoryItemId: null,
-            inventoryTabId: null,
-            inventoryTabName: "",
-            inventorySectionId: null,
-            inventorySectionName: "",
-            inventoryTableName: "",
-            label: item.label,
-            details: item.details,
-            quantity,
-          };
-        }),
+        ...customCartItems.map((item) => ({
+          inventoryItemId: null,
+          inventoryTabId: null,
+          inventoryTabName: "",
+          inventorySectionId: null,
+          inventorySectionName: "",
+          inventoryTableName: "",
+          label: item.label,
+          details: item.details,
+          quantity: item.quantity || 1,
+        })),
       ];
-      const inventoryQuantityUpdates = selectedItems.map((item) => {
+
+      const inventoryQuantityUpdates = inventoryCartItems.map((item) => {
         const currentQuantity = Number(item.quantity ?? item.data?.quantity ?? 0);
-        const borrowedQuantity = Number(item.selectedQuantity || 1);
+        const borrowedQuantity = Number(item.quantity || 1);
         const remainingQuantity = Math.max(0, currentQuantity - borrowedQuantity);
 
         return {
@@ -1292,8 +1380,8 @@ export default function Borrowing() {
         inventoryQuantityUpdates.map(({ item, remainingQuantity }) =>
           updateInventoryItemQuantity({
             id: item.id,
-            sectionId: item.inventorySectionId,
-            tableName: item.inventoryTableName || null,
+            sectionId: item.sectionId,
+            tableName: item.tableName || null,
             quantity: remainingQuantity,
           })
         )
@@ -1330,7 +1418,7 @@ export default function Borrowing() {
           const update = inventoryQuantityUpdates.find(
             ({ item: updatedItem }) =>
               String(updatedItem.id) === String(item.id) &&
-              String(updatedItem.inventorySectionId || "") === String(item.section_id || "")
+              String(updatedItem.sectionId || "") === String(item.section_id || "")
           );
 
           return update ? { ...item, quantity: update.remainingQuantity } : item;
@@ -1510,6 +1598,9 @@ export default function Borrowing() {
               type="button"
               onClick={() => {
                 setShowModal(true);
+                setActiveStep(1);
+                setBorrowCart([]);
+                setGlobalSearch("");
                 setFormErrors({});
                 setFormError("");
               }}
@@ -2207,513 +2298,851 @@ export default function Borrowing() {
         </Dialog>
       )}
 
-      {showModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-          <div className="flex h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-white p-6 shadow-md">
-            <h2 className="text-xl font-bold mb-5 text-[#4a1111]">
-              BORROWER'S INFORMATION
-            </h2>
+      {/* ═══════════════════════════════════════════════════════════════════
+          3-STEP BORROW WIZARD MODAL
+          ═══════════════════════════════════════════════════════════════════ */}
+      {showModal && (() => {
+        // ── Step 1 gate: all 3 borrower fields must pass validation ──────
+        const step1Valid =
+          !validateField("name", form.name) &&
+          !validateField("studentId", form.studentId) &&
+          !validateField("role", form.role);
 
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-[#4a1111]">NAME</label>
-                <input
-                  name="name"
-                  placeholder="Enter full name"
-                  value={form.name}
-                  onChange={handleChange}
-                  aria-invalid={!!formErrors.name}
-                  aria-describedby={formErrors.name ? "name-error" : undefined}
-                  className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
-                    formErrors.name ? "border-rose-300 focus:ring-rose-200" : "focus:ring-[#4a1111]"
-                  }`}
-                />
-                {formErrors.name ? (
-                  <p id="name-error" className="text-xs text-rose-600">
-                    {formErrors.name}
-                  </p>
-                ) : null}
-              </div>
+        // ── Step 2 search term ───────────────────────────────────────────
+        const searchLower = globalSearch.toLowerCase().trim();
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-[#4a1111]">ID NUMBER</label>
-                <input
-                  name="studentId"
-                  placeholder="Enter ID number"
-                  value={form.studentId}
-                  onChange={handleChange}
-                  aria-invalid={!!formErrors.studentId}
-                  aria-describedby={formErrors.studentId ? "studentId-error" : undefined}
-                  className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
-                    formErrors.studentId ? "border-rose-300 focus:ring-rose-200" : "focus:ring-[#4a1111]"
-                  }`}
-                />
-                {formErrors.studentId ? (
-                  <p id="studentId-error" className="text-xs text-rose-600">
-                    {formErrors.studentId}
-                  </p>
-                ) : null}
-              </div>
+        // ── Items already in cart (by cartId lookup) ─────────────────────
+        const cartIdSet = new Set(borrowCart.map((c) => c.cartId));
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-[#4a1111]">ROLE</label>
-                <select
-                  name="role"
-                  value={form.role}
-                  onChange={handleChange}
-                  aria-invalid={!!formErrors.role}
-                  aria-describedby={formErrors.role ? "role-error" : undefined}
-                  className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
-                    formErrors.role ? "border-rose-300 focus:ring-rose-200" : "focus:ring-[#4a1111]"
-                  }`}
-                >
-                  <option value="">Select role</option>
-                  <option value="Student">Student</option>
-                  <option value="Teacher">Teacher</option>
-                </select>
-                {formErrors.role ? (
-                  <p id="role-error" className="text-xs text-rose-600">
-                    {formErrors.role}
-                  </p>
-                ) : null}
-              </div>
-            </div>
+        // ── Helpers ──────────────────────────────────────────────────────
+        const addToCart = (item, isCustom = false, forcedQuantity = null) => {
+          const cartId = isCustom
+            ? `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+            : `inv-${item.tabId}-${item.sectionId}-${item.id}`;
 
-            <div className="mt-6 h-[650px] overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-[#4a1111]">
-                Choose item to borrow
-              </h3>
+          if (borrowCart.some((c) => c.cartId === cartId)) return;
 
-              {inventoryError ? (
-                <p className="mt-3 text-sm text-rose-600">{inventoryError}</p>
-              ) : (
-                <>
-                  <div className="mt-4 space-y-3">
-                    <select
-                      value={selectedTabId}
-                      onChange={(event) => {
-                        setSelectedTabId(event.target.value);
-                        setSelectedSectionId("");
-                        setInventoryItems([]);
-                        setFormError("");
-                      }}
-                      disabled={inventoryLoading}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                    >
-                      <option value="">{inventoryLoading ? "Loading inventory..." : "Select inventory tab"}</option>
-                      {tabs.map((tab) => (
-                        <option key={tab.id} value={tab.id}>
-                          {tab.name}
-                        </option>
-                      ))}
-                    </select>
+          const maxQuantity = isCustom ? 999 : Number(item.quantity ?? item.data?.quantity ?? 1);
+          const initialQty = forcedQuantity != null ? Math.max(1, Math.min(Number(forcedQuantity), maxQuantity)) : 1;
+          const cartItem = {
+            ...item,
+            cartId,
+            isCustom,
+            quantity: initialQty,
+            maxQuantity,
+            tabName: item.tabName || "",
+            sectionName: item.sectionName || "",
+            tabId: item.tabId || null,
+            sectionId: item.sectionId || null,
+            tableName: item.tableName || "",
+            originalDetails: getItemDetails(item),
+          };
 
-                    <select
-                      value={selectedSectionId}
-                      onChange={(event) => {
-                        setSelectedSectionId(event.target.value);
-                        setFormError("");
-                        setFormErrors((current) => ({ ...current, items: "" }));
-                      }}
-                      disabled={!selectedTabId}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                    >
-                      <option value="">Select section</option>
-                      {sections.map((section) => (
-                        <option key={section.id} value={section.id}>
-                          {section.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {formErrors.items ? (
-                    <p className="mt-2 text-xs text-rose-600">{formErrors.items}</p>
-                  ) : null}
-                </>
-              )}
+          setBorrowCart((prev) => [...prev, cartItem]);
+          setFormErrors((prev) => ({ ...prev, items: "" }));
+          setFormError("");
+        };
 
-              <div className="mt-4 rounded-lg border border-slate-200 bg-white overflow-auto h-[35vh]">
-                {!selectedSectionId ? (
-                  <p className="px-4 py-8 text-center text-sm text-slate-400">
-                    Select an inventory tab and section to show items.
-                  </p>
-                ) : itemsLoading ? (
-                  <p className="px-4 py-8 text-center text-sm text-slate-400">
-                    Loading items...
-                  </p>
-                ) : itemsError ? (
-                  <p className="px-4 py-8 text-center text-sm text-rose-600">{itemsError}</p>
-                ) : inventoryItems.length === 0 ? (
-                  <p className="px-4 py-8 text-center text-sm text-slate-400">
-                    No items found in this section.
-                  </p>
-                ) : (
-                  <div className="divide-y divide-slate-100">
-                    {inventoryItems.map((item) => {
-                      const selectionKey = getInventorySelectionKey({
-                        inventoryTabId: selectedTab?.id,
-                        inventorySectionId: selectedSection?.id,
-                        id: item.id,
-                      });
-                      const checked = selectedItemIds.includes(selectionKey);
-                      const details = getItemDetails(item);
-                      const maxQuantity = Number(item.quantity ?? item.data?.quantity ?? 1);
-                      const selectedQuantity = selectedItemQuantities[selectionKey] ?? 1;
+        const removeFromCart = (cartId) => {
+          setBorrowCart((prev) => prev.filter((c) => c.cartId !== cartId));
+        };
 
-                      return (
-                        <label
-                          key={selectionKey}
-                          className="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-slate-50"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleItem(item)}
-                            className="mt-1"
-                          />
-                          <span className="flex-1">
-                            <span className="block text-sm font-medium text-slate-800">
-                              {getItemLabel(item)}
-                            </span>
-                            <span className="block text-xs text-slate-400">
-                              {selectedTab?.name} / {selectedSection?.name}
-                            </span>
-                            {details.length > 0 ? (
-                              <span className="mt-2 flex flex-wrap gap-1.5">
-                                {details.map((detail) => (
-                                  <span
-                                    key={`${item.id}-${detail.key}`}
-                                    className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600"
-                                  >
-                                    <span className="font-semibold text-slate-700">
-                                      {detail.label}:
-                                    </span>{" "}
-                                    {detail.value}
-                                  </span>
-                                ))}
-                              </span>
-                            ) : null}
-                            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                              <span>Available: {maxQuantity}</span>
-                              {checked && (
-                                <div className="flex items-center gap-2">
-                                  <span className="font-semibold text-slate-700">Qty</span>
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    max={maxQuantity}
-                                    value={selectedQuantity}
-                                    onChange={(e) => {
-                                      const value = Number(e.target.value);
-                                      if (Number.isNaN(value)) return;
-                                      const nextQuantity = Math.max(1, Math.min(maxQuantity, value));
-                                      setSelectedItemQuantities((current) => ({
-                                        ...current,
-                                        [selectionKey]: nextQuantity,
-                                      }));
-                                      setSelectedInventoryItems((current) =>
-                                        current.map((selectedItem) =>
-                                          selectedItem.selectionKey === selectionKey
-                                            ? { ...selectedItem, selectedQuantity: nextQuantity }
-                                            : selectedItem
-                                        )
-                                      );
-                                    }}
-                                    className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+        const updateCartQuantity = (cartId, newQty) => {
+          setBorrowCart((prev) =>
+            prev.map((c) =>
+              c.cartId === cartId
+                ? { ...c, quantity: Math.max(1, Math.min(c.maxQuantity, newQty)) }
+                : c
+            )
+          );
+        };
 
-              <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-white p-4">
-                <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-[#4a1111] mb-3">
-                  Or Add Custom Item (Outside Inventory)
-                </h4>
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Item Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. External Hard Drive"
-                      value={customItemForm.name}
-                      onChange={(e) => setCustomItemForm({ ...customItemForm, name: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                    />
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Brand <span className="text-slate-400 normal-case">(optional)</span></label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Samsung"
-                        value={customItemForm.brand}
-                        onChange={(e) => setCustomItemForm({ ...customItemForm, brand: e.target.value })}
-                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Quantity</label>
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="e.g. 1"
-                        value={customItemForm.quantity}
-                        onChange={(e) => setCustomItemForm({ ...customItemForm, quantity: e.target.value })}
-                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Condition</label>
-                      <select
-                        value={customItemForm.condition}
-                        onChange={(e) => setCustomItemForm({ ...customItemForm, condition: e.target.value })}
-                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                      >
-                        <option value="Working">Working</option>
-                        <option value="Defective">Defective</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Remarks <span className="text-slate-400 normal-case">(optional)</span></label>
-                      <input
-                        type="text"
-                        placeholder="Any notes..."
-                        value={customItemForm.remarks}
-                        onChange={(e) => setCustomItemForm({ ...customItemForm, remarks: e.target.value })}
-                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!customItemForm.name.trim()) return;
+        const addCustomItemToCart = () => {
+          const name = customItemForm.name.trim();
+          if (!name) return;
+          const quantityValue = customItemForm.quantity.trim();
+          if (!quantityValue || !/^\d+$/.test(quantityValue) || Number(quantityValue) <= 0) {
+            setFormError("Custom item quantity is required and must be a number.");
+            return;
+          }
 
-                    const quantityValue = customItemForm.quantity.trim();
-                    if (!quantityValue || !/^\d+$/.test(quantityValue) || Number(quantityValue) <= 0) {
-                      setFormError("Custom item quantity is required and must be a number.");
-                      return;
-                    }
+          const details = [];
+          if (customItemForm.brand.trim()) {
+            details.push({ key: "brand", label: "Brand", value: customItemForm.brand.trim() });
+          }
+          details.push({ key: "quantity", label: "Quantity", value: quantityValue });
+          details.push({ key: "condition", label: "Condition", value: customItemForm.condition });
+          if (customItemForm.remarks.trim()) {
+            details.push({ key: "remarks", label: "Remarks", value: customItemForm.remarks.trim() });
+          }
 
-                    const details = [];
-                    if (customItemForm.brand.trim()) {
-                      details.push({ key: "brand", label: "Brand", value: customItemForm.brand.trim() });
-                    }
-                    details.push({ key: "quantity", label: "Quantity", value: quantityValue });
-                    details.push({ key: "condition", label: "Condition", value: customItemForm.condition });
-                    if (customItemForm.remarks.trim()) {
-                      details.push({ key: "remarks", label: "Remarks", value: customItemForm.remarks.trim() });
-                    }
+          const cartId = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          setBorrowCart((prev) => [
+            ...prev,
+            {
+              id: cartId,
+              label: name,
+              details,
+              cartId,
+              isCustom: true,
+              quantity: Number(quantityValue),
+              maxQuantity: 999,
+              tabName: "",
+              sectionName: "",
+              tabId: null,
+              sectionId: null,
+              tableName: "",
+            },
+          ]);
+          setCustomItemForm({ name: "", brand: "", quantity: "", condition: "Working", remarks: "" });
+          setFormErrors((prev) => ({ ...prev, items: "" }));
+          setFormError("");
+        };
 
-                    const newItem = {
-                      id: `custom-${Date.now()}`,
-                      label: customItemForm.name.trim(),
-                      details,
-                      inventoryItemId: null,
-                      inventoryTabId: null,
-                      inventorySectionId: null,
-                      inventoryTableName: "",
-                    };
-                    setCustomItems([...customItems, newItem]);
-                    setCustomItemForm({
-                      name: "",
-                      brand: "",
-                      quantity: "",
-                      condition: "Working",
-                      remarks: "",
-                    });
-                    setFormErrors((current) => ({ ...current, items: "" }));
-                    setFormError("");
-                  }}
-                  className="mt-4 w-full px-4 py-2 bg-[#4a1111] text-white text-sm font-semibold rounded-lg hover:opacity-90 transition"
-                >
-                  + Add Custom Item
-                </button>
-              </div>
+        const canAddCustom =
+          customItemForm.name.trim() &&
+          customItemForm.quantity.trim() &&
+          /^\d+$/.test(customItemForm.quantity.trim()) &&
+          Number(customItemForm.quantity.trim()) > 0;
 
-              {(selectedItems.length > 0 || customItems.length > 0) && (
-                <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                  <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-800 mb-3">
-                    Selected Items ({selectedItems.length + customItems.length})
-                  </h4>
-                  <div className="space-y-2">
-                    {selectedItems.map((item) => (
-                      <div key={item.selectionKey || item.id} className="flex justify-between items-center gap-3 rounded-lg bg-white px-3 py-2 shadow-sm">
-                        <span className="text-sm">
-                          <span className="font-medium text-slate-800">{getItemLabel(item)}</span>
-                          {item.selectedQuantity ? <span className="text-slate-500"> (Qty: {item.selectedQuantity})</span> : ""}
-                          <span className="block text-xs text-slate-400">
-                            {item.inventoryTabName || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / {item.inventorySectionName || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}
-                          </span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => toggleItem(item)}
-                          className="shrink-0 rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 transition"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                    {customItems.map((item) => (
-                      <div key={item.id} className="flex justify-between items-center gap-3 rounded-lg bg-white px-3 py-2 shadow-sm">
-                        <span className="text-sm">
-                          <span className="font-medium text-slate-800">{item.label}</span>
-                          {item.details && item.details.length > 0 && (
-                            <span className="ml-2 inline-flex flex-wrap gap-1">
-                              {item.details.map((detail) => (
-                                <span
-                                  key={`${item.id}-${detail.key}`}
-                                  className="rounded-full border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500"
-                                >
-                                  {detail.label}: {detail.value}
-                                </span>
-                              ))}
-                            </span>
+        // ── Filtered items: cascading tab → section → text search ───────
+        const filterTab = filterTabId ? tabs.find((t) => String(t.id) === String(filterTabId)) : null;
+        const filterSections = filterTab?.sections || [];
+
+        const filteredItems = allItems.filter((item) => {
+          // Tab filter
+          if (filterTabId && String(item.tabId) !== String(filterTabId)) return false;
+          // Section filter
+          if (filterSectionId && String(item.sectionId) !== String(filterSectionId)) return false;
+          // Free-text search (secondary)
+          if (searchLower) {
+            const haystack = [
+              getItemLabel(item),
+              item.tabName || "",
+              item.sectionName || "",
+              item.brand || "",
+              item.type || "",
+              item.description || "",
+              item.computer_number ?? item.computerNumber ?? "",
+            ]
+              .join(" ")
+              .toLowerCase();
+            return haystack.includes(searchLower);
+          }
+          return true;
+        });
+
+        // ── Stepper icon map ─────────────────────────────────────────────
+        const stepIcons = [
+          { key: "identity", Icon: User },
+          { key: "select", Icon: Package },
+          { key: "review", Icon: CheckCircle },
+        ];
+
+        return (
+        <Dialog open={showModal} onOpenChange={(open) => !open && closeBorrowModal()}>
+          <DialogContent
+            className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
+            onPointerDownOutside={(e) => e.preventDefault()}
+          >
+            {/* ── Stepper Header ──────────────────────────────────────── */}
+            <DialogHeader className="shrink-0 border-b border-slate-200 bg-slate-50 px-6 pt-5 pb-4 sm:px-8">
+              <div className="flex items-center justify-center">
+                {["Identity", "Select Items", "Review"].map((label, idx) => {
+                  const stepNum = idx + 1;
+                  const isActive = activeStep === stepNum;
+                  const isCompleted = activeStep > stepNum;
+                  const { Icon } = stepIcons[idx];
+
+                  return (
+                    <div key={stepIcons[idx].key} className="flex items-center">
+                      <div className="flex flex-col items-center gap-1.5">
+                        <div
+                          className={cn(
+                            "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors",
+                            isActive && "border-[#4a1111] bg-[#4a1111] text-white",
+                            isCompleted && "border-[#4a1111] bg-[#4a1111] text-white",
+                            !isActive && !isCompleted && "border-slate-200 bg-white text-slate-400"
                           )}
-                          <span className="block text-xs text-slate-400">Custom Item</span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setCustomItems(customItems.filter((i) => i.id !== item.id))}
-                          className="shrink-0 rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 transition"
                         >
-                          Remove
-                        </button>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <span
+                          className={cn(
+                            "text-[11px] font-medium tracking-wide",
+                            isActive && "text-[#4a1111]",
+                            isCompleted && "text-[#4a1111]/60",
+                            !isActive && !isCompleted && "text-slate-400"
+                          )}
+                        >
+                          {label}
+                        </span>
                       </div>
-                    ))}
+                      {idx < 2 && (
+                        <div
+                          className={cn(
+                            "mx-4 mb-5 h-0.5 w-16 rounded-full transition-colors",
+                            activeStep > stepNum ? "bg-[#4a1111]" : "bg-slate-200"
+                          )}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </DialogHeader>
+
+            {/* ── Scrollable Body ──────────────────────────────────────── */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-8">
+
+              {/* ═══ STEP 1: Borrower Identity ═══ */}
+              {activeStep === 1 && (
+                <div className="space-y-4">
+                  <div>
+                    <DialogTitle className="text-lg font-semibold text-slate-900">
+                      Borrower Information
+                    </DialogTitle>
+                    <DialogDescription className="mt-1 text-sm">
+                      Enter the borrower's identity details to begin.
+                    </DialogDescription>
                   </div>
+
+                  <div>
+                    <Label htmlFor="borrow-name" className="mb-1 block text-sm font-medium text-slate-700">
+                      Full Name <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="borrow-name"
+                      name="name"
+                      placeholder="Enter full name"
+                      value={form.name}
+                      onChange={handleChange}
+                      autoFocus
+                      aria-invalid={!!formErrors.name}
+                      aria-describedby={formErrors.name ? "name-error" : undefined}
+                      className={cn(
+                        "h-10",
+                        formErrors.name && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive"
+                      )}
+                    />
+                    {formErrors.name && (
+                      <p id="name-error" className="mt-1 text-xs font-medium text-destructive">{formErrors.name}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label htmlFor="borrow-studentId" className="mb-1 block text-sm font-medium text-slate-700">
+                      ID Number <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="borrow-studentId"
+                      name="studentId"
+                      placeholder="Enter ID number"
+                      value={form.studentId}
+                      onChange={handleChange}
+                      aria-invalid={!!formErrors.studentId}
+                      aria-describedby={formErrors.studentId ? "studentId-error" : undefined}
+                      className={cn(
+                        "h-10",
+                        formErrors.studentId && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive"
+                      )}
+                    />
+                    {formErrors.studentId && (
+                      <p id="studentId-error" className="mt-1 text-xs font-medium text-destructive">{formErrors.studentId}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label htmlFor="borrow-role" className="mb-1 block text-sm font-medium text-slate-700">
+                      Role <span className="text-destructive">*</span>
+                    </Label>
+                    <Select name="role" value={form.role} onValueChange={(val) => {
+                      setForm({ ...form, role: val });
+                      setFormErrors((prev) => ({ ...prev, role: validateField("role", val) }));
+                      setFormError("");
+                    }}>
+                      <SelectTrigger id="borrow-role" className="h-10">
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Student">Student</SelectItem>
+                        <SelectItem value="Teacher">Teacher</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {formErrors.role && (
+                      <p id="role-error" className="mt-1 text-xs font-medium text-destructive">{formErrors.role}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ═══ STEP 2: Select Items ═══ */}
+              {activeStep === 2 && (
+                <div className="space-y-4">
+                  <div>
+                    <DialogTitle className="text-lg font-semibold text-slate-900">Select Items</DialogTitle>
+                    <DialogDescription className="mt-1 text-sm">
+                      Browse by location, pick items, and manage your cart.
+                    </DialogDescription>
+                  </div>
+
+                  {/* ── Cascading Filters: Inventory → Section ──────────────── */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="mb-1 block text-sm font-medium text-slate-700">Inventory</Label>
+                      <Select value={filterTabId || "__all__"} onValueChange={(val) => { setFilterTabId(val === "__all__" ? "" : val); setFilterSectionId(""); }}>
+                        <SelectTrigger className="h-10"><SelectValue placeholder="All Inventories" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">All Inventories</SelectItem>
+                          {tabs.map((tab) => (
+                            <SelectItem key={tab.id} value={String(tab.id)}>{tab.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="mb-1 block text-sm font-medium text-slate-700">Section</Label>
+                      <Select value={filterSectionId || "__all__"} onValueChange={(val) => setFilterSectionId(val === "__all__" ? "" : val)} disabled={!filterTabId}>
+                        <SelectTrigger className="h-10"><SelectValue placeholder={filterTabId ? "All Sections" : "Select inventory first"} /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">All Sections</SelectItem>
+                          {filterSections.map((section) => (
+                            <SelectItem key={section.id} value={String(section.id)}>{section.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* ── Secondary free-text search ─────────────────────────── */}
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      type="text"
+                      placeholder="Search within selection..."
+                      value={globalSearch}
+                      onChange={(e) => setGlobalSearch(e.target.value)}
+                      autoFocus
+                      className="h-9 pl-9 pr-9 text-sm"
+                    />
+                    {globalSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setGlobalSearch("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* ── Compact Scrollable Item List ────────────────────────── */}
+                  <div className="rounded-lg border border-slate-200 overflow-hidden">
+                    <div className="grid grid-cols-[1fr_90px_80px] gap-2 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      <span>Item</span>
+                      <span className="text-center">In Stock</span>
+                      <span className="text-right">Action</span>
+                    </div>
+                    {allItemsLoading ? (
+                      <div className="flex items-center justify-center py-10">
+                        <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-[#4a1111]" />
+                        <span className="ml-2 text-sm text-slate-500">Loading inventory...</span>
+                      </div>
+                    ) : filteredItems.length === 0 ? (
+                      <p className="py-8 text-center text-sm text-slate-400">
+                        {globalSearch ? "No items match your search." : "No inventory items available."}
+                      </p>
+                    ) : (
+                      <div className="max-h-[250px] overflow-y-auto">
+                        {filteredItems.map((item) => {
+                          const cartId = `inv-${item.tabId}-${item.sectionId}-${item.id}`;
+                          const alreadyInCart = cartIdSet.has(cartId);
+                          const stockCount = Number(item.quantity ?? item.data?.quantity ?? 0);
+
+                          return (
+                            <div
+                              key={cartId}
+                              className="grid grid-cols-[1fr_90px_80px] gap-2 items-center border-b border-slate-100 px-3 py-2.5 hover:bg-slate-50 transition-colors"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-slate-800">{getItemLabel(item)}</p>
+                                <p className="truncate text-[11px] text-slate-400">{item.tabName} • {item.sectionName}</p>
+                              </div>
+                              <div className="text-center">
+                                <span className={cn(
+                                  "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                                  stockCount > 0
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                    : "bg-rose-50 text-rose-700 border border-rose-200"
+                                )}>
+                                  {stockCount > 0 ? stockCount : "Out"}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <Button
+                                  size="sm"
+                                  variant={alreadyInCart ? "secondary" : "default"}
+                                  onClick={() => {
+                                    if (!alreadyInCart && stockCount > 0) {
+                                      setQtyDialogItem(item);
+                                      setQtyDialogValue(1);
+                                    }
+                                  }}
+                                  disabled={alreadyInCart || stockCount <= 0}
+                                  className={cn(
+                                    "h-7 px-2.5 text-[11px] font-semibold",
+                                    !alreadyInCart && stockCount > 0 && "bg-[#4a1111] hover:bg-[#5a1717]"
+                                  )}
+                                >
+                                  {alreadyInCart ? "Added" : "+ Add"}
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Quantity Dialog (nested) ───────────────────────────── */}
+                  {qtyDialogItem && (
+                    <Dialog open={!!qtyDialogItem} onOpenChange={(open) => !open && setQtyDialogItem(null)}>
+                      <DialogContent
+                        className="max-w-sm rounded-2xl p-6"
+                        onPointerDownOutside={(e) => e.preventDefault()}
+                      >
+                        <DialogHeader>
+                          <DialogTitle className="text-base font-semibold text-slate-900">How many to borrow?</DialogTitle>
+                          <DialogDescription className="mt-1 text-sm text-slate-500">
+                            {getItemLabel(qtyDialogItem)}
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="mt-4 flex flex-col items-center gap-3">
+                          <span className="text-xs text-slate-400">Available: {Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 0)}</span>
+                          <div className="flex items-center gap-3">
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className="h-9 w-9 rounded-full"
+                              onClick={() => setQtyDialogValue((v) => Math.max(1, v - 1))}
+                              disabled={qtyDialogValue <= 1}
+                            >
+                              <Minus className="h-4 w-4" />
+                            </Button>
+                            <Input
+                              type="number"
+                              min="1"
+                              max={Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1)}
+                              value={qtyDialogValue}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (!Number.isNaN(v)) {
+                                  const max = Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1);
+                                  setQtyDialogValue(Math.max(1, Math.min(v, max)));
+                                }
+                              }}
+                              className="h-10 w-20 text-center text-lg font-semibold"
+                            />
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className="h-9 w-9 rounded-full"
+                              onClick={() => {
+                                const max = Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1);
+                                setQtyDialogValue((v) => Math.min(max, v + 1));
+                              }}
+                              disabled={qtyDialogValue >= Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1)}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        <DialogFooter className="mt-5 gap-2 sm:gap-3">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setQtyDialogItem(null)}
+                            className="rounded-lg"
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => {
+                              addToCart(qtyDialogItem, false, qtyDialogValue);
+                              setQtyDialogItem(null);
+                            }}
+                            className="rounded-lg bg-[#4a1111] px-5 text-white hover:bg-[#3f0f0f]"
+                          >
+                            Add to Cart
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+
+                  {/* ── Custom Item Form ───────────────────────────────────── */}
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-white p-4">
+                    <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-[#4a1111] mb-3">
+                      Or Add Custom Item (Outside Inventory)
+                    </h4>
+                    <div className="space-y-3">
+                      <div>
+                        <Label className="mb-1 block text-sm font-medium text-slate-700">Item Name</Label>
+                        <Input
+                          type="text"
+                          placeholder="e.g. External Hard Drive"
+                          value={customItemForm.name}
+                          onChange={(e) => setCustomItemForm({ ...customItemForm, name: e.target.value })}
+                          className="h-10"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="mb-1 block text-sm font-medium text-slate-700">
+                            Brand <span className="text-slate-400 font-normal">(optional)</span>
+                          </Label>
+                          <Input
+                            type="text"
+                            placeholder="e.g. Samsung"
+                            value={customItemForm.brand}
+                            onChange={(e) => setCustomItemForm({ ...customItemForm, brand: e.target.value })}
+                            className="h-10"
+                          />
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-sm font-medium text-slate-700">Quantity</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            placeholder="e.g. 1"
+                            value={customItemForm.quantity}
+                            onChange={(e) => setCustomItemForm({ ...customItemForm, quantity: e.target.value })}
+                            className="h-10"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="mb-1 block text-sm font-medium text-slate-700">Condition</Label>
+                          <Select value={customItemForm.condition} onValueChange={(val) => setCustomItemForm({ ...customItemForm, condition: val })}>
+                            <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Working">Working</SelectItem>
+                              <SelectItem value="Defective">Defective</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-sm font-medium text-slate-700">
+                            Remarks <span className="text-slate-400 font-normal">(optional)</span>
+                          </Label>
+                          <Input
+                            type="text"
+                            placeholder="Any notes..."
+                            value={customItemForm.remarks}
+                            onChange={(e) => setCustomItemForm({ ...customItemForm, remarks: e.target.value })}
+                            className="h-10"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <Button
+                      variant="default"
+                      onClick={addCustomItemToCart}
+                      disabled={!canAddCustom}
+                      className={cn(
+                        "mt-4 w-full h-10 text-sm font-semibold",
+                        canAddCustom
+                          ? "bg-[#4a1111] hover:bg-[#5a1717]"
+                          : "bg-slate-100 text-slate-400 cursor-not-allowed hover:bg-slate-100"
+                      )}
+                    >
+                      + Add Custom Item
+                    </Button>
+                  </div>
+
+                  {/* ── Cart Summary with +/- controls ─────────────────────── */}
+                  {borrowCart.length > 0 && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+                      <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-800 mb-3">
+                        Cart ({borrowCart.length} {borrowCart.length === 1 ? "item" : "items"})
+                      </h4>
+                      <div className="space-y-2 max-h-[180px] overflow-y-auto">
+                        {borrowCart.map((item) => (
+                          <div key={item.cartId} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2.5 shadow-sm">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-slate-800 truncate">
+                                {item.label || getItemLabel(item)}
+                              </p>
+                              <p className="text-xs text-slate-400">
+                                {item.isCustom ? "Custom Item" : `${item.tabName} / ${item.sectionName}`}
+                              </p>
+                            </div>
+                            {!item.isCustom && (
+                              <div className="flex items-center gap-1.5">
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-6 w-6 rounded-full border-slate-200"
+                                  onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)}
+                                  disabled={item.quantity <= 1}
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="w-8 text-center text-sm font-semibold text-slate-700">
+                                  {item.quantity}
+                                </span>
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-6 w-6 rounded-full border-slate-200"
+                                  onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)}
+                                  disabled={item.quantity >= item.maxQuantity}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            )}
+                            {item.isCustom && (
+                              <span className="px-2 py-0.5 text-sm font-semibold text-slate-600">
+                                ×{item.quantity}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeFromCart(item.cartId)}
+                              className="shrink-0 rounded-md p-1.5 text-rose-500 transition hover:bg-rose-50"
+                              title="Remove"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {formError && (
+                    <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p>
+                  )}
+                </div>
+              )}
+
+              {/* ═══ STEP 3: Review & Summary ═══ */}
+              {activeStep === 3 && (
+                <div className="space-y-5">
+                  <div>
+                    <DialogTitle className="text-lg font-semibold text-slate-900">Review & Confirm</DialogTitle>
+                    <DialogDescription className="mt-1 text-sm">
+                      Verify all details before confirming the borrowing record.
+                    </DialogDescription>
+                  </div>
+
+                  {/* Borrower Profile Block */}
+                  <div className="rounded-xl border border-[#4a1111]/10 bg-[#4a1111]/5 p-5">
+                    <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4a1111]/60">
+                      Borrower
+                    </h3>
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Full Name</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-800">{form.name.trim()}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">ID Number</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-800">{form.studentId.trim()}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Role</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-800">{form.role}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Items Table */}
+                  <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                    <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
+                      <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">
+                        Items ({borrowCart.length})
+                      </h3>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {borrowCart.map((item) => (
+                        <div key={item.cartId} className="flex items-center justify-between gap-4 px-5 py-3.5">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-slate-800">{item.label || getItemLabel(item)}</p>
+                            <p className="mt-0.5 text-xs text-slate-400">
+                              {item.isCustom ? "Custom Item" : `${item.tabName} • ${item.sectionName}`}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {!item.isCustom && (
+                              <div className="flex items-center gap-1.5">
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-7 w-7 rounded-full border-slate-200"
+                                  onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)}
+                                  disabled={item.quantity <= 1}
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="w-8 text-center text-sm font-semibold text-slate-700">
+                                  {item.quantity}
+                                </span>
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-7 w-7 rounded-full border-slate-200"
+                                  onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)}
+                                  disabled={item.quantity >= item.maxQuantity}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            )}
+                            {item.isCustom && (
+                              <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                                Qty: {item.quantity}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeFromCart(item.cartId)}
+                              className="rounded-md p-1.5 text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
+                              title="Remove item"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Merge with active borrow */}
+                  {latestActiveBorrowForBorrower ? (
+                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-sm text-amber-900">
+                      <Checkbox
+                        checked={mergeWithLastBorrow}
+                        onCheckedChange={(checked) => setMergeWithLastBorrow(!!checked)}
+                        className="mt-0.5 border-amber-400 data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
+                      />
+                      <span>
+                        <span className="block font-semibold">Merge with latest active borrow</span>
+                        <span className="mt-1 block text-xs text-amber-700">
+                          Latest record borrowed on{" "}
+                          {new Date(latestActiveBorrowForBorrower.date).toLocaleString()} has not been returned yet.
+                        </span>
+                      </span>
+                    </label>
+                  ) : null}
+
+                  {formError && (
+                    <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p>
+                  )}
                 </div>
               )}
             </div>
 
-            {formError ? <p className="mt-4 text-sm text-rose-600">{formError}</p> : null}
-
-            <div className="mt-6 flex shrink-0 justify-end gap-4">
-              <button
+            {/* ── Footer ──────────────────────────────────────────────── */}
+            <DialogFooter className="shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={closeBorrowModal}
-                className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition"
-              >
-                CANCEL
-              </button>
-
-              <button
-                type="button"
-                onClick={requestBorrowConfirmation}
-                className="px-6 py-2 rounded-lg text-sm bg-[#4a1111] text-white hover:opacity-90 transition"
-              >
-                PROCEED
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-bold text-[#4a1111]">Confirm borrowing</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Add this borrowing record for {form.name.trim()}?
-            </p>
-            {latestActiveBorrowForBorrower ? (
-              <label className="mt-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-                <input
-                  type="checkbox"
-                  checked={mergeWithLastBorrow}
-                  onChange={(event) => setMergeWithLastBorrow(event.target.checked)}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="block font-semibold">Merge with latest active borrow</span>
-                  <span className="mt-1 block text-xs text-amber-800">
-                    Latest record borrowed on{" "}
-                    {new Date(latestActiveBorrowForBorrower.date).toLocaleString()} has not been returned yet.
-                  </span>
-                </span>
-              </label>
-            ) : null}
-            <ul className="mt-4 space-y-2 text-sm">
-              {[...selectedItems, ...customItems].map((item) => {
-                const details = item.details ? item.details : getItemDetails(item);
-                const borrowedQuantity =
-                  item.selectedQuantity ||
-                  details.find((detail) => detail.key === "quantity")?.value ||
-                  1;
-                const remarks =
-                  item.remarks ||
-                  details.find((detail) => detail.key === "remarks")?.value ||
-                  details.find((detail) => detail.key === "condition")?.value ||
-                  "";
-                const confirmDetails = [
-                  ...(remarks
-                    ? [{ key: "remarks", label: "Remarks", value: remarks }]
-                    : []),
-                  {
-                    key: "quantity",
-                    label: "Quantity",
-                    value: String(borrowedQuantity),
-                  },
-                ];
-
-                return (
-                  <li key={item.selectionKey || item.id} className="rounded-lg bg-slate-50 px-3 py-2">
-                    <span className="font-medium text-slate-800">{item.label || getItemLabel(item)}</span>
-                    {item.inventoryItemId !== null && item.inventoryItemId !== undefined ? (
-                      <span className="mt-1 block text-xs text-slate-400">
-                        {item.inventoryTabName || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / {item.inventorySectionName || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}
-                      </span>
-                    ) : null}
-                    {confirmDetails.length > 0 ? (
-                      <span className="mt-2 flex flex-wrap gap-1.5">
-                        {confirmDetails.map((detail) => (
-                          <span
-                            key={`${item.id}-${detail.key}`}
-                            className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600"
-                          >
-                            <span className="font-semibold text-slate-700">
-                              {detail.label}:
-                            </span>{" "}
-                            {detail.value}
-                          </span>
-                        ))}
-                      </span>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowConfirm(false)}
-                className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                className="rounded-lg"
               >
                 Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmBorrow}
-                disabled={savingBorrow}
-                className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
-              >
-                {savingBorrow ? "Saving..." : "Confirm"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              </Button>
+
+              {activeStep > 1 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setActiveStep((s) => s - 1); setFormError(""); }}
+                  className="rounded-lg"
+                >
+                  Back
+                </Button>
+              )}
+
+              {activeStep === 1 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    const errors = {
+                      name: validateField("name", form.name),
+                      studentId: validateField("studentId", form.studentId),
+                      role: validateField("role", form.role),
+                    };
+                    setFormErrors(errors);
+
+                    if (Object.values(errors).some(Boolean)) return;
+
+                    setActiveStep(2);
+                    setFormError("");
+                  }}
+                  disabled={!step1Valid}
+                  className="rounded-lg bg-[#4a1111] px-5 text-white hover:bg-[#3f0f0f]"
+                >
+                  Proceed to Select →
+                </Button>
+              )}
+
+              {activeStep === 2 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    if (borrowCart.length === 0) {
+                      setFormError("Add at least one item to the cart.");
+                      return;
+                    }
+                    setActiveStep(3);
+                    setFormError("");
+                  }}
+                  disabled={borrowCart.length === 0}
+                  className={cn(
+                    "rounded-lg px-5",
+                    borrowCart.length > 0
+                      ? "bg-[#4a1111] text-white hover:bg-[#3f0f0f]"
+                      : "bg-slate-100 text-slate-400 cursor-not-allowed hover:bg-slate-100"
+                  )}
+                >
+                  Review →
+                </Button>
+              )}
+
+              {activeStep === 3 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={confirmBorrow}
+                  disabled={savingBorrow || borrowCart.length === 0}
+                  className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f] disabled:cursor-wait disabled:opacity-60"
+                >
+                  {savingBorrow ? "Saving..." : "Confirm Borrow"}
+                </Button>
+              )}
+            </DialogFooter>
+
+          </DialogContent>
+        </Dialog>
+        );
+      })()}
 
       {pendingReturn && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
