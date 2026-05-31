@@ -16,7 +16,9 @@
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\leele\\\\OneDrive\\\\Desktop\\\\Ark\\\\ST TERESA MIS\\\\Teresa-MIS-Inventory\\\\src\" -Recurse -Exclude node_modules)",
       "Bash(Select-Object FullName, Length)",
       "Bash(Format-Table -AutoSize)",
-      "Bash(powershell *)"
+      "Bash(powershell *)",
+      "Bash(npx tsc *)",
+      "Bash(npx -p typescript tsc --noEmit)"
     ]
   },
   "allow": [

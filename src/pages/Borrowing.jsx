@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ChevronDown, ChevronLeft, ChevronRight, Download, History } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Download, History, Search, X } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
@@ -458,8 +458,9 @@ export default function Borrowing() {
   });
   const [addingCustom, setAddingCustom] = useState(false);
   const [returnRemarksByItem, setReturnRemarksByItem] = useState({});
-  const [page, setPage] = useState(0);
-  const pageSize = 5;
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 10;
+  const [selectedRecord, setSelectedRecord] = useState(null);
 
   const [data, setData] = useState([]);
   const [depletedItems, setDepletedItems] = useState(new Set());
@@ -526,18 +527,20 @@ export default function Borrowing() {
     })
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  const pageCount = Math.ceil(filteredData.length / pageSize);
-  const currentPageData = filteredData.slice(page * pageSize, page * pageSize + pageSize);
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const pageStartIndex = (page - 1) * itemsPerPage;
+  const pageEndIndex = pageStartIndex + itemsPerPage;
   const visiblePageNumbers = (() => {
     const maxVisible = 3;
-    if (pageCount <= maxVisible) {
-      return Array.from({ length: pageCount }, (_, index) => index + 1);
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
     }
 
-    const offset = Math.min(Math.max(page - 1, 0), pageCount - maxVisible);
+    const offset = Math.min(Math.max(page - 2, 0), totalPages - maxVisible);
     const startPage = offset + 1;
     return Array.from({ length: maxVisible }, (_, index) => startPage + index);
   })();
+  const currentPageData = filteredData.slice(pageStartIndex, pageEndIndex);
 
   const latestActiveBorrowForBorrower = useMemo(() => {
     const borrowerId = String(form.studentId || "").trim().toLowerCase();
@@ -591,7 +594,7 @@ export default function Borrowing() {
   useEffect(() => {
     const cancelToken = { current: false };
     loadBorrowings(cancelToken);
-    setPage(0);
+    setPage(1);
 
     return () => {
       cancelToken.current = true;
@@ -599,13 +602,18 @@ export default function Borrowing() {
   }, [statusFilter]);
 
   useEffect(() => {
-    if (page >= pageCount && pageCount > 0) {
-      setPage(pageCount - 1);
+    if (page < 1) {
+      setPage(1);
+      return;
     }
-  }, [filteredData.length, pageCount, page]);
+
+    if (page > totalPages && totalPages > 0) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   useEffect(() => {
-    setPage(0);
+    setPage(1);
   }, [search, statusFilter, dateRange.from, dateRange.to]);
 
   useEffect(() => {
@@ -1367,7 +1375,7 @@ export default function Borrowing() {
   }
 
   return (
-    <div className="max-h-screen py-10 px-6">
+    <div className="p-6 space-y-5">
       <style>{`
         .rdp-sidebar-picker {
           --rdp-accent-color: #4a1111;
@@ -1490,95 +1498,14 @@ export default function Borrowing() {
         }
 
       `}</style>
-      <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-semibold text-slate-800">
-            {statusFilter === "borrowed" ? "Borrowed Items" : "Borrowing History"}
+      <div className="w-full space-y-5">
+
+        {/* ── Page Header & Action Bar ─────────────────────────────────────── */}
+        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-2xl font-semibold text-slate-900">
+            {statusFilter === "all" ? "Borrowing Logs" : "Borrowed Items"}
           </h1>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 mb-8">
-          <input
-            type="text"
-            placeholder="Search borrower or item..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="min-w-[220px] flex-1 border rounded-full px-4 py-2 text-sm"
-          />
-          <div ref={datePickerRef} className="relative z-20">
-            <button
-              type="button"
-              onClick={() => setShowDatePicker((current) => !current)}
-              className="w-full min-w-[18rem] sm:w-64 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-left text-slate-700 hover:border-slate-300"
-            >
-              <span className="text-slate-500">{formatPickerLabel(dateRange)}</span>
-              <ChevronDown className="h-4 w-4 text-slate-400" />
-            </button>
-            {showDatePicker && (
-              <div className="absolute left-0 top-full z-30 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
-                <DayPicker
-                  className="rdp-sidebar-picker text-sm"
-                  mode="range"
-                  selected={dateRange}
-                  numberOfMonths={1}
-                  onSelect={(range) => {
-                    setDateRange(range || { from: undefined, to: undefined });
-                  }}
-                  footer={
-                    dateRange.from && dateRange.to
-                      ? `${format(dateRange.from, "MMM d, yyyy")} — ${format(dateRange.to, "MMM d, yyyy")}`
-                      : ""
-                  }
-                  fromDate={new Date("2000-01-01")}
-                  toDate={new Date("2100-12-31")}
-                />
-                <div className="mt-3 flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDateRange({ from: undefined, to: undefined });
-                    }}
-                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                  >
-                    Clear
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowDatePicker(false)}
-                    className="rounded-full bg-[#2b0707] px-3 py-1 text-xs font-medium text-white hover:bg-[#3a0b0b]"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setStatusFilter(statusFilter === "borrowed" ? "all" : "borrowed")}
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition ${
-                statusFilter === "all"
-                  ? "bg-[#4a1111] text-white border-[#4a1111] hover:bg-[#4a1111]"
-                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900"
-              }`}
-              title={statusFilter === "borrowed" ? "Show all borrowing history" : "Show current borrowed items"}
-              aria-label={statusFilter === "borrowed" ? "Show all borrowing history" : "Show current borrowed items"}
-            >
-              <History className="h-4 w-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={openExportModal}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#4a1111] text-white border border-[#4a1111] hover:opacity-90 transition"
-              title={borrowingsLoading ? "Loading borrowings..." : "Export borrowings"}
-              aria-label={borrowingsLoading ? "Loading borrowings" : "Export borrowings"}
-            >
-              <Download className="h-4 w-4" />
-            </button>
-
             <button
               type="button"
               onClick={() => {
@@ -1586,13 +1513,113 @@ export default function Borrowing() {
                 setFormErrors({});
                 setFormError("");
               }}
-              className="bg-[#4a1111] text-white px-5 py-2 rounded-full text-sm hover:opacity-90 transition"
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a1111] px-4 text-sm font-medium text-white transition hover:bg-[#5a1717]"
               title="Open borrow modal"
               aria-label="Open borrow modal"
             >
-              + Borrow
+              <span className="text-base leading-none">+</span>
+              <span>Borrow</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={openExportModal}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a1111] px-4 text-sm font-medium text-white transition hover:bg-[#5a1717]"
+              title={borrowingsLoading ? "Loading borrowings..." : "Export borrowings"}
+              aria-label={borrowingsLoading ? "Loading borrowings" : "Export borrowings"}
+            >
+              <Download className="h-4 w-4" />
+              <span>Export</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter(statusFilter === "borrowed" ? "all" : "borrowed")}
+              className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition ${
+                statusFilter === "all"
+                  ? "bg-[#4a1111] text-white hover:bg-[#5a1717]"
+                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+              }`}
+              title={statusFilter === "borrowed" ? "Show all borrowing history" : "Show current borrowed items"}
+              aria-label={statusFilter === "borrowed" ? "Show all borrowing history" : "Show current borrowed items"}
+            >
+              <History className="h-4 w-4" />
+              <span>{statusFilter === "all" ? "Active Only" : "History"}</span>
             </button>
           </div>
+        </div>
+
+        {/* ── Search Bar ───────────────────────────────────────────────────── */}
+        <div className="relative w-full sm:w-96">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search borrower or item..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Clear search"
+              title="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        {/* ── Date Range Picker ────────────────────────────────────────────── */}
+        <div ref={datePickerRef} className="relative z-20">
+          <button
+            type="button"
+            onClick={() => setShowDatePicker((current) => !current)}
+            className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:border-slate-300 focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+          >
+            <span className="text-slate-500">{formatPickerLabel(dateRange)}</span>
+            <ChevronDown className="h-4 w-4 text-slate-400" />
+          </button>
+          {showDatePicker && (
+            <div className="absolute left-0 top-full z-30 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
+              <DayPicker
+                className="rdp-sidebar-picker text-sm"
+                mode="range"
+                selected={dateRange}
+                numberOfMonths={1}
+                onSelect={(range) => {
+                  setDateRange(range || { from: undefined, to: undefined });
+                }}
+                footer={
+                  dateRange.from && dateRange.to
+                    ? `${format(dateRange.from, "MMM d, yyyy")} — ${format(dateRange.to, "MMM d, yyyy")}`
+                    : ""
+                }
+                fromDate={new Date("2000-01-01")}
+                toDate={new Date("2100-12-31")}
+              />
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDateRange({ from: undefined, to: undefined });
+                  }}
+                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDatePicker(false)}
+                  className="rounded-full bg-[#4a1111] px-3 py-1 text-xs font-medium text-white hover:bg-[#5a1717]"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {showExportModal && (
@@ -1759,218 +1786,436 @@ export default function Borrowing() {
           </AlertDialogContent>
         </AlertDialog>
 
-        {borrowingsError ? (
-          <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {borrowingsError}
-          </div>
-        ) : null}
-
-        {borrowingsLoading ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
-            Loading {statusFilter === "borrowed" ? "borrowed items" : "borrowing records"}...
-          </div>
-        ) : null}
-
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div className="max-h-[520px] overflow-y-auto mb-6">
-            <table className="min-w-full text-sm border-separate border border-slate-100" style={{ borderSpacing: 0 }}>
-              <thead className="bg-white text-xs uppercase tracking-[0.18em] text-slate-500">
-              <tr>
-                <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Borrower</th>
-                <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Borrowed</th>
-                <th className="sticky top-0 bg-white z-10 w-32 min-w-32 px-4 py-3 text-center align-middle border-b border-slate-100">Status</th>
-                <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Items</th>
-                <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Quantity</th>
-                <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Condition</th>
-                {statusFilter !== "borrowed" && (
-                  <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Remarks</th>
-                )}
-                {statusFilter === "borrowed" && (
-                  <th className="sticky top-0 bg-white z-10 px-4 py-3 align-middle border-b border-slate-100">Action</th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {currentPageData.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-slate-500">
-                    {statusFilter === "borrowed" ? "No borrowed items yet." : "No borrowing records found."}
-                  </td>
-                </tr>
-              ) : (
-                currentPageData.map((record) => {
-                  return (
-                    <tr
-                      key={record.id}
-                      className="group even:bg-slate-50"
-                    >
-                    <td className="px-4 py-4 align-middle border-b border-slate-100">
-                      <p className="font-medium text-slate-800">{record.name}</p>
-                      <p className="text-xs text-slate-500">{record.studentId}</p>
-                      <p className="text-xs text-slate-500">{record.role}</p>
-                    </td>
-                    <td className="px-4 py-4 align-middle border-b border-slate-100 text-xs text-slate-500">
-                      <div>Borrowed: {new Date(record.date).toLocaleString()}</div>
-                      {record.returnedAt && (
-                        <div>Returned: {new Date(record.returnedAt).toLocaleString()}</div>
-                      )}
-                    </td>
-                    <td className="w-32 min-w-32 px-4 py-4 text-center align-middle border-b border-slate-100 text-xs font-semibold">
-                      <span
-                        className={`inline-flex justify-center whitespace-nowrap rounded-full px-3 py-1 text-[11px] font-semibold ${getBorrowingStatusClass(record.status)}`}
-                      >
-                        {formatBorrowingStatus(record.status)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 align-middle border-b border-slate-100">
-                      <div className="grid gap-2 text-sm text-slate-700">
-                        {record.items?.map((item) => (
-                          <div key={`${record.id}-${item.id}`} className="min-h-[60px] rounded-lg bg-white group-even:bg-slate-50 p-3 flex flex-col justify-center">
-                            <div className="font-medium text-slate-800">{item.label}</div>
-                            <div className="mt-1 text-[11px] text-slate-500">
-                              {item.inventoryItemId ? (
-                                `${item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / ${item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}`
-                              ) : (
-                                "Custom Item"
-                              )}
-                            </div>
-                            {item.details?.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                {item.details.map((detail) => (
-                                  <span
-                                    key={`${record.id}-${item.id}-${detail.key}`}
-                                    className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600"
-                                  >
-                                    <span className="font-semibold text-slate-700">{detail.label}:</span> {detail.value}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 align-middle border-b border-slate-100 text-xs text-slate-600">
-                      <div className="grid gap-2">
-                        {record.items?.map((item) => {
-                          const isZero = item.inventoryItemId && depletedItems.has(item.inventoryItemId);
-                          return (
-                            <div
-                              key={`${record.id}-${item.id}-qty`}
-                              className={`min-h-[60px] flex items-center justify-center rounded-lg bg-white group-even:bg-slate-50 px-3 text-sm font-semibold ${
-                                isZero ? "text-rose-700" : "text-slate-600"
-                              }`}
-                            >
-                              {getItemQuantity(item) || "—"}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 align-middle border-b border-slate-100 text-xs text-slate-600">
-                      <div className="grid gap-2">
-                        {record.items?.map((item) => {
-                          const condition = getBorrowingItemCondition(item);
-                          const label = getReturnConditionLabel(item);
-                          return (
-                            <div key={`${record.id}-${item.id}-condition`} className="min-h-[60px] flex items-center justify-center rounded-lg bg-white group-even:bg-slate-50 px-3">
-                              <span
-                                className={`inline-flex rounded-full px-2 py-1 text-center text-[11px] font-semibold ${
-                                  condition === "defective"
-                                    ? "bg-rose-100 text-rose-700"
-                                    : "bg-emerald-100 text-emerald-700"
-                                }`}
-                              >
-                                {label}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </td>
-                    {statusFilter !== "borrowed" && (
-                      <td className="px-4 py-4 align-middle border-b border-slate-100 text-xs text-slate-600">
-                        <div className="grid gap-2">
-                          {record.items?.map((item) => (
-                            <div key={`${record.id}-${item.id}-remarks`} className="min-h-[60px] rounded-lg bg-white group-even:bg-slate-50 px-3 py-3">
-                              {item.returnRemarks?.trim() ? (
-                                <p className="text-xs text-slate-700">{item.returnRemarks}</p>
-                              ) : (
-                                <span className="text-xs text-slate-400">—</span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                    )}
-                    {statusFilter === "borrowed" && (
-                      <td className="px-4 py-4 align-middle border-b border-slate-100">
-                        <button
-                          type="button"
-                          onClick={() => requestReturn(record)}
-                          className="rounded-lg border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-opacity duration-300">
+          {borrowingsError && (
+            <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              Error loading borrowings: {borrowingsError}
+            </div>
+          )}
+          {!borrowingsLoading && filteredData.length === 0 ? (
+            <div className="text-center py-16 text-slate-400">
+              <p>{statusFilter === "borrowed" ? "No borrowed items yet." : "No borrowing logs found."}</p>
+            </div>
+          ) : !borrowingsLoading && (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full transition-opacity duration-300">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      {[
+                        "Borrower",
+                        "Borrowed",
+                        "Status",
+                        "Items",
+                        "Quantity",
+                        "Condition",
+                      ].map((h) => (
+                        <th
+                          key={h}
+                          className="sticky top-0 z-10 px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide"
                         >
-                          Return
+                          {h}
+                        </th>
+                      ))}
+                      {statusFilter !== "borrowed" && (
+                        <th className="sticky top-0 z-10 px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Remarks</th>
+                      )}
+                      {statusFilter === "borrowed" && (
+                        <th className="sticky top-0 z-10 px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                          <span className="sr-only">Row actions</span>
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {currentPageData.map((record) => (
+                      <tr
+                        key={record.id}
+                        onClick={() => setSelectedRecord(record)}
+                        className="cursor-pointer transition-colors hover:bg-slate-50"
+                      >
+                        {/* Borrower */}
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-medium text-slate-900">{record.name}</p>
+                        </td>
+
+                        {/* Borrowed */}
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          {formatExportDate(record.date)}
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-1 text-xs font-medium ${getBorrowingStatusClass(record.status)}`}
+                          >
+                            {formatBorrowingStatus(record.status)}
+                          </span>
+                        </td>
+
+                        {/* Items — bulleted list for multiple */}
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          {(record.items || []).length > 1 ? (
+                            <ul className="list-disc list-inside space-y-0.5">
+                              {(record.items || []).map((item) => (
+                                <li key={`${record.id}-${item.id}`}>{item.label}</li>
+                              ))}
+                            </ul>
+                          ) : (record.items || []).length === 1 ? (
+                            <span>{(record.items || [])[0].label}</span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+
+                        {/* Quantity */}
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          {(record.items || []).length > 1 ? (
+                            <ul className="list-disc list-inside space-y-0.5">
+                              {(record.items || []).map((item) => {
+                                const isZero = item.inventoryItemId && depletedItems.has(item.inventoryItemId);
+                                return (
+                                  <li key={`${record.id}-${item.id}-qty`} className={isZero ? "text-rose-700 font-semibold" : ""}>
+                                    {getItemQuantity(item) || "—"}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          ) : (record.items || []).length === 1 ? (
+                            (() => {
+                              const item = (record.items || [])[0];
+                              const isZero = item.inventoryItemId && depletedItems.has(item.inventoryItemId);
+                              return <span className={isZero ? "text-rose-700 font-semibold" : ""}>{getItemQuantity(item) || "—"}</span>;
+                            })()
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+
+                        {/* Condition */}
+                        <td className="px-4 py-3">
+                          {(record.items || []).length > 1 ? (
+                            <ul className="space-y-1">
+                              {(record.items || []).map((item) => {
+                                const condition = getBorrowingItemCondition(item);
+                                const label = getReturnConditionLabel(item);
+                                return (
+                                  <li key={`${record.id}-${item.id}-condition`}>
+                                    <span
+                                      className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                        condition === "defective"
+                                          ? "bg-rose-100 text-rose-700 border-rose-200"
+                                          : "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                      }`}
+                                    >
+                                      {label}
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          ) : (record.items || []).length === 1 ? (
+                            (() => {
+                              const item = (record.items || [])[0];
+                              const condition = getBorrowingItemCondition(item);
+                              const label = getReturnConditionLabel(item);
+                              return (
+                                <span
+                                  className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                    condition === "defective"
+                                      ? "bg-rose-100 text-rose-700 border-rose-200"
+                                      : "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                  }`}
+                                >
+                                  {label}
+                                </span>
+                              );
+                            })()
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+
+                        {/* Remarks (history view only) */}
+                        {statusFilter !== "borrowed" && (
+                          <td className="px-4 py-3 text-sm text-slate-600">
+                            {(record.items || []).length > 1 ? (
+                              <ul className="space-y-0.5">
+                                {(record.items || []).map((item) => (
+                                  <li key={`${record.id}-${item.id}-remarks`} className="text-xs text-slate-600">
+                                    {item.returnRemarks?.trim() || "—"}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (record.items || []).length === 1 ? (
+                              <span className="text-xs">{(record.items || [])[0].returnRemarks?.trim() || "—"}</span>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                        )}
+
+                        {/* Action (active view only) */}
+                        {statusFilter === "borrowed" && (
+                          <td className="px-4 py-3">
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  requestReturn(record);
+                                }}
+                                className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                              >
+                                Return
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* ── Pagination Footer ─────────────────────────────────────────────── */}
+              {filteredData.length > 0 && (
+                <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
+                  <div className="text-sm text-slate-500">
+                    Showing {Math.min(pageStartIndex + 1, filteredData.length)}–{Math.min(pageEndIndex, filteredData.length)} of {filteredData.length}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    {visiblePageNumbers.map((pageNumber) => {
+                      const isActive = page === pageNumber;
+                      return (
+                        <button
+                          key={pageNumber}
+                          type="button"
+                          onClick={() => setPage(pageNumber)}
+                          className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
+                        >
+                          {pageNumber}
                         </button>
-                      </td>
-                    )}
-                  </tr>
-                );
-              })
-            )}
-            </tbody>
-            </table>
-          </div>
-          <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
-            <div className="text-sm text-slate-500">
-              Showing {filteredData.length === 0 ? 0 : page * pageSize + 1}–{Math.min(filteredData.length, (page + 1) * pageSize)} of {filteredData.length}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPage((prev) => Math.max(0, prev - 1))}
-                disabled={page === 0}
-                className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Previous page"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              {visiblePageNumbers.map((pageNumber) => {
-                const isActive = page + 1 === pageNumber;
-                return (
-                  <button
-                    key={pageNumber}
-                    type="button"
-                    onClick={() => setPage(pageNumber - 1)}
-                    className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
-                  >
-                    {pageNumber}
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                onClick={() => setPage((prev) => Math.min(pageCount - 1, prev + 1))}
-                disabled={page >= pageCount - 1}
-                className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Next page"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages || totalPages === 0}
+                      className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="Next page"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
+      {/* ── Record Detail Dialog ──────────────────────────────────────────── */}
+      {selectedRecord && (
+        <Dialog open={!!selectedRecord} onOpenChange={(open) => !open && setSelectedRecord(null)}>
+          <DialogContent
+            className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
+            onPointerDownOutside={(e) => e.preventDefault()}
+          >
+            {/* ── Header ───────────────────────────────────────────────────── */}
+            <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
+              <DialogTitle className="text-lg font-semibold text-slate-900">
+                Borrowing Record Details
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-sm text-slate-500">
+                Complete transaction data for this borrowing record.
+              </DialogDescription>
+            </DialogHeader>
+
+            {/* ── Body ─────────────────────────────────────────────────────── */}
+            <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6 sm:px-8">
+
+              {/* Borrower Identity Section */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
+                <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Borrower Identity
+                </h3>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Full Name</p>
+                    <p className="mt-1 text-sm font-medium text-slate-800">{selectedRecord.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">ID Number</p>
+                    <p className="mt-1 text-sm font-medium text-slate-800">{selectedRecord.studentId || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Role</p>
+                    <p className="mt-1 text-sm font-medium text-slate-800">{selectedRecord.role || "—"}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Transaction Timeline Section */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
+                <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Transaction Timeline
+                </h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Borrowed At</p>
+                    <p className="mt-1 text-sm text-slate-700">{formatExportDate(selectedRecord.date)}</p>
+                  </div>
+                  {selectedRecord.returnedAt && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Returned At</p>
+                      <p className="mt-1 text-sm text-slate-700">{formatExportDate(selectedRecord.returnedAt)}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Status</p>
+                    <p className="mt-1">
+                      <span className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-semibold ${getBorrowingStatusClass(selectedRecord.status)}`}>
+                        {formatBorrowingStatus(selectedRecord.status)}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Items Detail Section */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
+                <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Items &middot; {(selectedRecord.items || []).length} {(selectedRecord.items || []).length === 1 ? "item" : "items"}
+                </h3>
+                <div className="space-y-4">
+                  {(selectedRecord.items || []).map((item, idx) => {
+                    const condition = getBorrowingItemCondition(item);
+                    const borrowedQty = getBorrowedQuantity(item);
+                    const returnConditionLabel = getReturnConditionLabel(item);
+                    const itemDetails = getItemDetails(item);
+                    const quantityDetail = item.details?.find(
+                      (d) => String(d.key || "").toLowerCase() === "quantity"
+                    );
+                    const displayQty = quantityDetail?.value || borrowedQty || "—";
+
+                    return (
+                      <div
+                        key={`${selectedRecord.id}-${item.id}-detail`}
+                        className="rounded-lg border border-slate-200 bg-white p-4"
+                      >
+                        {/* Item title row */}
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-slate-800">{item.label}</p>
+                            {item.inventoryItemId ? (
+                              <p className="mt-0.5 text-xs text-slate-400">
+                                {item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / {item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}
+                              </p>
+                            ) : (
+                              <p className="mt-0.5 text-xs text-slate-400">Custom Item (Outside Inventory)</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                              Qty: {displayQty}
+                            </span>
+                            <span className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                              condition === "defective"
+                                ? "bg-rose-100 text-rose-700 border-rose-200"
+                                : "bg-emerald-100 text-emerald-700 border-emerald-200"
+                            }`}>
+                              {returnConditionLabel}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Granular specification fields */}
+                        {itemDetails.length > 0 && (
+                          <div className="mt-3 border-t border-slate-100 pt-3">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {itemDetails.map((detail) => (
+                                <div key={`${item.id}-${detail.key}`} className="flex items-baseline gap-2">
+                                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {detail.label}:
+                                  </span>
+                                  <span className="text-xs text-slate-700">{detail.value}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Inventory-specific IDs */}
+                        {item.inventoryItemId && (
+                          <div className="mt-3 flex flex-wrap gap-3 border-t border-slate-100 pt-3">
+                            <div>
+                              <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Inventory ID</span>
+                              <p className="text-xs font-mono text-slate-500">{item.inventoryItemId}</p>
+                            </div>
+                            {item.inventoryTabId && (
+                              <div>
+                                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Tab ID</span>
+                                <p className="text-xs font-mono text-slate-500">{item.inventoryTabId}</p>
+                              </div>
+                            )}
+                            {item.inventorySectionId && (
+                              <div>
+                                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Section ID</span>
+                                <p className="text-xs font-mono text-slate-500">{item.inventorySectionId}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Return remarks per item */}
+                        {item.returnRemarks?.trim() && (
+                          <div className="mt-3 border-t border-slate-100 pt-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Return Remarks</p>
+                            <p className="mt-1 text-xs text-slate-600">{item.returnRemarks}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Footer ───────────────────────────────────────────────────── */}
+            <DialogFooter className="flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:justify-end sm:px-8">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedRecord(null)}
+                className="rounded-lg"
+              >
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {showModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-          <div className="flex h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-white p-6 shadow-md">
-            <h2 className="text-xl font-bold mb-6 text-[#4a1111]">
+          <div className="flex h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-white p-6 shadow-md">
+            <h2 className="text-xl font-bold mb-5 text-[#4a1111]">
               BORROWER'S INFORMATION
             </h2>
 
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-2">
+            <div className="space-y-4">
+              <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-[#4a1111]">NAME</label>
                 <input
                   name="name"
@@ -1990,7 +2235,7 @@ export default function Borrowing() {
                 ) : null}
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-[#4a1111]">ID NUMBER</label>
                 <input
                   name="studentId"
@@ -2010,7 +2255,7 @@ export default function Borrowing() {
                 ) : null}
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-[#4a1111]">ROLE</label>
                 <select
                   name="role"
@@ -2034,7 +2279,7 @@ export default function Borrowing() {
               </div>
             </div>
 
-            <div className="mt-8 h-[620px] overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="mt-6 h-[650px] overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-4">
               <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-[#4a1111]">
                 Choose item to borrow
               </h3>
@@ -2043,7 +2288,7 @@ export default function Borrowing() {
                 <p className="mt-3 text-sm text-rose-600">{inventoryError}</p>
               ) : (
                 <>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="mt-4 space-y-3">
                     <select
                       value={selectedTabId}
                       onChange={(event) => {
@@ -2053,7 +2298,7 @@ export default function Borrowing() {
                         setFormError("");
                       }}
                       disabled={inventoryLoading}
-                      className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
                     >
                       <option value="">{inventoryLoading ? "Loading inventory..." : "Select inventory tab"}</option>
                       {tabs.map((tab) => (
@@ -2071,7 +2316,7 @@ export default function Borrowing() {
                         setFormErrors((current) => ({ ...current, items: "" }));
                       }}
                       disabled={!selectedTabId}
-                      className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
                     >
                       <option value="">Select section</option>
                       {sections.map((section) => (
@@ -2187,49 +2432,68 @@ export default function Borrowing() {
                 )}
               </div>
 
-              <div className="mt-4">
-                <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-[#4a1111] mb-2">
+              <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-white p-4">
+                <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-[#4a1111] mb-3">
                   Or Add Custom Item (Outside Inventory)
                 </h4>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <input
-                    type="text"
-                    placeholder="Item name"
-                    value={customItemForm.name}
-                    onChange={(e) => setCustomItemForm({ ...customItemForm, name: e.target.value })}
-                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Brand (optional)"
-                    value={customItemForm.brand}
-                    onChange={(e) => setCustomItemForm({ ...customItemForm, brand: e.target.value })}
-                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                  />
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="Quantity"
-                    value={customItemForm.quantity}
-                    onChange={(e) => setCustomItemForm({ ...customItemForm, quantity: e.target.value })}
-                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                  />
-                  <select
-                    value={customItemForm.condition}
-                    onChange={(e) => setCustomItemForm({ ...customItemForm, condition: e.target.value })}
-                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                  >
-                    <option value="Working">Working</option>
-                    <option value="Defective">Defective</option>
-                  </select>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Item Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. External Hard Drive"
+                      value={customItemForm.name}
+                      onChange={(e) => setCustomItemForm({ ...customItemForm, name: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                    />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Brand <span className="text-slate-400 normal-case">(optional)</span></label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Samsung"
+                        value={customItemForm.brand}
+                        onChange={(e) => setCustomItemForm({ ...customItemForm, brand: e.target.value })}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Quantity</label>
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="e.g. 1"
+                        value={customItemForm.quantity}
+                        onChange={(e) => setCustomItemForm({ ...customItemForm, quantity: e.target.value })}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Condition</label>
+                      <select
+                        value={customItemForm.condition}
+                        onChange={(e) => setCustomItemForm({ ...customItemForm, condition: e.target.value })}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                      >
+                        <option value="Working">Working</option>
+                        <option value="Defective">Defective</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Remarks <span className="text-slate-400 normal-case">(optional)</span></label>
+                      <input
+                        type="text"
+                        placeholder="Any notes..."
+                        value={customItemForm.remarks}
+                        onChange={(e) => setCustomItemForm({ ...customItemForm, remarks: e.target.value })}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <textarea
-                  placeholder="Remarks (optional)"
-                  value={customItemForm.remarks}
-                  onChange={(e) => setCustomItemForm({ ...customItemForm, remarks: e.target.value })}
-                  rows={3}
-                  className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                />
                 <button
                   type="button"
                   onClick={() => {
@@ -2271,22 +2535,23 @@ export default function Borrowing() {
                     setFormErrors((current) => ({ ...current, items: "" }));
                     setFormError("");
                   }}
-                  className="mt-2 px-4 py-1 bg-[#4a1111] text-white text-sm rounded hover:opacity-90"
+                  className="mt-4 w-full px-4 py-2 bg-[#4a1111] text-white text-sm font-semibold rounded-lg hover:opacity-90 transition"
                 >
-                  Add Custom Item
+                  + Add Custom Item
                 </button>
               </div>
 
               {(selectedItems.length > 0 || customItems.length > 0) && (
-                <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
-                  <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-[#4a1111] mb-2">
-                    Selected Items
+                <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-800 mb-3">
+                    Selected Items ({selectedItems.length + customItems.length})
                   </h4>
                   <div className="space-y-2">
                     {selectedItems.map((item) => (
-                      <div key={item.selectionKey || item.id} className="flex justify-between items-center gap-3">
+                      <div key={item.selectionKey || item.id} className="flex justify-between items-center gap-3 rounded-lg bg-white px-3 py-2 shadow-sm">
                         <span className="text-sm">
-                          {getItemLabel(item)}{item.selectedQuantity ? ` (Qty: ${item.selectedQuantity})` : ""}
+                          <span className="font-medium text-slate-800">{getItemLabel(item)}</span>
+                          {item.selectedQuantity ? <span className="text-slate-500"> (Qty: {item.selectedQuantity})</span> : ""}
                           <span className="block text-xs text-slate-400">
                             {item.inventoryTabName || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / {item.inventorySectionName || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}
                           </span>
@@ -2294,19 +2559,34 @@ export default function Borrowing() {
                         <button
                           type="button"
                           onClick={() => toggleItem(item)}
-                          className="text-xs text-red-500 hover:underline"
+                          className="shrink-0 rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 transition"
                         >
                           Remove
                         </button>
                       </div>
                     ))}
                     {customItems.map((item) => (
-                      <div key={item.id} className="flex justify-between items-center">
-                        <span className="text-sm">{item.label}</span>
+                      <div key={item.id} className="flex justify-between items-center gap-3 rounded-lg bg-white px-3 py-2 shadow-sm">
+                        <span className="text-sm">
+                          <span className="font-medium text-slate-800">{item.label}</span>
+                          {item.details && item.details.length > 0 && (
+                            <span className="ml-2 inline-flex flex-wrap gap-1">
+                              {item.details.map((detail) => (
+                                <span
+                                  key={`${item.id}-${detail.key}`}
+                                  className="rounded-full border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500"
+                                >
+                                  {detail.label}: {detail.value}
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                          <span className="block text-xs text-slate-400">Custom Item</span>
+                        </span>
                         <button
                           type="button"
                           onClick={() => setCustomItems(customItems.filter((i) => i.id !== item.id))}
-                          className="text-xs text-red-500 hover:underline"
+                          className="shrink-0 rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 transition"
                         >
                           Remove
                         </button>
