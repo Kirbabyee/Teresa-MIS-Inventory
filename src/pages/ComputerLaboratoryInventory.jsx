@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Download, Plus, PencilLine, Trash2, Check, FileText, ChevronLeft, ChevronDown, Search, X } from "lucide-react";
 import ExcelJS from "exceljs";
@@ -286,6 +286,7 @@ export default function ComputerLaboratoryInventory() {
     const [historySearchQuery, setHistorySearchQuery] = useState("");
     const [historyDateRange, setHistoryDateRange] = useState({ from: undefined, to: undefined });
     const [showHistoryDatePicker, setShowHistoryDatePicker] = useState(false);
+    const historyDatePickerRef = useRef(null);
     const [openComponentSections, setOpenComponentSections] = useState(() => createInitialComponentSections());
     const [cellDrafts, setCellDrafts] = useState({});
     const [savingCellKey, setSavingCellKey] = useState(null);
@@ -915,6 +916,19 @@ export default function ComputerLaboratoryInventory() {
             setShowHistoryDatePicker(false);
         }
     }, [isHistoryOpen]);
+
+    useEffect(() => {
+        if (!showHistoryDatePicker) return;
+
+        const handleOutsideClick = (event) => {
+            if (historyDatePickerRef.current && !historyDatePickerRef.current.contains(event.target)) {
+                setShowHistoryDatePicker(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleOutsideClick);
+        return () => document.removeEventListener("mousedown", handleOutsideClick);
+    }, [showHistoryDatePicker]);
 
     useEffect(() => {
         if (isAddComponentOpen) {
@@ -1608,11 +1622,12 @@ export default function ComputerLaboratoryInventory() {
                                 setShowExportModal(true);
                             }}
                             disabled={loading || rows.length === 0 || exporting}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300 icon-btn"
+                            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a1111] px-4 text-sm font-medium text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
                             title={exporting ? "Exporting..." : "Export"}
                             aria-label={exporting ? "Exporting" : "Export"}
                         >
                             <Download className="h-4 w-4 text-white" />
+                            <span>Export</span>
                         </button>
                     )}
 
@@ -1621,11 +1636,12 @@ export default function ComputerLaboratoryInventory() {
                             type="button"
                             onClick={() => setIsAddComponentOpen(true)}
                             disabled={!selectedLab || exporting}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300 icon-btn"
+                            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a1111] px-4 text-sm font-medium text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
                             title="Add computer component"
                             aria-label="Add computer component"
                         >
                             <Plus className="h-4 w-4 text-white" />
+                            <span>Add New Item</span>
                         </button>
                     )}
 
@@ -1646,7 +1662,7 @@ export default function ComputerLaboratoryInventory() {
                                     setHasEditChanges(false);
                                 }
                             }}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-white transition bg-[#4a1111] hover:bg-[#5a1717] icon-btn"
+                            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a1111] px-4 text-sm font-medium text-white transition hover:bg-[#5a1717]"
                             title={isEditMode ? "Exit edit mode" : "Edit mode"}
                             aria-label={isEditMode ? "Exit edit mode" : "Edit mode"}
                         >
@@ -1655,6 +1671,7 @@ export default function ComputerLaboratoryInventory() {
                             ) : (
                                 <PencilLine className="h-4 w-4 text-white" />
                             )}
+                            <span>{isEditMode ? "Done" : "Edit"}</span>
                         </button>
                     )}
 
@@ -1683,7 +1700,7 @@ export default function ComputerLaboratoryInventory() {
                             }}
                             title={isHistoryOpen ? "Return to inventory" : "View history"}
                             aria-label={isHistoryOpen ? "Return to inventory" : "View history"}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] icon-btn"
+                            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a1111] px-4 text-sm font-medium text-white transition hover:bg-[#5a1717]"
                         >
                             <span className="inline-flex items-center justify-center w-4 h-4">
                                 {isHistoryOpen ? (
@@ -1692,6 +1709,7 @@ export default function ComputerLaboratoryInventory() {
                                     <FileText className="h-4 w-4 text-white" />
                                 )}
                             </span>
+                            <span>{isHistoryOpen ? "Return" : "Logs"}</span>
                         </button>
                     )}
                 </div>
@@ -1754,11 +1772,11 @@ export default function ComputerLaboratoryInventory() {
                                 className="w-full min-w-[18rem] sm:w-64 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-left text-slate-700 hover:border-slate-300"
                             >
                                 <span className="text-slate-500">{formatPickerLabel(historyDateRange)}</span>
-                                <span className="text-xs text-slate-400">▼</span>
+                                <ChevronDown className="h-4 w-4 text-slate-400" />
                             </button>
                             {showHistoryDatePicker && (
-                                <div className="absolute left-0 top-full z-[100] mt-2 w-[22rem] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl">
-                                    <style>{`\n                    .rdp-sidebar-picker .rdp-day_selected,\n                    .rdp-sidebar-picker .rdp-day_range_start,\n                    .rdp-sidebar-picker .rdp-day_range_end,\n                    .rdp-sidebar-picker .rdp-day_range_middle {\n                      background-color: #2b0707 !important;\n                      color: #ffffff !important;\n                    }\n                    .rdp-sidebar-picker .rdp-day_selected:hover,\n                    .rdp-sidebar-picker .rdp-day_range_start:hover,\n                    .rdp-sidebar-picker .rdp-day_range_end:hover,\n                    .rdp-sidebar-picker .rdp-day_range_middle:hover {\n                      background-color: #2b0707 !important;\n                      color: #ffffff !important;\n                    }\n                    .rdp-sidebar-picker .rdp-day_today .rdp-button {\n                      border-color: #2b0707 !important;\n                    }\n                  `}</style>
+                                <div ref={historyDatePickerRef} className="absolute left-0 top-full z-[100] mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
+                                    <style>{`\n                    .rdp-sidebar-picker {\n                      --rdp-accent-color: #4a1111;\n                      --rdp-background-color: transparent;\n                      --rdp-outline: 2px solid rgba(74, 17, 17, 0.28);\n                      --rdp-outline-selected: 2px solid rgba(74, 17, 17, 0.28);\n                      color: hsl(var(--foreground));\n                      margin: 0;\n                    }\n\n                    .rdp-sidebar-picker .rdp-months {\n                      gap: 0.75rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-month_caption,\n                    .rdp-sidebar-picker .rdp-caption_label {\n                      color: hsl(var(--foreground));\n                      font-size: 0.95rem;\n                      font-weight: 700;\n                      letter-spacing: -0.01em;\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav {\n                      top: 0.1rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav_button_previous {\n                      margin-right: 0.4rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav_button {\n                      width: 2rem;\n                      height: 2rem;\n                      border-radius: 9999px;\n                      border: 1px solid hsl(var(--border));\n                      background: hsl(var(--background));\n                      color: #4a1111;\n                      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);\n                      transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav_button:hover {\n                      border-color: rgba(74, 17, 17, 0.18);\n                      background: rgba(74, 17, 17, 0.06);\n                      transform: translateY(-1px);\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav_button:disabled {\n                      opacity: 0.45;\n                      transform: none;\n                    }\n\n                    .rdp-sidebar-picker .rdp-chevron {\n                      fill: none;\n                      stroke: currentColor;\n                    }\n\n                    .rdp-sidebar-picker .rdp-table {\n                      border-collapse: separate;\n                      border-spacing: 0 0.3rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-head_cell {\n                      color: hsl(var(--muted-foreground));\n                      font-size: 0.68rem;\n                      font-weight: 700;\n                      letter-spacing: 0.18em;\n                      text-transform: uppercase;\n                    }\n\n                    .rdp-sidebar-picker .rdp-day {\n                      width: 2.35rem;\n                      height: 2.35rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-day .rdp-button {\n                      width: 2.35rem;\n                      height: 2.35rem;\n                      border-radius: 9999px;\n                      font-size: 0.85rem;\n                      font-weight: 500;\n                      color: hsl(var(--foreground));\n                      transition: background-color 150ms ease, color 150ms ease, transform 150ms ease, box-shadow 150ms ease;\n                    }\n\n                    .rdp-sidebar-picker .rdp-day .rdp-button:hover {\n                      background: hsl(var(--secondary));\n                      transform: translateY(-1px);\n                    }\n\n                    .rdp-sidebar-picker .rdp-day_selected .rdp-button,\n                    .rdp-sidebar-picker .rdp-day_range_start .rdp-button,\n                    .rdp-sidebar-picker .rdp-day_range_end .rdp-button {\n                      background-color: #4a1111 !important;\n                      color: #ffffff !important;\n                      box-shadow: 0 10px 22px rgba(74, 17, 17, 0.22);\n                    }\n\n                    .rdp-sidebar-picker .rdp-day_range_middle .rdp-button {\n                      background-color: rgba(74, 17, 17, 0.1) !important;\n                      color: #4a1111 !important;\n                    }\n\n                    .rdp-sidebar-picker .rdp-day_today .rdp-button {\n                      box-shadow: inset 0 0 0 1px rgba(74, 17, 17, 0.35);\n                    }\n\n                    .rdp-sidebar-picker .rdp-day_outside .rdp-button,\n                    .rdp-sidebar-picker .rdp-day_disabled .rdp-button {\n                      color: hsl(var(--muted-foreground));\n                      opacity: 0.45;\n                    }\n\n                    .rdp-sidebar-picker .rdp-footer {\n                      margin-top: 0.75rem;\n                      padding-top: 0.75rem;\n                      border-top: 1px solid hsl(var(--border));\n                      color: hsl(var(--muted-foreground));\n                      font-size: 0.75rem;\n                    }\n                  `}</style>
                                     <DayPicker
                                         className="rdp-sidebar-picker text-sm"
                                         mode="range"
@@ -1770,7 +1788,7 @@ export default function ComputerLaboratoryInventory() {
                                         footer={
                                             historyDateRange.from && historyDateRange.to
                                                 ? `${format(historyDateRange.from, "MMM d, yyyy")} — ${format(historyDateRange.to, "MMM d, yyyy")}`
-                                                : "Select a date range"
+                                                : ""
                                         }
                                         fromDate={new Date("2000-01-01")}
                                         toDate={new Date("2100-12-31")}

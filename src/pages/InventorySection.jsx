@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, ChevronsUpDown, Check, ChevronLeft, ChevronDown, Download, FileText, PencilLine, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown, Check, ChevronLeft, ChevronRight, ChevronDown, Download, FileText, PencilLine, Plus, Search, Trash2, X } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
@@ -1141,6 +1141,7 @@ export default function InventorySection() {
   const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" });
   const [isHistoryOpen, setIsHistoryOpen] = useState(() => searchParams.get("view") === "logs");
   const [pendingAction, setPendingAction] = useState("");
+  const historyDatePickerRef = useRef(null);
 
   const updateHistoryView = (isOpen) => {
     setIsHistoryOpen(isOpen);
@@ -1236,6 +1237,14 @@ export default function InventorySection() {
   useEffect(() => {
     setPage(1);
   }, [selectedSectionSlug, refreshKey, isDefectiveOnlyView]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [isHistoryOpen]);
 
   useEffect(() => {
     if (!gridEditMode) {
@@ -1384,6 +1393,17 @@ export default function InventorySection() {
     });
   }, [hasItemNumberColumn, isDefectiveOnlyView, items]);
   const totalPages = Math.ceil(displayItems.length / itemsPerPage);
+  const visiblePageNumbers = (() => {
+    const maxVisible = 3;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const offset = Math.min(Math.max(page - 2, 0), totalPages - maxVisible);
+    const startPage = offset + 1;
+    return Array.from({ length: maxVisible }, (_, index) => startPage + index);
+  })();
+
   const pageStartIndex = (page - 1) * itemsPerPage;
   const pageEndIndex = pageStartIndex + itemsPerPage;
   const paginatedItems = useMemo(
@@ -1603,6 +1623,21 @@ export default function InventorySection() {
       setPage(totalPages);
     }
   }, [page, totalPages]);
+
+  useEffect(() => {
+    if (!showHistoryDatePicker) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (historyDatePickerRef.current && !historyDatePickerRef.current.contains(event.target)) {
+        setShowHistoryDatePicker(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [showHistoryDatePicker]);
 
   const openCreateModal = () => {
     setEditingItem(null);
@@ -1933,20 +1968,22 @@ export default function InventorySection() {
                   type="button"
                   onClick={openCreateModal}
                   disabled={usesTemplateColumns && !tabTableName}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a1111] px-4 text-sm font-medium text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
                   title={usesTemplateColumns && !tabTableName ? "Loading table..." : "Add item"}
                   aria-label={usesTemplateColumns && !tabTableName ? "Loading table" : "Add item"}
                 >
                   <Plus className="h-4 w-4" />
+                  <span>Add New Item</span>
                 </button>
                 <button
                   type="button"
                   onClick={requestExitEditMode}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717]"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a1111] px-4 text-sm font-medium text-white transition hover:bg-[#5a1717]"
                   title="Done editing"
                   aria-label="Done editing"
                 >
                   <Check className="h-4 w-4" />
+                  <span>Done</span>
                 </button>
               </>
             ) : (
@@ -1957,20 +1994,22 @@ export default function InventorySection() {
                       type="button"
                       onClick={openExportModal}
                       disabled={itemsLoading || items.length === 0}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a1111] px-4 text-sm font-medium text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
                       title={itemsLoading ? "Loading items..." : "Export"}
                       aria-label={itemsLoading ? "Loading items" : "Export"}
                     >
                       <Download className="h-4 w-4" />
+                      <span>Export</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setGridEditMode(true)}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717]"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a1111] px-4 text-sm font-medium text-white transition hover:bg-[#5a1717]"
                       title="Edit mode off"
                       aria-label="Edit mode off"
                     >
                       <PencilLine className="h-4 w-4" />
+                      <span>Edit</span>
                     </button>
                   </>
                 )}
@@ -2004,17 +2043,18 @@ export default function InventorySection() {
                       }, { replace: true });
                     }
                   }}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#4a1111] text-white transition hover:bg-[#5a1717]"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a1111] px-4 text-sm font-medium text-white transition hover:bg-[#5a1717]"
                   title={isHistoryOpen ? "Return to inventory" : "View history"}
                   aria-label={isHistoryOpen ? "Return to inventory" : "View history"}
                 >
-                  <span className="inline-flex items-center justify-center w-4 h-4">
+                  <span className="inline-flex h-4 w-4 items-center justify-center">
                     {isHistoryOpen ? (
                       <ChevronLeft className="h-4 w-4 text-white" />
                     ) : (
                       <FileText className="h-4 w-4 text-white" />
                     )}
                   </span>
+                  <span>{isHistoryOpen ? "Return" : "Logs"}</span>
                 </button>
               </>
             )}
@@ -2071,34 +2111,136 @@ export default function InventorySection() {
               )}
             </div>
 
-            <div className="relative z-[90]">
+            <div ref={historyDatePickerRef} className="relative z-[90]">
               <button
                 type="button"
                 onClick={() => setShowHistoryDatePicker((current) => !current)}
                 className="w-full min-w-[18rem] sm:w-64 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-left text-slate-700 hover:border-slate-300"
               >
                 <span className="text-slate-500">{formatPickerLabel(historyDateRange)}</span>
-                <span className="text-xs text-slate-400">▼</span>
+                <ChevronDown className="h-4 w-4 text-slate-400" />
               </button>
               {showHistoryDatePicker && (
-                <div className="absolute left-0 top-full z-[100] mt-2 w-[22rem] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl">
+                <div className="absolute left-0 top-full z-[100] mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
                   <style>{`
-                    .rdp-sidebar-picker .rdp-day_selected,
-                    .rdp-sidebar-picker .rdp-day_range_start,
-                    .rdp-sidebar-picker .rdp-day_range_end,
-                    .rdp-sidebar-picker .rdp-day_range_middle {
-                      background-color: #2b0707 !important;
-                      color: #ffffff !important;
+                    .rdp-sidebar-picker {
+                      --rdp-accent-color: #4a1111;
+                      --rdp-background-color: transparent;
+                      --rdp-outline: 2px solid rgba(74, 17, 17, 0.28);
+                      --rdp-outline-selected: 2px solid rgba(74, 17, 17, 0.28);
+                      color: hsl(var(--foreground));
+                      margin: 0;
                     }
-                    .rdp-sidebar-picker .rdp-day_selected:hover,
-                    .rdp-sidebar-picker .rdp-day_range_start:hover,
-                    .rdp-sidebar-picker .rdp-day_range_end:hover,
-                    .rdp-sidebar-picker .rdp-day_range_middle:hover {
-                      background-color: #2b0707 !important;
-                      color: #ffffff !important;
+
+                    .rdp-sidebar-picker .rdp-months {
+                      gap: 0.75rem;
                     }
+
+                    .rdp-sidebar-picker .rdp-month_caption,
+                    .rdp-sidebar-picker .rdp-caption_label {
+                      color: hsl(var(--foreground));
+                      font-size: 0.95rem;
+                      font-weight: 700;
+                      letter-spacing: -0.01em;
+                    }
+
+                    .rdp-sidebar-picker .rdp-nav {
+                      top: 0.1rem;
+                    }
+
+                    .rdp-sidebar-picker .rdp-nav_button_previous {
+                      margin-right: 0.4rem;
+                    }
+
+                    .rdp-sidebar-picker .rdp-nav_button {
+                      width: 2rem;
+                      height: 2rem;
+                      border-radius: 9999px;
+                      border: 1px solid hsl(var(--border));
+                      background: hsl(var(--background));
+                      color: #4a1111;
+                      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+                      transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+                    }
+
+                    .rdp-sidebar-picker .rdp-nav_button:hover {
+                      border-color: rgba(74, 17, 17, 0.18);
+                      background: rgba(74, 17, 17, 0.06);
+                      transform: translateY(-1px);
+                    }
+
+                    .rdp-sidebar-picker .rdp-nav_button:disabled {
+                      opacity: 0.45;
+                      transform: none;
+                    }
+
+                    .rdp-sidebar-picker .rdp-chevron {
+                      fill: none;
+                      stroke: currentColor;
+                    }
+
+                    .rdp-sidebar-picker .rdp-table {
+                      border-collapse: separate;
+                      border-spacing: 0 0.3rem;
+                    }
+
+                    .rdp-sidebar-picker .rdp-head_cell {
+                      color: hsl(var(--muted-foreground));
+                      font-size: 0.68rem;
+                      font-weight: 700;
+                      letter-spacing: 0.18em;
+                      text-transform: uppercase;
+                    }
+
+                    .rdp-sidebar-picker .rdp-day {
+                      width: 2.35rem;
+                      height: 2.35rem;
+                    }
+
+                    .rdp-sidebar-picker .rdp-day .rdp-button {
+                      width: 2.35rem;
+                      height: 2.35rem;
+                      border-radius: 9999px;
+                      font-size: 0.85rem;
+                      font-weight: 500;
+                      color: hsl(var(--foreground));
+                      transition: background-color 150ms ease, color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+                    }
+
+                    .rdp-sidebar-picker .rdp-day .rdp-button:hover {
+                      background: hsl(var(--secondary));
+                      transform: translateY(-1px);
+                    }
+
+                    .rdp-sidebar-picker .rdp-day_selected .rdp-button,
+                    .rdp-sidebar-picker .rdp-day_range_start .rdp-button,
+                    .rdp-sidebar-picker .rdp-day_range_end .rdp-button {
+                      background-color: #4a1111 !important;
+                      color: #ffffff !important;
+                      box-shadow: 0 10px 22px rgba(74, 17, 17, 0.22);
+                    }
+
+                    .rdp-sidebar-picker .rdp-day_range_middle .rdp-button {
+                      background-color: rgba(74, 17, 17, 0.1) !important;
+                      color: #4a1111 !important;
+                    }
+
                     .rdp-sidebar-picker .rdp-day_today .rdp-button {
-                      border-color: #2b0707 !important;
+                      box-shadow: inset 0 0 0 1px rgba(74, 17, 17, 0.35);
+                    }
+
+                    .rdp-sidebar-picker .rdp-day_outside .rdp-button,
+                    .rdp-sidebar-picker .rdp-day_disabled .rdp-button {
+                      color: hsl(var(--muted-foreground));
+                      opacity: 0.45;
+                    }
+
+                    .rdp-sidebar-picker .rdp-footer {
+                      margin-top: 0.75rem;
+                      padding-top: 0.75rem;
+                      border-top: 1px solid hsl(var(--border));
+                      color: hsl(var(--muted-foreground));
+                      font-size: 0.75rem;
                     }
                   `}</style>
                   <DayPicker
@@ -2373,8 +2515,8 @@ export default function InventorySection() {
           </div>
 
           {displayItems.length > 0 && (
-            <div className="flex items-center justify-between gap-4 border-t border-slate-200 px-5 py-4">
-              <div className="text-sm text-slate-600">
+            <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
+              <div className="text-sm text-slate-500">
                 Showing {Math.min(pageStartIndex + 1, displayItems.length)}–{Math.min(
                   pageEndIndex,
                   displayItems.length
@@ -2385,29 +2527,32 @@ export default function InventorySection() {
                   type="button"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="rounded-md px-2 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                  className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Previous page"
                 >
-                  Prev
+                  <ChevronLeft className="h-4 w-4" />
                 </button>
-                {Array.from({ length: totalPages }).map((_, i) => (
+                {visiblePageNumbers.map((pageNumber) => {
+                  const isActive = page === pageNumber;
+                  return (
                   <button
-                    key={i}
+                    key={pageNumber}
                     type="button"
-                    onClick={() => setPage(i + 1)}
-                    className={`rounded-md px-2 py-1 text-sm ${
-                      page === i + 1 ? "bg-[#4a1111] text-white" : "text-slate-700 hover:bg-slate-100"
-                    }`}
+                    onClick={() => setPage(pageNumber)}
+                    className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
                   >
-                    {i + 1}
+                    {pageNumber}
                   </button>
-                ))}
+                  );
+                })}
                 <button
                   type="button"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages || totalPages === 0}
-                  className="rounded-md px-2 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                  className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Next page"
                 >
-                  Next
+                  <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
             </div>

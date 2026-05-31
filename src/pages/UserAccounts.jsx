@@ -10,6 +10,8 @@ import {
   Trash2,
   UserCheck,
   UserX,
+  ChevronLeft,
+  ChevronRight,
   MoreVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -102,6 +104,8 @@ export default function UserAccounts() {
   const [statusChanging, setStatusChanging] = useState(false);
   const [inviteActionCandidate, setInviteActionCandidate] = useState(null);
   const [inviteActionLoading, setInviteActionLoading] = useState("");
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 7;
 
   const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
 
@@ -326,6 +330,36 @@ export default function UserAccounts() {
   });
 
   const sortedFiltered = sortAccountsByStatus(filtered);
+  const totalPages = Math.ceil(sortedFiltered.length / itemsPerPage);
+  const pageStartIndex = (page - 1) * itemsPerPage;
+  const pageEndIndex = pageStartIndex + itemsPerPage;
+  const paginatedAccounts = sortedFiltered.slice(pageStartIndex, pageEndIndex);
+
+  const visiblePageNumbers = (() => {
+    const maxVisible = 3;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const offset = Math.min(Math.max(page - 2, 0), totalPages - maxVisible);
+    const startPage = offset + 1;
+    return Array.from({ length: maxVisible }, (_, index) => startPage + index);
+  })();
+
+  useEffect(() => {
+    if (page > totalPages && totalPages > 0) {
+      setPage(totalPages);
+      return;
+    }
+
+    if (totalPages === 0 && page !== 1) {
+      setPage(1);
+    }
+  }, [page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, accountTypeFilter]);
 
   const uniqueAccountTypes = [...new Set(accounts.map(a => a.account_type).filter(Boolean))];
   if (loading) {
@@ -415,7 +449,7 @@ export default function UserAccounts() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {sortedFiltered.map((acc) => (
+                {paginatedAccounts.map((acc) => (
                   <tr
                     key={acc.id}
                     className={`transition-colors ${acc.is_active === false ? "bg-slate-100 text-slate-400 opacity-75 grayscale" : "hover:bg-slate-50"}`}
@@ -506,6 +540,50 @@ export default function UserAccounts() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {sortedFiltered.length > 0 && (
+          <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
+            <div className="text-sm text-slate-500">
+              Showing {Math.min(pageStartIndex + 1, sortedFiltered.length)}–{Math.min(pageEndIndex, sortedFiltered.length)} of {sortedFiltered.length}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page === 1}
+                className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+
+              {visiblePageNumbers.map((pageNumber) => {
+                const isActive = page === pageNumber;
+                return (
+                  <button
+                    key={pageNumber}
+                    type="button"
+                    onClick={() => setPage(pageNumber)}
+                    className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
+                  >
+                    {pageNumber}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                disabled={page === totalPages || totalPages === 0}
+                className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Next page"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>

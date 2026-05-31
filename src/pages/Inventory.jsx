@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Edit, MoreVertical, Plus, Trash2, X, Check, Monitor, Armchair, Wrench, FileText, Box, Tv, Cable } from "lucide-react";
+import { Edit, MoreVertical, Plus, Trash2, X, Check, Monitor, Armchair, Wrench, FileText, Box, Tv, Cable, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -333,7 +333,7 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100 rounded-xl bg-white shadow-2xl ring-1 ring-slate-200">
+      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto inventory-modal-scrollbar rounded-xl bg-white shadow-2xl ring-1 ring-slate-200">
         <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 rounded-t-xl">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{column ? "Edit column" : "Add column"}</h3>
@@ -750,7 +750,7 @@ function SectionModal({ section, onClose, onSave }) {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100 grid gap-4 px-6 py-5">
+        <div className="flex-1 overflow-y-auto inventory-modal-scrollbar grid gap-4 px-6 py-5">
           <div>
             <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Section name</label>
             <Input
@@ -1751,6 +1751,8 @@ export default function Inventory() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pendingDeleteTab, setPendingDeleteTab] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 7;
 
   const editingTab = useMemo(() => tabs.find((tab) => tab.slug === editingSlug) || null, [tabs, editingSlug]);
   const ddlEndpoint = getInventoryCreateTableEndpoint();
@@ -1987,6 +1989,37 @@ export default function Inventory() {
     setShowDeleteConfirm(true);
   };
 
+  const totalPages = Math.ceil(tabs.length / itemsPerPage);
+  const pageStartIndex = (page - 1) * itemsPerPage;
+  const pageEndIndex = pageStartIndex + itemsPerPage;
+  const paginatedTabs = tabs.slice(pageStartIndex, pageEndIndex);
+
+  const visiblePageNumbers = (() => {
+    const maxVisible = 3;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const offset = Math.min(Math.max(page - 2, 0), totalPages - maxVisible);
+    const startPage = offset + 1;
+    return Array.from({ length: maxVisible }, (_, index) => startPage + index);
+  })();
+
+  useEffect(() => {
+    if (page > totalPages && totalPages > 0) {
+      setPage(totalPages);
+      return;
+    }
+
+    if (totalPages === 0 && page !== 1) {
+      setPage(1);
+    }
+  }, [page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [tabs]);
+
   const confirmDelete = async () => {
     if (!pendingDeleteTab?.id) return;
     setIsDeleting(true);
@@ -2184,7 +2217,7 @@ export default function Inventory() {
                     <span className="sr-only">Open computer laboratories</span>
                   </td>
                 </tr>
-                {tabs.map((tab) => (
+                {paginatedTabs.map((tab) => (
                   <tr
                     key={tab.id}
                     className="cursor-pointer hover:bg-slate-50"
@@ -2202,7 +2235,11 @@ export default function Inventory() {
                     <td className="px-4 py-3 text-slate-600">{tab.description || "—"}</td>
                     <td className="px-4 py-3 text-slate-600">{tab.sections?.length || 0}</td>
                     <td className="px-4 py-3">
-                      <div className="flex justify-end">
+                      <div
+                        className="flex justify-end"
+                        onClick={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => event.stopPropagation()}
+                      >
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -2211,13 +2248,20 @@ export default function Inventory() {
                               className={rowActionButtonClass}
                               aria-label={`Open actions for ${tab.name}`}
                               onClick={(event) => event.stopPropagation()}
+                              onPointerDown={(event) => event.stopPropagation()}
                             >
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuContent
+                            align="end"
+                            className="w-56"
+                            onClick={(event) => event.stopPropagation()}
+                            onPointerDown={(event) => event.stopPropagation()}
+                          >
                             <DropdownMenuItem
-                              onSelect={() => {
+                              onSelect={(event) => {
+                                event.stopPropagation();
                                 setEditingSlug(tab.slug);
                                 setShowModal(true);
                               }}
@@ -2227,7 +2271,10 @@ export default function Inventory() {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onSelect={() => handleDelete(tab)}
+                              onSelect={(event) => {
+                                event.stopPropagation();
+                                handleDelete(tab);
+                              }}
                               className="text-rose-600 focus:text-rose-600"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -2242,6 +2289,50 @@ export default function Inventory() {
               </tbody>
             </table>
           </div>
+
+          {tabs.length > 0 && (
+            <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
+              <div className="text-sm text-slate-500">
+                Showing {Math.min(pageStartIndex + 1, tabs.length)}–{Math.min(pageEndIndex, tabs.length)} of {tabs.length}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  disabled={page === 1}
+                  className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+
+                {visiblePageNumbers.map((pageNumber) => {
+                  const isActive = page === pageNumber;
+                  return (
+                    <button
+                      key={pageNumber}
+                      type="button"
+                      onClick={() => setPage(pageNumber)}
+                      className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
+                    >
+                      {pageNumber}
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                  disabled={page === totalPages || totalPages === 0}
+                  className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {showModal && (

@@ -1,6 +1,6 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ChevronDown, Download, History } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Download, History } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
@@ -420,6 +420,7 @@ export default function Borrowing() {
   );
   const [dateRange, setDateRange] = useState({ from: undefined, to: undefined });
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const datePickerRef = useRef(null);
   const [customItems, setCustomItems] = useState([]);
   const [customItemForm, setCustomItemForm] = useState({
     name: "",
@@ -499,6 +500,17 @@ export default function Borrowing() {
 
   const pageCount = Math.ceil(filteredData.length / pageSize);
   const currentPageData = filteredData.slice(page * pageSize, page * pageSize + pageSize);
+  const visiblePageNumbers = (() => {
+    const maxVisible = 3;
+    if (pageCount <= maxVisible) {
+      return Array.from({ length: pageCount }, (_, index) => index + 1);
+    }
+
+    const offset = Math.min(Math.max(page - 1, 0), pageCount - maxVisible);
+    const startPage = offset + 1;
+    return Array.from({ length: maxVisible }, (_, index) => startPage + index);
+  })();
+
   const latestActiveBorrowForBorrower = useMemo(() => {
     const borrowerId = String(form.studentId || "").trim().toLowerCase();
     const borrowerName = String(form.name || "").trim().toLowerCase();
@@ -563,6 +575,25 @@ export default function Borrowing() {
       setPage(pageCount - 1);
     }
   }, [filteredData.length, pageCount, page]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [search, statusFilter, dateRange.from, dateRange.to]);
+
+  useEffect(() => {
+    if (!showDatePicker) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (datePickerRef.current && !datePickerRef.current.contains(event.target)) {
+        setShowDatePicker(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [showDatePicker]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1310,23 +1341,126 @@ export default function Borrowing() {
   return (
     <div className="max-h-screen py-10 px-6">
       <style>{`
-        .rdp-sidebar-picker .rdp-day_selected,
-        .rdp-sidebar-picker .rdp-day_range_start,
-        .rdp-sidebar-picker .rdp-day_range_end,
-        .rdp-sidebar-picker .rdp-day_range_middle {
-          background-color: #2b0707 !important;
-          color: #ffffff !important;
+        .rdp-sidebar-picker {
+          --rdp-accent-color: #4a1111;
+          --rdp-background-color: transparent;
+          --rdp-outline: 2px solid rgba(74, 17, 17, 0.28);
+          --rdp-outline-selected: 2px solid rgba(74, 17, 17, 0.28);
+          color: hsl(var(--foreground));
+          margin: 0;
         }
-        .rdp-sidebar-picker .rdp-day_selected:hover,
-        .rdp-sidebar-picker .rdp-day_range_start:hover,
-        .rdp-sidebar-picker .rdp-day_range_end:hover,
-        .rdp-sidebar-picker .rdp-day_range_middle:hover {
-          background-color: #2b0707 !important;
-          color: #ffffff !important;
+
+        .rdp-sidebar-picker .rdp-months {
+          gap: 0.75rem;
         }
+
+        .rdp-sidebar-picker .rdp-month_caption,
+        .rdp-sidebar-picker .rdp-caption_label {
+          color: hsl(var(--foreground));
+          font-size: 0.95rem;
+          font-weight: 700;
+          letter-spacing: -0.01em;
+        }
+
+        .rdp-sidebar-picker .rdp-nav {
+          top: 0.1rem;
+        }
+
+        .rdp-sidebar-picker .rdp-nav_button_previous {
+          margin-right: 0.4rem;
+        }
+
+        .rdp-sidebar-picker .rdp-nav_button {
+          width: 2rem;
+          height: 2rem;
+          border-radius: 9999px;
+          border: 1px solid hsl(var(--border));
+          background: hsl(var(--background));
+          color: #4a1111;
+          box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+          transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+        }
+
+        .rdp-sidebar-picker .rdp-nav_button:hover {
+          border-color: rgba(74, 17, 17, 0.18);
+          background: rgba(74, 17, 17, 0.06);
+          transform: translateY(-1px);
+        }
+
+        .rdp-sidebar-picker .rdp-nav_button:disabled {
+          opacity: 0.45;
+          transform: none;
+        }
+
+        .rdp-sidebar-picker .rdp-chevron {
+          fill: none;
+          stroke: currentColor;
+        }
+
+        .rdp-sidebar-picker .rdp-table {
+          border-collapse: separate;
+          border-spacing: 0 0.3rem;
+        }
+
+        .rdp-sidebar-picker .rdp-head_cell {
+          color: hsl(var(--muted-foreground));
+          font-size: 0.68rem;
+          font-weight: 700;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+        }
+
+        .rdp-sidebar-picker .rdp-day {
+          width: 2.35rem;
+          height: 2.35rem;
+        }
+
+        .rdp-sidebar-picker .rdp-day .rdp-button {
+          width: 2.35rem;
+          height: 2.35rem;
+          border-radius: 9999px;
+          font-size: 0.85rem;
+          font-weight: 500;
+          color: hsl(var(--foreground));
+          transition: background-color 150ms ease, color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+        }
+
+        .rdp-sidebar-picker .rdp-day .rdp-button:hover {
+          background: hsl(var(--secondary));
+          transform: translateY(-1px);
+        }
+
+        .rdp-sidebar-picker .rdp-day_selected .rdp-button,
+        .rdp-sidebar-picker .rdp-day_range_start .rdp-button,
+        .rdp-sidebar-picker .rdp-day_range_end .rdp-button {
+          background-color: #4a1111 !important;
+          color: #ffffff !important;
+          box-shadow: 0 10px 22px rgba(74, 17, 17, 0.22);
+        }
+
+        .rdp-sidebar-picker .rdp-day_range_middle .rdp-button {
+          background-color: rgba(74, 17, 17, 0.1) !important;
+          color: #4a1111 !important;
+        }
+
         .rdp-sidebar-picker .rdp-day_today .rdp-button {
-          border-color: #2b0707 !important;
+          box-shadow: inset 0 0 0 1px rgba(74, 17, 17, 0.35);
         }
+
+        .rdp-sidebar-picker .rdp-day_outside .rdp-button,
+        .rdp-sidebar-picker .rdp-day_disabled .rdp-button {
+          color: hsl(var(--muted-foreground));
+          opacity: 0.45;
+        }
+
+        .rdp-sidebar-picker .rdp-footer {
+          margin-top: 0.75rem;
+          padding-top: 0.75rem;
+          border-top: 1px solid hsl(var(--border));
+          color: hsl(var(--muted-foreground));
+          font-size: 0.75rem;
+        }
+
       `}</style>
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
@@ -1343,17 +1477,17 @@ export default function Borrowing() {
             onChange={(e) => setSearch(e.target.value)}
             className="min-w-[220px] flex-1 border rounded-full px-4 py-2 text-sm"
           />
-          <div className="relative">
+          <div ref={datePickerRef} className="relative z-[90]">
             <button
               type="button"
               onClick={() => setShowDatePicker((current) => !current)}
-              className="w-64 flex items-center justify-between gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-left text-slate-700 hover:border-slate-300"
+              className="w-full min-w-[18rem] sm:w-64 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-left text-slate-700 hover:border-slate-300"
             >
               <span className="text-slate-500">{formatPickerLabel(dateRange)}</span>
-              <span className="text-xs text-slate-400">▼</span>
+              <ChevronDown className="h-4 w-4 text-slate-400" />
             </button>
             {showDatePicker && (
-              <div className="absolute left-0 z-20 mt-2 max-w-[22rem] rounded-2xl border border-slate-200 bg-white p-3 shadow-lg">
+              <div className="absolute left-0 top-full z-[100] mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
                 <DayPicker
                   className="rdp-sidebar-picker text-sm"
                   mode="range"
@@ -1365,7 +1499,7 @@ export default function Borrowing() {
                   footer={
                     dateRange.from && dateRange.to
                       ? `${format(dateRange.from, "MMM d, yyyy")} — ${format(dateRange.to, "MMM d, yyyy")}`
-                      : "Select a date range"
+                      : ""
                   }
                   fromDate={new Date("2000-01-01")}
                   toDate={new Date("2100-12-31")}
@@ -1740,29 +1874,41 @@ export default function Borrowing() {
             </tbody>
             </table>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-6">
-            <p className="text-xs text-slate-500">
-              Showing {Math.min(filteredData.length, page * pageSize + 1)}–{Math.min(filteredData.length, (page + 1) * pageSize)} of {filteredData.length}
-            </p>
+          <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
+            <div className="text-sm text-slate-500">
+              Showing {filteredData.length === 0 ? 0 : page * pageSize + 1}–{Math.min(filteredData.length, (page + 1) * pageSize)} of {filteredData.length}
+            </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setPage((prev) => Math.max(0, prev - 1))}
                 disabled={page === 0}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Previous page"
               >
-                Previous
+                <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="text-xs text-slate-500">
-                Page {page + 1} of {pageCount || 1}
-              </span>
+              {visiblePageNumbers.map((pageNumber) => {
+                const isActive = page + 1 === pageNumber;
+                return (
+                  <button
+                    key={pageNumber}
+                    type="button"
+                    onClick={() => setPage(pageNumber - 1)}
+                    className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
+                  >
+                    {pageNumber}
+                  </button>
+                );
+              })}
               <button
                 type="button"
                 onClick={() => setPage((prev) => Math.min(pageCount - 1, prev + 1))}
                 disabled={page >= pageCount - 1}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Next page"
               >
-                Next
+                <ChevronRight className="h-4 w-4" />
               </button>
             </div>
           </div>
