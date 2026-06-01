@@ -22,7 +22,7 @@ const formatDate = (dateString) => {
   }
 };
 
-export default function ExportLogsPanel({ searchQuery = "", refreshToken = 0 }) {
+export default function ExportLogsPanel({ searchQuery = "", refreshToken = 0, fileNamePrefix = "" }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -86,7 +86,12 @@ export default function ExportLogsPanel({ searchQuery = "", refreshToken = 0 }) 
   }, [logs, dateOrder]);
 
   const displayedExportLogs = useMemo(() => {
-    const exportLikeLogs = sortedExportLogs;
+    const normalizedFileNamePrefix = String(fileNamePrefix || "").trim().toLowerCase();
+    const exportLikeLogs = normalizedFileNamePrefix
+      ? sortedExportLogs.filter((entry) =>
+          String(entry.file_name || "").toLowerCase().startsWith(normalizedFileNamePrefix)
+        )
+      : sortedExportLogs;
     if (!normalizedSearchQuery) return exportLikeLogs;
 
     return exportLikeLogs.filter((entry) => {

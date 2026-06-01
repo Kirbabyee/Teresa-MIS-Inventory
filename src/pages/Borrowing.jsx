@@ -6,6 +6,9 @@ import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
 import { format } from "date-fns";
 import "react-day-picker/dist/style.css";
+import { supabase } from "@/api/supabaseClient";
+import ExportLogsPanel from "@/components/ExportLogsPanel";
+import { useAuth } from "@/lib/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -335,6 +338,17 @@ const createHeaderSeparatorBase64 = () => {
   return canvas.toDataURL("image/png").split(",")[1];
 };
 
+const EXPORT_BUCKET = "export-logs";
+
+const createExportStoragePath = (filename) => {
+  const safeName = String(filename || "export.xlsx").replace(/[^a-zA-Z0-9._-]+/g, "_");
+  const uniqueId =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${new Date().toISOString().slice(0, 10)}/${uniqueId}-${safeName}`;
+};
+
 const applyExportHeader = (worksheet, titleText, exportDate, separatorImage, totalColumns, options = {}) => {
   const headerColor = { argb: "FF4A1111" };
   const endColumnNumber = Math.max(13, totalColumns + 1);
@@ -418,6 +432,7 @@ const applyExportHeader = (worksheet, titleText, exportDate, separatorImage, tot
 
 export default function Borrowing() {
   const [searchParams] = useSearchParams();
+  const { user } = useAuth();
   const { tabs, loading: inventoryLoading, error: inventoryError } = useInventoryCatalog();
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -443,7 +458,7 @@ export default function Borrowing() {
   const [mergeWithLastBorrow, setMergeWithLastBorrow] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState(() =>
-    searchParams.get("view") === "history" ? "all" : "borrowed"
+    ["logs", "history"].includes(searchParams.get("view")) ? "all" : "borrowed"
   );
   const [dateRange, setDateRange] = useState({ from: undefined, to: undefined });
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -474,6 +489,8 @@ export default function Borrowing() {
   const [inspectedByName, setInspectedByName] = useState("");
   const [selectedExportColumns, setSelectedExportColumns] = useState([]);
   const [showColumnOptions, setShowColumnOptions] = useState(true);
+  const [exportLogRefreshToken, setExportLogRefreshToken] = useState(0);
+  const [showExportLogs, setShowExportLogs] = useState(false);
 
   // ── 3-Step Wizard State ──────────────────────────────────────────────────
   const [activeStep, setActiveStep] = useState(1);
@@ -1048,7 +1065,43 @@ export default function Borrowing() {
       const blob = new Blob([buffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       });
-      saveAs(blob, `borrowing-records-${statusFilter}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      const filename = `borrowing-records-${statusFilter}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      saveAs(blob, filename);
+
+      try {
+        const storagePath = createExportStoragePath(filename);
+        const { error: uploadError } = await supabase.storage
+          .from(EXPORT_BUCKET)
+          .upload(storagePath, blob, {
+            contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            upsert: false,
+          });
+
+        if (uploadError) throw uploadError;
+
+        const exportBy = (
+          user?.displayName ||
+          [user?.first_name, user?.last_name].filter(Boolean).join(" ") ||
+          user?.email ||
+          "system"
+        ).trim();
+
+        const { error: logError } = await supabase.from("export_logs").insert({
+          export_by: exportBy || "system",
+          file_name: filename,
+          export_date: exportDate,
+          file_path: storagePath,
+        });
+
+        if (logError) {
+          console.warn("Failed to insert borrowing export log:", logError);
+        } else {
+          setExportLogRefreshToken((current) => current + 1);
+        }
+      } catch (logError) {
+        console.warn("Failed to record borrowing export log:", logError);
+      }
+
       setShowExportModal(false);
     } finally {
       setExporting(false);
@@ -1588,12 +1641,95 @@ export default function Borrowing() {
       `}</style>
       <div className="w-full space-y-5">
 
-        {/* ── Page Header & Action Bar ─────────────────────────────────────── */}
-        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+        {/* ── Page Header ─────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold text-slate-900">
-            {statusFilter === "all" ? "Borrowing Logs" : "Borrowed Items"}
+            {showExportLogs
+              ? "Export Logs"
+              : statusFilter === "all"
+                ? "Borrowing History"
+                : "Borrowed Items"}
           </h1>
-          <div className="flex flex-wrap items-center gap-2">
+        </div>
+
+        {/* ── Filters & Actions ────────────────────────────────────────────── */}
+        <div className="relative z-20 flex w-full flex-col gap-3 overflow-visible xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+            <div className="relative w-full sm:w-96">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder={showExportLogs ? "Search export logs..." : "Search borrower or item..."}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="Clear search"
+                  title="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            {!showExportLogs && (
+              <div ref={datePickerRef} className="relative z-20">
+                <button
+                  type="button"
+                  onClick={() => setShowDatePicker((current) => !current)}
+                  className="flex w-full min-w-[18rem] items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 shadow-sm hover:border-slate-300 focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20 sm:w-64"
+                >
+                  <span className="text-slate-500">{formatPickerLabel(dateRange)}</span>
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </button>
+                {showDatePicker && (
+                  <div className="absolute left-0 top-full z-30 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
+                    <DayPicker
+                      className="rdp-sidebar-picker text-sm"
+                      mode="range"
+                      selected={dateRange}
+                      numberOfMonths={1}
+                      onSelect={(range) => {
+                        setDateRange(range || { from: undefined, to: undefined });
+                      }}
+                      footer={
+                        dateRange.from && dateRange.to
+                          ? `${format(dateRange.from, "MMM d, yyyy")} — ${format(dateRange.to, "MMM d, yyyy")}`
+                          : ""
+                      }
+                      fromDate={new Date("2000-01-01")}
+                      toDate={new Date("2100-12-31")}
+                    />
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDateRange({ from: undefined, to: undefined });
+                        }}
+                        className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowDatePicker(false)}
+                        className="rounded-full bg-[#4a1111] px-3 py-1 text-xs font-medium text-white hover:bg-[#5a1717]"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
             <button
               type="button"
               onClick={() => {
@@ -1625,92 +1761,48 @@ export default function Borrowing() {
 
             <button
               type="button"
-              onClick={() => setStatusFilter(statusFilter === "borrowed" ? "all" : "borrowed")}
+              onClick={() => {
+                setShowExportLogs((current) => !current);
+                setStatusFilter("borrowed");
+              }}
               className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition ${
-                statusFilter === "all"
+                showExportLogs
                   ? "bg-[#4a1111] text-white hover:bg-[#5a1717]"
                   : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
               }`}
-              title={statusFilter === "borrowed" ? "Show all borrowing history" : "Show current borrowed items"}
-              aria-label={statusFilter === "borrowed" ? "Show all borrowing history" : "Show current borrowed items"}
+              title={showExportLogs ? "Return to borrowed items" : "Show export logs"}
+              aria-label={showExportLogs ? "Return to borrowed items" : "Show export logs"}
             >
-              <History className="h-4 w-4" />
-              <span>{statusFilter === "all" ? "Active Only" : "History"}</span>
+              {showExportLogs ? (
+                <ChevronLeft className="h-4 w-4" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              <span>{showExportLogs ? "Return" : "Export Logs"}</span>
             </button>
-          </div>
-        </div>
 
-        {/* ── Search Bar ───────────────────────────────────────────────────── */}
-        <div className="relative w-full sm:w-96">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search borrower or item..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
-          />
-          {search && (
             <button
               type="button"
-              onClick={() => setSearch("")}
-              className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-              aria-label="Clear search"
-              title="Clear search"
+              onClick={() => {
+                setShowExportLogs(false);
+                setStatusFilter(statusFilter === "borrowed" ? "all" : "borrowed");
+              }}
+              className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition ${
+                !showExportLogs && statusFilter === "all"
+                  ? "bg-[#4a1111] text-white hover:bg-[#5a1717]"
+                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+              }`}
+              title={statusFilter === "borrowed" ? "Show borrowing history" : "Show current borrowed items"}
+              aria-label={statusFilter === "borrowed" ? "Show borrowing history" : "Show current borrowed items"}
             >
-              <X className="h-4 w-4" />
+              {!showExportLogs && statusFilter === "all" ? (
+                <ChevronLeft className="h-4 w-4" />
+              ) : (
+                <History className="h-4 w-4" />
+              )}
+              <span>{!showExportLogs && statusFilter === "all" ? "Active Only" : "History"}</span>
             </button>
-          )}
-        </div>
-
-        {/* ── Date Range Picker ────────────────────────────────────────────── */}
-        <div ref={datePickerRef} className="relative z-20">
-          <button
-            type="button"
-            onClick={() => setShowDatePicker((current) => !current)}
-            className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:border-slate-300 focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
-          >
-            <span className="text-slate-500">{formatPickerLabel(dateRange)}</span>
-            <ChevronDown className="h-4 w-4 text-slate-400" />
-          </button>
-          {showDatePicker && (
-            <div className="absolute left-0 top-full z-30 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
-              <DayPicker
-                className="rdp-sidebar-picker text-sm"
-                mode="range"
-                selected={dateRange}
-                numberOfMonths={1}
-                onSelect={(range) => {
-                  setDateRange(range || { from: undefined, to: undefined });
-                }}
-                footer={
-                  dateRange.from && dateRange.to
-                    ? `${format(dateRange.from, "MMM d, yyyy")} — ${format(dateRange.to, "MMM d, yyyy")}`
-                    : ""
-                }
-                fromDate={new Date("2000-01-01")}
-                toDate={new Date("2100-12-31")}
-              />
-              <div className="mt-3 flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDateRange({ from: undefined, to: undefined });
-                  }}
-                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                >
-                  Clear
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowDatePicker(false)}
-                  className="rounded-full bg-[#4a1111] px-3 py-1 text-xs font-medium text-white hover:bg-[#5a1717]"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          )}
+          </div>
         </div>
 
         {showExportModal && (
@@ -1877,7 +1969,14 @@ export default function Borrowing() {
           </AlertDialogContent>
         </AlertDialog>
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-opacity duration-300">
+        {showExportLogs ? (
+          <ExportLogsPanel
+            searchQuery={search}
+            refreshToken={exportLogRefreshToken}
+            fileNamePrefix="borrowing-records"
+          />
+        ) : (
+        <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-opacity duration-300">
           {borrowingsError && (
             <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               Error loading borrowings: {borrowingsError}
@@ -1889,9 +1988,9 @@ export default function Borrowing() {
             </div>
           ) : !borrowingsLoading && (
             <>
-              <div className="overflow-x-auto">
-                <table className="w-full transition-opacity duration-300">
-                  <thead className="bg-slate-50 border-b border-slate-200">
+              <div className="max-h-[36rem] overflow-auto">
+                <table className="w-full min-w-[900px] border-separate border-spacing-0 transition-opacity duration-300">
+                  <thead className="sticky top-0 z-10 bg-slate-50 shadow-[inset_0_-1px_0_rgb(226,232,240)]">
                     <tr>
                       {[
                         "Borrower",
@@ -1903,16 +2002,16 @@ export default function Borrowing() {
                       ].map((h) => (
                         <th
                           key={h}
-                          className="sticky top-0 z-10 px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide"
+                          className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                         >
                           {h}
                         </th>
                       ))}
                       {statusFilter !== "borrowed" && (
-                        <th className="sticky top-0 z-10 px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Remarks</th>
+                        <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Remarks</th>
                       )}
                       {statusFilter === "borrowed" && (
-                        <th className="sticky top-0 z-10 px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                        <th className="bg-slate-50 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
                           <span className="sr-only">Row actions</span>
                         </th>
                       )}
@@ -2027,7 +2126,7 @@ export default function Borrowing() {
                           )}
                         </td>
 
-                        {/* Remarks (history view only) */}
+                        {/* Remarks (logs view only) */}
                         {statusFilter !== "borrowed" && (
                           <td className="px-4 py-3 text-sm text-slate-600">
                             {(record.items || []).length > 1 ? (
@@ -2113,6 +2212,7 @@ export default function Borrowing() {
             </>
           )}
         </div>
+        )}
       </div>
 
       {/* ── Record Detail Dialog ──────────────────────────────────────────── */}
