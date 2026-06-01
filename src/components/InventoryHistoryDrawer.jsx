@@ -12,13 +12,12 @@ import {
 
 const timeFormat = (ts) => {
   try {
-    return new Intl.DateTimeFormat("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(ts));
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return ts;
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    return `${mm}/${dd}/${yyyy}`;
   } catch (e) {
     return ts;
   }

@@ -20,7 +20,11 @@
       "Bash(npx tsc *)",
       "Bash(npx -p typescript tsc --noEmit)",
       "Bash(node *)",
-      "Bash(Remove-Item *)"
+      "Bash(Remove-Item *)",
+      "PowerShell(node C:\\\\Users\\\\leele\\\\OneDrive\\\\Desktop\\\\Ark\\\\ST TERESA MIS\\\\Teresa-MIS-Inventory\\\\src\\\\patches\\\\stock_sync_patch.mjs)",
+      "PowerShell(& \"C:\\\\Users\\\\leele\\\\OneDrive\\\\Desktop\\\\Ark\\\\ST TERESA MIS\\\\Teresa-MIS-Inventory\\\\tmp_check.mjs\")",
+      "PowerShell(node tmp_check.mjs)",
+      "PowerShell(node tmp_whitespace.mjs)"
     ]
   },
   "allow": [

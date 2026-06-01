@@ -5,18 +5,18 @@ import { supabase } from "@/api/supabaseClient";
 
 const EXPORT_BUCKET = "export-logs";
 
-const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const formatDate = (dateString) => {
   try {
     const value = String(dateString || "").trim();
     const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    const date = dateOnlyMatch
+    const d = dateOnlyMatch
       ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
       : new Date(value);
-    const month = monthNames[date.getMonth()];
-    const day = String(date.getDate()).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${month}/${day}/${year}`;
+    if (Number.isNaN(d.getTime())) return dateString;
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}/${dd}/${yyyy}`;
   } catch (e) {
     return dateString;
   }

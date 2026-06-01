@@ -149,6 +149,19 @@ const getExportItemLabel = (item = {}) => {
   return "";
 };
 
+const getLiveStock = (item = {}) => {
+  const fromData = Number(item.data?.quantity);
+  if (Number.isFinite(fromData) && fromData >= 0) return fromData;
+  const fromTop = Number(item.quantity);
+  if (Number.isFinite(fromTop) && fromTop >= 0) return fromTop;
+  return 0;
+};
+
+const getCartReservedQuantity = (cartId, cartItems) => {
+  const found = cartItems.find((c) => c.cartId === cartId);
+  return found ? Number(found.quantity || 0) : 0;
+};
+
 const getItemQuantity = (item = {}) => {
   if (item.quantity !== null && item.quantity !== undefined && String(item.quantity).trim() !== "") {
     return String(item.quantity);
@@ -1192,6 +1205,7 @@ export default function Borrowing() {
 
             const inventoryUpdates = [];
 
+            // WORKING: return quantity back to available stock via sign-delta
             if (workingQuantity > 0) {
               inventoryUpdates.push(
                 adjustInventoryItemQuantity({
@@ -1203,6 +1217,9 @@ export default function Borrowing() {
               );
             }
 
+            // DEFECTIVE: route to defective pool — NEVER back to working stock.
+            // adjustInventoryItemQuantity is intentionally NOT called for defective
+            // quantities so damaged hardware cannot be accidentally re-borrowed.
             if (defectiveQuantity > 0) {
               inventoryUpdates.push(
                 createReturnedDefectiveInventoryItem({
@@ -1222,6 +1239,45 @@ export default function Borrowing() {
       await loadBorrowings();
       setSuccessMessage("Borrowed item returned.");
       setPendingReturn(null);
+
+      // Refresh impacted inventory sections in allItems so the wizard Step-2
+      // item list reflects live post-return stock (working restored, defective not).
+      try {
+        const impacted = new Map();
+        (pendingReturn.items || [])
+          .filter((item) => item.inventoryItemId && item.inventorySectionId)
+          .forEach((item) => {
+            const key = String(item.inventoryTabId) + "::" + String(item.inventorySectionId);
+            if (!impacted.has(key))
+              impacted.set(key, {
+                tabId: item.inventoryTabId,
+                sectionId: item.inventorySectionId,
+                tableName: item.tableName || tabTableNames[item.inventoryTabId] || "",
+              });
+          });
+        if (impacted.size > 0) {
+          const results = await Promise.allSettled(
+            [...impacted.values()].map((sec) =>
+              fetchInventoryItems(sec.sectionId, sec.tableName || null).then((items) =>
+                (items || []).map((it) => ({
+                  ...it,
+                  tabId: sec.tabId,
+                  sectionId: sec.sectionId,
+                  tableName: sec.tableName || "",
+                }))
+              )
+            )
+          );
+          const freshSectionIds = new Set([...impacted.values()].map((s) => String(s.sectionId)));
+          const freshItems = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+          setAllItems((prev) => {
+            const untouched = prev.filter((a) => !freshSectionIds.has(String(a.sectionId)));
+            return [...untouched, ...freshItems];
+          });
+        }
+      } catch (refreshErr) {
+        console.warn("Post-return inventory refresh failed:", refreshErr);
+      }
     } catch (error) {
       const message = error?.message || "Failed to return borrowed item.";
       setReturnError(message);
@@ -1477,6 +1533,25 @@ export default function Borrowing() {
           return update ? { ...item, quantity: update.remainingQuantity } : item;
         })
       );
+
+      // Sync the wizard Step-2 `allItems` cache so the item list reflects
+      // the exact live stock immediately after the DB deduction.
+      setAllItems((prev) =>
+        prev.map((aItem) => {
+          const update = inventoryQuantityUpdates.find(
+            ({ item: updatedItem }) =>
+              String(updatedItem.id) === String(aItem.id) &&
+              String(updatedItem.sectionId || "") === String(aItem.sectionId || "") &&
+              String(updatedItem.tabId || "") === String(aItem.tabId || "")
+          );
+          if (!update) return aItem;
+          const patched = { ...aItem, quantity: update.remainingQuantity };
+          if (patched.data && typeof patched.data === "object")
+            patched.data = { ...patched.data, quantity: update.remainingQuantity };
+          return patched;
+        })
+      );
+
       setSuccessMessage(
         shouldMerge
           ? "Borrowed item merged with the latest active borrowing record."
@@ -1678,7 +1753,7 @@ export default function Borrowing() {
             </div>
 
             {!showExportLogs && (
-              <div ref={datePickerRef} className="relative z-20">
+              <div ref={datePickerRef} className="relative z-50">
                 <button
                   type="button"
                   onClick={() => setShowDatePicker((current) => !current)}
@@ -1688,7 +1763,7 @@ export default function Borrowing() {
                   <ChevronDown className="h-4 w-4 text-slate-400" />
                 </button>
                 {showDatePicker && (
-                  <div className="absolute left-0 top-full z-30 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
+                  <div className="absolute left-0 top-full z-50 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
                     <DayPicker
                       className="rdp-sidebar-picker text-sm"
                       mode="range"
@@ -2757,7 +2832,9 @@ export default function Borrowing() {
                         {filteredItems.map((item) => {
                           const cartId = `inv-${item.tabId}-${item.sectionId}-${item.id}`;
                           const alreadyInCart = cartIdSet.has(cartId);
-                          const stockCount = Number(item.quantity ?? item.data?.quantity ?? 0);
+                          const liveStock = getLiveStock(item);
+                          const reservedForThisItem = getCartReservedQuantity(cartId, borrowCart);
+                          const availableStock = Math.max(0, liveStock - reservedForThisItem);
 
                           return (
                             <div
@@ -2771,27 +2848,32 @@ export default function Borrowing() {
                               <div className="text-center">
                                 <span className={cn(
                                   "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                                  stockCount > 0
+                                  availableStock > 0
                                     ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                     : "bg-rose-50 text-rose-700 border border-rose-200"
                                 )}>
-                                  {stockCount > 0 ? stockCount : "Out"}
+                                  {availableStock > 0 ? availableStock : "Out"}
                                 </span>
                               </div>
                               <div className="text-right">
+                                {availableStock <= 0 && (
+                                  <span className="block text-[10px] font-semibold text-rose-500 leading-tight">
+                                    Out of Stock — Awaiting Return
+                                  </span>
+                                )}
                                 <Button
                                   size="sm"
                                   variant={alreadyInCart ? "secondary" : "default"}
                                   onClick={() => {
-                                    if (!alreadyInCart && stockCount > 0) {
+                                    if (!alreadyInCart && availableStock > 0) {
                                       setQtyDialogItem(item);
                                       setQtyDialogValue(1);
                                     }
                                   }}
-                                  disabled={alreadyInCart || stockCount <= 0}
+                                  disabled={alreadyInCart || availableStock <= 0}
                                   className={cn(
-                                    "h-7 px-2.5 text-[11px] font-semibold",
-                                    !alreadyInCart && stockCount > 0 && "bg-[#4a1111] hover:bg-[#5a1717]"
+                                    "h-7 px-2.5 text-[11px] font-semibold mt-0.5",
+                                    !alreadyInCart && availableStock > 0 && "bg-[#4a1111] hover:bg-[#5a1717]"
                                   )}
                                 >
                                   {alreadyInCart ? "Added" : "+ Add"}

@@ -2,14 +2,14 @@ import { useEffect, useState, useMemo } from "react";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 
-const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const formatDate = (dateString) => {
   try {
-    const date = new Date(dateString);
-    const month = monthNames[date.getMonth()];
-    const day = String(date.getDate()).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${month}/${day}/${year}`;
+    const d = new Date(dateString);
+    if (Number.isNaN(d.getTime())) return dateString;
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}/${dd}/${yyyy}`;
   } catch (e) {
     return dateString;
   }

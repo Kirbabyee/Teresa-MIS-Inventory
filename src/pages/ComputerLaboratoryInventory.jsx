@@ -5,6 +5,7 @@ import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
+import { createPortal } from "react-dom";
 import { format } from "date-fns";
 import { supabase } from "@/api/supabaseClient";
 import arkLogoUrl from "@/assets/imgs/ark-logo.png";
@@ -310,6 +311,8 @@ export default function ComputerLaboratoryInventory() {
     const [historyDateRange, setHistoryDateRange] = useState({ from: undefined, to: undefined });
     const [showHistoryDatePicker, setShowHistoryDatePicker] = useState(false);
     const historyDatePickerRef = useRef(null);
+    const historyPickerTriggerRef = useRef(null);
+    const [pickerPosition, setPickerPosition] = useState({ top: 0, left: 0, minWidth: 0 });
     const [openComponentSections, setOpenComponentSections] = useState(() => INITIAL_OPEN_SECTIONS);
     const [cellDrafts, setCellDrafts] = useState({});
     const [savingCellKey, setSavingCellKey] = useState(null);
@@ -942,16 +945,34 @@ export default function ComputerLaboratoryInventory() {
     }, [isHistoryOpen]);
 
     useEffect(() => {
-        if (!showHistoryDatePicker) return;
+        if (!showHistoryDatePicker) return undefined;
+
+        const updatePosition = () => {
+            const trigger = historyPickerTriggerRef.current;
+            if (!trigger) return;
+            const rect = trigger.getBoundingClientRect();
+            setPickerPosition({ top: rect.bottom + window.scrollY, left: rect.left + window.scrollX, minWidth: Math.max(rect.width, 200) });
+        };
+
+        updatePosition();
+        const handleResize = () => updatePosition();
+        window.addEventListener("resize", handleResize);
+        window.addEventListener("scroll", handleResize, true);
 
         const handleOutsideClick = (event) => {
-            if (historyDatePickerRef.current && !historyDatePickerRef.current.contains(event.target)) {
-                setShowHistoryDatePicker(false);
-            }
+            const pop = historyDatePickerRef.current;
+            const trigger = historyPickerTriggerRef.current;
+            if (pop && pop.contains(event.target)) return;
+            if (trigger && trigger.contains(event.target)) return;
+            setShowHistoryDatePicker(false);
         };
 
         document.addEventListener("mousedown", handleOutsideClick);
-        return () => document.removeEventListener("mousedown", handleOutsideClick);
+        return () => {
+            window.removeEventListener("resize", handleResize);
+            window.removeEventListener("scroll", handleResize, true);
+            document.removeEventListener("mousedown", handleOutsideClick);
+        };
     }, [showHistoryDatePicker]);
 
     useEffect(() => {
@@ -1794,7 +1815,7 @@ export default function ComputerLaboratoryInventory() {
                             )}
                         </div>
 
-                        <div className="relative z-20">
+                        <div className="relative z-50">
                             <button
                                 type="button"
                                 onClick={() => setShowHistoryDatePicker((current) => !current)}
@@ -1804,7 +1825,7 @@ export default function ComputerLaboratoryInventory() {
                                 <ChevronDown className="h-4 w-4 text-slate-400" />
                             </button>
                             {showHistoryDatePicker && (
-                                <div ref={historyDatePickerRef} className="absolute left-0 top-full z-30 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
+                                <div ref={historyDatePickerRef} className="absolute left-0 top-full z-50 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
                                     <style>{`\n                    .rdp-sidebar-picker {\n                      --rdp-accent-color: #4a1111;\n                      --rdp-background-color: transparent;\n                      --rdp-outline: 2px solid rgba(74, 17, 17, 0.28);\n                      --rdp-outline-selected: 2px solid rgba(74, 17, 17, 0.28);\n                      color: hsl(var(--foreground));\n                      margin: 0;\n                    }\n\n                    .rdp-sidebar-picker .rdp-months {\n                      gap: 0.75rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-month_caption,\n                    .rdp-sidebar-picker .rdp-caption_label {\n                      color: hsl(var(--foreground));\n                      font-size: 0.95rem;\n                      font-weight: 700;\n                      letter-spacing: -0.01em;\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav {\n                      top: 0.1rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav_button_previous {\n                      margin-right: 0.4rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav_button {\n                      width: 2rem;\n                      height: 2rem;\n                      border-radius: 9999px;\n                      border: 1px solid hsl(var(--border));\n                      background: hsl(var(--background));\n                      color: #4a1111;\n                      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);\n                      transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav_button:hover {\n                      border-color: rgba(74, 17, 17, 0.18);\n                      background: rgba(74, 17, 17, 0.06);\n                      transform: translateY(-1px);\n                    }\n\n                    .rdp-sidebar-picker .rdp-nav_button:disabled {\n                      opacity: 0.45;\n                      transform: none;\n                    }\n\n                    .rdp-sidebar-picker .rdp-chevron {\n                      fill: none;\n                      stroke: currentColor;\n                    }\n\n                    .rdp-sidebar-picker .rdp-table {\n                      border-collapse: separate;\n                      border-spacing: 0 0.3rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-head_cell {\n                      color: hsl(var(--muted-foreground));\n                      font-size: 0.68rem;\n                      font-weight: 700;\n                      letter-spacing: 0.18em;\n                      text-transform: uppercase;\n                    }\n\n                    .rdp-sidebar-picker .rdp-day {\n                      width: 2.35rem;\n                      height: 2.35rem;\n                    }\n\n                    .rdp-sidebar-picker .rdp-day .rdp-button {\n                      width: 2.35rem;\n                      height: 2.35rem;\n                      border-radius: 9999px;\n                      font-size: 0.85rem;\n                      font-weight: 500;\n                      color: hsl(var(--foreground));\n                      transition: background-color 150ms ease, color 150ms ease, transform 150ms ease, box-shadow 150ms ease;\n                    }\n\n                    .rdp-sidebar-picker .rdp-day .rdp-button:hover {\n                      background: hsl(var(--secondary));\n                      transform: translateY(-1px);\n                    }\n\n                    .rdp-sidebar-picker .rdp-day_selected .rdp-button,\n                    .rdp-sidebar-picker .rdp-day_range_start .rdp-button,\n                    .rdp-sidebar-picker .rdp-day_range_end .rdp-button {\n                      background-color: #4a1111 !important;\n                      color: #ffffff !important;\n                      box-shadow: 0 10px 22px rgba(74, 17, 17, 0.22);\n                    }\n\n                    .rdp-sidebar-picker .rdp-day_range_middle .rdp-button {\n                      background-color: rgba(74, 17, 17, 0.1) !important;\n                      color: #4a1111 !important;\n                    }\n\n                    .rdp-sidebar-picker .rdp-day_today .rdp-button {\n                      box-shadow: inset 0 0 0 1px rgba(74, 17, 17, 0.35);\n                    }\n\n                    .rdp-sidebar-picker .rdp-day_outside .rdp-button,\n                    .rdp-sidebar-picker .rdp-day_disabled .rdp-button {\n                      color: hsl(var(--muted-foreground));\n                      opacity: 0.45;\n                    }\n\n                    .rdp-sidebar-picker .rdp-footer {\n                      margin-top: 0.75rem;\n                      padding-top: 0.75rem;\n                      border-top: 1px solid hsl(var(--border));\n                      color: hsl(var(--muted-foreground));\n                      font-size: 0.75rem;\n                    }\n                  `}</style>
                                     <DayPicker
                                         className="rdp-sidebar-picker text-sm"

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
   AlertCircle,
   ArrowUpRight,
@@ -283,6 +283,9 @@ const isDefectiveRecord = (record = {}) =>
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const tabsRef = useRef(null);
+  const [tabsHeight, setTabsHeight] = useState(0);
+  const [isLg, setIsLg] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
   const [loading, setLoading] = useState(true);
   const [labs, setLabs] = useState([]);
   const [overall, setOverall] = useState({ total: 0, defective: 0 });
@@ -336,6 +339,24 @@ export default function Dashboard() {
       setSelectedTabSlug(dashboardTabs[0].slug);
     }
   }, [selectedTabSlug, dashboardTabs]);
+
+  // Measure tabs height so we can align right column content to the same top offset on large screens
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const measure = () => {
+      const tabsElHeight = tabsRef.current?.offsetHeight || 0;
+      const isLarge = window.innerWidth >= 1024;
+      // larger extra gap on desktop, smaller on mobile/tablet
+      const gap = isLarge ? 55 : 20;
+      setTabsHeight(tabsElHeight + gap);
+      setIsLg(isLarge);
+    };
+
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [dashboardTabs, tabsLoading]);
 
   // ─── Data loading ──────────────────────────────────────────────────
   useEffect(() => {
@@ -554,7 +575,7 @@ export default function Dashboard() {
       {/* ════════════════════════════════════════════════════════════════
           DUAL-ZONE LAYOUT: Inventory (left) | Borrowing (right)
          ════════════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
         {/* ═══════════════════════════════════════════════════════════════
             LEFT HALF — INVENTORY SECTION
@@ -562,24 +583,52 @@ export default function Dashboard() {
         <div className="space-y-5 min-w-0">
           {/* Tab Selection */}
           {!tabsLoading && !tabsError && dashboardTabs.length > 0 ? (
-            <div className="max-w-full overflow-x-auto pb-1">
-              <div className="flex flex-wrap items-center gap-2">
-                {dashboardTabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setSelectedTabSlug(tab.slug)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                      tab.slug === selectedTabSlug
-                        ? "bg-[#4a1111] text-white shadow-sm"
-                        : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200"
-                    }`}
-                  >
-                    {tab.name}
-                  </button>
-                ))}
+            <>
+              <div ref={tabsRef} className="max-w-full overflow-x-auto pb-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  {dashboardTabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setSelectedTabSlug(tab.slug)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                        tab.slug === selectedTabSlug
+                          ? "bg-[#4a1111] text-white shadow-sm"
+                          : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200"
+                      }`}
+                    >
+                      {tab.name}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+              {/* Inventory Stat Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <InventoryStatCard
+                  icon={isComputerLabsSelected ? Cpu : Package}
+                  iconBg="bg-[#4a1111]"
+                  label={isComputerLabsSelected ? "Total PCs" : "Total Stock"}
+                  value={overall.total.toLocaleString()}
+                  sub={isComputerLabsSelected ? "Across all labs" : "All sections"}
+                />
+                <InventoryStatCard
+                  icon={CircleAlert}
+                  iconBg="bg-rose-500"
+                  label={isComputerLabsSelected ? "Defective Components" : "Defective Items"}
+                  value={overall.defective.toLocaleString()}
+                  accent="text-rose-600"
+                  sub={isComputerLabsSelected ? "Total defective parts" : "Marked defective"}
+                />
+                <InventoryStatCard
+                  icon={Boxes}
+                  iconBg="bg-slate-700"
+                  label={isComputerLabsSelected ? "Labs" : "Sections"}
+                  value={labs.length.toLocaleString()}
+                  accent="text-slate-900"
+                  sub={isComputerLabsSelected ? "Active laboratories" : "Active sections"}
+                />
+              </div>
+            </>
           ) : tabsLoading ? (
             <Skeleton className="h-8 w-48" />
           ) : tabsError ? (
@@ -595,35 +644,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Inventory Stat Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <InventoryStatCard
-              icon={isComputerLabsSelected ? Cpu : Package}
-              iconBg="bg-[#4a1111]"
-              label={isComputerLabsSelected ? "Total PCs" : "Total Stock"}
-              value={overall.total.toLocaleString()}
-              accent="text-slate-900"
-              barPercent={defectiveRate}
-              barColor="#e11d48"
-              sub={isComputerLabsSelected ? "Across all labs" : "All sections"}
-            />
-            <InventoryStatCard
-              icon={CircleAlert}
-              iconBg="bg-rose-500"
-              label={isComputerLabsSelected ? "Defective Components" : "Defective Items"}
-              value={overall.defective.toLocaleString()}
-              accent="text-rose-600"
-              sub={isComputerLabsSelected ? "Total defective parts" : "Marked defective"}
-            />
-            <InventoryStatCard
-              icon={Boxes}
-              iconBg="bg-slate-700"
-              label={isComputerLabsSelected ? "Labs" : "Sections"}
-              value={labs.length.toLocaleString()}
-              accent="text-slate-900"
-              sub={isComputerLabsSelected ? "Active laboratories" : "Active sections"}
-            />
-          </div>
+
 
           {/* Lab / Section Details Table */}
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -681,8 +702,7 @@ export default function Dashboard() {
         {/* ═══════════════════════════════════════════════════════════════
             RIGHT HALF — BORROWING SECTION
            ═══════════════════════════════════════════════════════════════ */}
-        <div className="space-y-5 min-w-0">
-          <div className="hidden lg:block h-9" aria-hidden="true" />
+        <div className="space-y-5 min-w-0" style={tabsHeight ? { paddingTop: `${tabsHeight}px` } : undefined}>
 
           {/* Borrowing Stat Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -718,125 +738,7 @@ export default function Dashboard() {
           </div>
 
           {/* ─── Inventory Velocity Combo Chart ──────────────────────── */}
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <div>
-                <p className="text-sm font-semibold text-slate-800">Inventory Velocity</p>
-                <p className="text-[11px] text-slate-400">30-day borrowing flow — returned vs outstanding</p>
-              </div>
-              <div className="flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1">
-                <TrendingUp className="h-3 w-3 text-indigo-500" />
-                <span className="text-[11px] font-semibold text-indigo-600">
-                  {chartSummary.avgReturnRate}% return rate
-                </span>
-              </div>
-            </div>
-
-            {/* Chart Summary Row */}
-            <div className="grid grid-cols-4 border-b border-slate-100 divide-x divide-slate-100">
-              {[
-                { label: "Total Borrowed", value: chartSummary.totalBorrowed, color: "text-slate-800" },
-                { label: "Returned", value: chartSummary.totalReturned, color: "text-emerald-600" },
-                { label: "Outstanding", value: chartSummary.totalOutstanding, color: "text-rose-500" },
-                { label: "Transactions", value: chartSummary.totalTransactions, color: "text-indigo-600" },
-              ].map((stat) => (
-                <div key={stat.label} className="px-4 py-3 text-center">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider">{stat.label}</p>
-                  <p className={`text-lg font-bold ${stat.color}`}>{stat.value.toLocaleString()}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Recharts ComposedChart */}
-            <div className="p-4 pt-2">
-              <ResponsiveContainer width="100%" height={320}>
-                <ComposedChart
-                  data={velocityData}
-                  margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient id="gradientReturned" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#34d399" stopOpacity={0.9} />
-                      <stop offset="100%" stopColor="#34d399" stopOpacity={0.4} />
-                    </linearGradient>
-                    <linearGradient id="gradientOutstanding" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#fb7185" stopOpacity={0.9} />
-                      <stop offset="100%" stopColor="#fb7185" stopOpacity={0.4} />
-                    </linearGradient>
-                    <linearGradient id="gradientLine" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#818cf8" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#818cf8" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-
-                  <XAxis
-                    dataKey="display_date"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 10, fill: "#94a3b8" }}
-                    interval="preserveStartEnd"
-                  />
-
-                  {/* Left Y-Axis — stacked bars */}
-                  <YAxis
-                    yAxisId="left"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 10, fill: "#94a3b8" }}
-                    width={36}
-                  />
-
-                  {/* Right Y-Axis — line overlay */}
-                  <YAxis
-                    yAxisId="right"
-                    orientation="right"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 10, fill: "#94a3b8" }}
-                    width={36}
-                  />
-
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(148,163,184,0.06)" }} />
-
-                  {/* Stacked bars: returned (bottom) + outstanding (top) */}
-                  <Bar
-                    yAxisId="left"
-                    dataKey="items_returned"
-                    stackId="items"
-                    fill="url(#gradientReturned)"
-                    radius={[0, 0, 0, 0]}
-                    name="Returned"
-                    maxBarSize={32}
-                  />
-                  <Bar
-                    yAxisId="left"
-                    dataKey="items_outstanding"
-                    stackId="items"
-                    fill="url(#gradientOutstanding)"
-                    radius={[4, 4, 0, 0]}
-                    name="Outstanding"
-                    maxBarSize={32}
-                  />
-
-                  {/* Overlay line: total transactions */}
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="total_transactions"
-                    stroke="#818cf8"
-                    strokeWidth={2.5}
-                    dot={false}
-                    activeDot={{ r: 5, fill: "#818cf8", stroke: "#fff", strokeWidth: 2 }}
-                    name="Transactions"
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
-
-              <ChartLegend />
-            </div>
-          </div>
+          
 
           {/* Defective Items Returned */}
           <div

@@ -6,11 +6,12 @@ import { supabase } from "@/api/supabaseClient";
 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const formatDate = (dateString) => {
   try {
-    const date = new Date(dateString);
-    const month = monthNames[date.getMonth()];
-    const day = String(date.getDate()).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${month}/${day}/${year}`;
+    const d = new Date(dateString);
+    if (Number.isNaN(d.getTime())) return dateString;
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}/${dd}/${yyyy}`;
   } catch (e) {
     return dateString;
   }
@@ -19,7 +20,7 @@ const formatDate = (dateString) => {
 const formatDateLabel = (dateString) => {
   try {
     const date = new Date(dateString);
-    return format(date, "MMM d, yyyy");
+    return format(date, "MM/dd/yyyy");
   } catch (e) {
     return String(dateString || "");
   }
@@ -338,7 +339,7 @@ export default function InventorySectionHistoryView({ selectedTab, selectedSecti
               <div className="text-sm font-medium text-slate-700">History</div>
             </div>
             <table className="min-w-full divide-y divide-slate-200 bg-white table-fixed">
-              <thead className="sticky top-0 z-20 bg-slate-100">
+              <thead className="sticky top-0 z-10 bg-slate-100">
                 <tr>
                   <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Action</th>
                   <th className="whitespace-nowrap px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-700">Item #</th>
