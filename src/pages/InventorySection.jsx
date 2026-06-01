@@ -1183,6 +1183,8 @@ export default function InventorySection() {
   const [error, setError] = useState("");
   const [selectedSectionSlug, setSelectedSectionSlug] = useState("");
   const [items, setItems] = useState([]);
+  const itemsRef = useRef([]);
+  itemsRef.current = items;
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsLoadedForSectionId, setItemsLoadedForSectionId] = useState(null);
   const [sectionsLoading, setSectionsLoading] = useState(true);
@@ -1332,75 +1334,69 @@ export default function InventorySection() {
       const newSourceQty = Math.max(0, itemQty - qty);
 
       // Use functional updater so we always work with the freshest items array
-      let mergeTargetId = null;
-      let mergeNewTargetQty = null;
+      // Find merge target from current items (read from ref to always get latest)
+      const idKey = item.item_number != null ? "item_number" : item.computer_number != null ? "computer_number" : null;
+      const norm = (v) => String(v ?? "").trim().toLowerCase();
+      const currentItems = itemsRef.current || items;
 
-      setItems((prevItems) => {
-        // Find an existing row to merge into: same item_number/computer_number + has the target remark
-        const idKey = item.item_number != null ? "item_number" : item.computer_number != null ? "computer_number" : null;
-        const norm = (v) => String(v ?? "").trim().toLowerCase();
-
-        let target = null;
-        if (idKey && item[idKey] != null) {
-          // Match by identifier column + target remark
-          target = prevItems.find((it) =>
+      let foundTarget = null;
+      if (idKey && item[idKey] != null) {
+        foundTarget = currentItems.find((it) =>
+          it.id !== item.id &&
+          it[idKey] === item[idKey] &&
+          norm(it[remarkColumnKey]) === norm(targetRemark)
+        ) || null;
+      }
+      if (!foundTarget) {
+        const matchKeys = Object.keys(item).filter((k) => {
+          const nk = String(k || "").trim().toLowerCase();
+          if (!nk) return false;
+          if (["id", "created_at", "updated_at", "sort_order"].includes(nk)) return false;
+          if (nk === String(quantityKey || "").toLowerCase()) return false;
+          if (nk === String(remarkColumnKey || "").trim().toLowerCase()) return false;
+          return item[k] != null && String(item[k]).trim() !== "";
+        });
+        if (matchKeys.length > 0) {
+          foundTarget = currentItems.find((it) =>
             it.id !== item.id &&
-            it[idKey] === item[idKey] &&
-            norm(it[remarkColumnKey]) === norm(targetRemark)
+            norm(it[remarkColumnKey]) === norm(targetRemark) &&
+            matchKeys.every((k) => norm(it[k]) === norm(item[k]))
           ) || null;
         }
-        if (!target) {
-          // No identifier — match on ALL non-id/non-qty/non-remark columns being equal
-          const matchKeys = Object.keys(item).filter((k) => {
-            const nk = String(k || "").trim().toLowerCase();
-            if (!nk) return false;
-            if (["id", "created_at", "updated_at", "sort_order"].includes(nk)) return false;
-            if (nk === String(quantityKey || "").toLowerCase()) return false;
-            if (nk === String(remarkColumnKey || "").trim().toLowerCase()) return false;
-            const val = item[k];
-            return val !== null && val !== undefined && String(val).trim() !== "";
-          });
-          if (matchKeys.length > 0) {
-            target = prevItems.find((it) => {
-              if (it.id === item.id) return false;
-              if (norm(it[remarkColumnKey]) !== norm(targetRemark)) return false;
-              return matchKeys.every((k) => norm(it[k]) === norm(item[k]));
-            }) || null;
-          }
-        }
+      }
 
-        if (!target) {
-          // No match found — caller will handle in-place update or new row creation
-          return prevItems;
-        }
+      console.log("[handleRemarkChange] foundTarget:", foundTarget?.id ?? null, "newSourceQty:", newSourceQty);
 
-        // Found a target — compute merged quantities and flag for DB operations
-        mergeTargetId = target.id;
-        mergeNewTargetQty = (Number(target[quantityKey]) || 0) + qty;
+      if (foundTarget) {
+        // Merge path: update state AND persist to DB
+        const tbl = tabTableName || null;
+        const newTargetQty = (Number(foundTarget[quantityKey]) || 0) + qty;
+        console.log("[MERGE DB] targetId:", foundTarget.id, "newQty:", newTargetQty, "sourceId:", item.id, "tbl:", tbl);
 
+        // Update UI state
         if (newSourceQty <= 0) {
-          // Source fully consumed — remove it, update target qty
-          return prevItems.map((it) => it.id === target.id ? { ...it, [quantityKey]: mergeNewTargetQty } : it).filter((it) => it.id !== item.id);
+          setItems((prev) => prev.map((it) => it.id === foundTarget.id ? { ...it, [quantityKey]: newTargetQty } : it).filter((it) => it.id !== item.id));
         } else {
-          // Source still has remaining — reduce it, increase target qty
-          return prevItems.map((it) => {
+          setItems((prev) => prev.map((it) => {
             if (it.id === item.id) return { ...it, [quantityKey]: newSourceQty };
-            if (it.id === target.id) return { ...it, [quantityKey]: mergeNewTargetQty };
+            if (it.id === foundTarget.id) return { ...it, [quantityKey]: newTargetQty };
             return it;
-          });
+          }));
         }
-      });
 
-      console.log("[handleRemarkChange] after setItems:", { mergeTargetId, mergeNewTargetQty, newSourceQty });
-
-      if (mergeTargetId !== null) {
-        // Merge path: persist DB changes after state update
+        // Persist to DB
         if (newSourceQty <= 0) {
-          await upsertInventoryItem({ id: mergeTargetId, sectionId: selectedSection?.id, tableName: tabTableName || null, recordData: { [quantityKey]: mergeNewTargetQty } });
-          await deleteInventoryItem(item.id, tabTableName || null, selectedSection?.id || null);
+          const { error: updErr } = await supabase.from(tbl).update({ [quantityKey]: newTargetQty }).eq("id", foundTarget.id);
+          if (updErr) throw new Error("Update target failed: " + updErr.message);
+          const { error: delErr } = await supabase.from(tbl).delete().eq("id", item.id);
+          if (delErr) throw new Error("Delete source failed: " + delErr.message);
+          console.log("[MERGE DB] success — target updated, source deleted");
         } else {
-          await upsertInventoryItem({ id: mergeTargetId, sectionId: selectedSection?.id, tableName: tabTableName || null, recordData: { [quantityKey]: mergeNewTargetQty } });
-          await upsertInventoryItem({ id: item.id, sectionId: selectedSection?.id, tableName: tabTableName || null, recordData: { [quantityKey]: newSourceQty } });
+          const { error: e1 } = await supabase.from(tbl).update({ [quantityKey]: newTargetQty }).eq("id", foundTarget.id);
+          if (e1) throw new Error("Update target failed: " + e1.message);
+          const { error: e2 } = await supabase.from(tbl).update({ [quantityKey]: newSourceQty }).eq("id", item.id);
+          if (e2) throw new Error("Update source failed: " + e2.message);
+          console.log("[MERGE DB] success — both rows updated");
         }
       } else if (newSourceQty <= 0) {
         // No target, source fully consumed — update remark in-place
