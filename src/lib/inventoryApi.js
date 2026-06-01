@@ -1588,3 +1588,134 @@ export const groupInventoryItems = (items = []) => {
 
   return grouped.sort((left, right) => Number(left["COMPUTER #"]) - Number(right["COMPUTER #"]));
 };
+
+// ────────────────────────────────────────────────────────────────────────────
+// Inventory Instance CRUD — Individual asset tracking (parent_id child rows)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch all child instances for a parent inventory item.
+ * Child rows live in the same dynamic table, linked via parent_id FK.
+ */
+export const fetchItemInstances = async ({ tableName, parentId }) => {
+  if (!tableName || parentId == null) return [];
+  const { data, error } = await supabase
+    .from(tableName)
+    .select("*")
+    .eq("parent_id", parentId)
+    .order("id", { ascending: true });
+  if (error) throw error;
+  return data || [];
+};
+
+/**
+ * Create a new instance (child row) linked to a parent item.
+ * Inherits parent's name, tab_id, section_id. Sets parent_id FK.
+ */
+export const createItemInstance = async ({ tableName, parentItem, childData }) => {
+  if (!tableName || !parentItem?.id) throw new Error("tableName and parentItem.id are required");
+
+  // Derive parent name from whatever name column exists
+  const parentName =
+    parentItem.name ||
+    parentItem.item_name ||
+    parentItem.asset_name ||
+    parentItem.brand ||
+    parentItem.type ||
+    "Item";
+
+  const payload = {
+    ...childData,
+    parent_id: parentItem.id,
+    name: parentName,
+    tab_id: parentItem.tab_id ?? null,
+    section_id: parentItem.section_id ?? null,
+    condition: childData.condition || "Working",
+  };
+
+  const { data, error } = await supabase
+    .from(tableName)
+    .insert([payload])
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+/**
+ * Update instance fields (condition, tag, serial, remarks, etc.)
+ */
+export const updateItemInstance = async ({ tableName, instanceId, updates }) => {
+  if (!tableName || !instanceId) throw new Error("tableName and instanceId are required");
+
+  const { data, error } = await supabase
+    .from(tableName)
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq("id", instanceId)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+/**
+ * Delete a single instance (child row)
+ */
+export const deleteItemInstance = async ({ tableName, instanceId }) => {
+  if (!tableName || !instanceId) throw new Error("tableName and instanceId are required");
+  const { error } = await supabase.from(tableName).delete().eq("id", instanceId);
+  if (error) throw error;
+};
+
+/**
+ * Compute working / defective / under-repair counts from an array of instance rows.
+ * @param {Array} instances - child rows
+ * @returns {{ working: number, defective: number, underRepair: number, total: number }}
+ */
+/**
+ * Compute working / defective / under-repair counts from an array of instance rows.
+ * @param {Array} instances - child rows
+ * @param {Array} [conditionOptions] - optional classified options [{value, conditionGroup}] for dynamic classification
+ * @returns {{ working: number, defective: number, underRepair: number, total: number }}
+ */
+export const getInstanceCounts = (instances = [], conditionOptions = null) => {
+  let working = 0;
+  let defective = 0;
+  let underRepair = 0;
+
+  for (const inst of instances) {
+    const c = String(inst.condition || "Working").toLowerCase().trim();
+
+    // Check for "under repair" first (special case)
+    if (c === "under repair" || c === "under_repair" || c === "repair") {
+      underRepair++;
+      continue;
+    }
+
+    // Use dynamic classification if conditionOptions provided
+    if (conditionOptions && conditionOptions.length > 0) {
+      // Find matching option
+      const match = conditionOptions.find((o) => {
+        const v = (o && typeof o === "object" && "value" in o) ? String(o.value) : String(o);
+        return v.trim().toLowerCase() === c;
+      });
+      if (match && typeof match === "object" && match.conditionGroup === "operational") {
+        working++;
+      } else if (match && typeof match === "object" && match.conditionGroup === "quarantine") {
+        defective++;
+      } else {
+        // Unknown value — default to working
+        working++;
+      }
+      continue;
+    }
+
+    // Fallback to hardcoded logic
+    if (c === "defective") defective++;
+    else working++;
+  }
+
+  return { working, defective, underRepair, total: instances.length };
+};

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Check, ChevronLeft, ChevronRight, ChevronDown, Download, FileText, PencilLine, Plus, Search, Trash2, X } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
-import { createPortal } from "react-dom";
 import { format } from "date-fns";
 import { supabase } from "@/api/supabaseClient";
 import { Input } from "@/components/ui/input";
@@ -79,7 +79,12 @@ const normalizeSubColumns = (subColumns = [], parentKey = "") => {
         data_type: String(subColumn.data_type || subColumn.type || "text").toLowerCase(),
         fieldType: String(subColumn.fieldType || subColumn.field_type || "text").toLowerCase(),
         options: Array.isArray(subColumn.options)
-          ? subColumn.options.map((option) => String(option).trim()).filter((option) => option)
+          ? subColumn.options
+              .map((option) => {
+                if (option && typeof option === "object" && "value" in option) return String(option.value).trim();
+                return String(option).trim();
+              })
+              .filter((option) => option)
           : [],
         physicalKey: `${parentKey}_${key}`,
       };
@@ -103,7 +108,12 @@ const normalizeTemplateColumns = (columns = []) => {
         visible: column.visible !== false,
         fieldType: String(column.fieldType || column.field_type || "text").toLowerCase(),
         options: Array.isArray(column.options)
-          ? column.options.map((option) => String(option).trim()).filter((option) => option)
+          ? column.options
+              .map((option) => {
+                if (option && typeof option === "object" && "value" in option) return String(option.value).trim();
+                return String(option).trim();
+              })
+              .filter((option) => option)
           : [],
         subColumns: normalizeSubColumns(column.subColumns, key),
       };
@@ -290,6 +300,48 @@ const generateSchoolYearOptions = (back = 3, forward = 3, referenceDate = new Da
   }
 
   return options.reverse();
+};
+
+// ─── Remark / Condition helpers ──────────────────────────────────────────────
+
+/** Keys that commonly hold the remark/condition/status value */
+const REMARK_COLUMN_KEYS = ["remarks", "condition", "status", "state"];
+
+/**
+ * Find the remark column from template columns.
+ * Returns the column config object or null.
+ */
+const findRemarkColumn = (columns = []) => {
+  if (!Array.isArray(columns)) return null;
+  for (const key of REMARK_COLUMN_KEYS) {
+    const found = columns.find((c) => c.key === key);
+    if (found) return found;
+  }
+  return columns.find((c) => String(c.fieldType).toLowerCase() === "dropdown") || null;
+};
+
+/** Get the remark value from an item row. */
+const getItemRemark = (item, remarkColumn) => {
+  if (!remarkColumn || !item) return "—";
+  const val = item[remarkColumn.key];
+  return val != null && String(val).trim() !== "" ? String(val).trim() : "—";
+};
+
+/** Collect all unique remark values from items, plus all configured options. */
+const getAllRemarkOptions = (items, remarkColumn) => {
+  const configuredOptions = (remarkColumn?.options || []).map((o) =>
+    (o && typeof o === "object" && "value" in o) ? String(o.value) : String(o)
+  ).filter(Boolean);
+  const usedValues = new Set();
+  for (const item of items) {
+    const r = getItemRemark(item, remarkColumn);
+    if (r !== "—") usedValues.add(r);
+  }
+  const all = [...configuredOptions];
+  for (const v of usedValues) {
+    if (!all.includes(v)) all.push(v);
+  }
+  return all;
 };
 
 const formatPickerLabel = (range) => {
@@ -1169,7 +1221,15 @@ export default function InventorySection() {
   const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" });
   const [isHistoryOpen, setIsHistoryOpen] = useState(() => searchParams.get("view") === "logs");
   const [pendingAction, setPendingAction] = useState("");
+
+  // ── Remark Edit state ──
+  const [remarkChangeModal, setRemarkChangeModal] = useState(null);
+  const [remarkSaving, setRemarkSaving] = useState(false);
+  const [remarkInlineEdit, setRemarkInlineEdit] = useState(null);
+  // { item, currentRemark, allRemarkOptions, remarkColumnKey, quantityKey }
+
   const historyDatePickerRef = useRef(null);
+  const inlineEditRef = useRef(null);
 
   const updateHistoryView = (isOpen) => {
     setIsHistoryOpen(isOpen);
@@ -1262,9 +1322,120 @@ export default function InventorySection() {
     }
   };
 
+  const handleRemarkChange = async () => {
+    if (!remarkChangeModal) return;
+    const { item, currentRemark, targetRemark, quantity, remarkColumnKey, quantityKey, itemQty } = remarkChangeModal;
+    const qty = Math.max(1, Math.floor(Number(quantity) || 1));
+    if (currentRemark === targetRemark) { setRemarkChangeModal(null); return; }
+    setRemarkSaving(true);
+    try {
+      const newSourceQty = Math.max(0, itemQty - qty);
+
+      // Use functional updater so we always work with the freshest items array
+      let mergeTargetId = null;
+      let mergeNewTargetQty = null;
+
+      setItems((prevItems) => {
+        // Find an existing row to merge into: same item_number/computer_number + has the target remark
+        const idKey = item.item_number != null ? "item_number" : item.computer_number != null ? "computer_number" : null;
+        const norm = (v) => String(v ?? "").trim().toLowerCase();
+
+        let target = null;
+        if (idKey && item[idKey] != null) {
+          // Match by identifier column + target remark
+          target = prevItems.find((it) =>
+            it.id !== item.id &&
+            it[idKey] === item[idKey] &&
+            norm(it[remarkColumnKey]) === norm(targetRemark)
+          ) || null;
+        }
+        if (!target) {
+          // No identifier — match on ALL non-id/non-qty/non-remark columns being equal
+          const matchKeys = Object.keys(item).filter((k) => {
+            const nk = String(k || "").trim().toLowerCase();
+            if (!nk) return false;
+            if (["id", "created_at", "updated_at", "sort_order"].includes(nk)) return false;
+            if (nk === String(quantityKey || "").toLowerCase()) return false;
+            if (nk === String(remarkColumnKey || "").trim().toLowerCase()) return false;
+            const val = item[k];
+            return val !== null && val !== undefined && String(val).trim() !== "";
+          });
+          if (matchKeys.length > 0) {
+            target = prevItems.find((it) => {
+              if (it.id === item.id) return false;
+              if (norm(it[remarkColumnKey]) !== norm(targetRemark)) return false;
+              return matchKeys.every((k) => norm(it[k]) === norm(item[k]));
+            }) || null;
+          }
+        }
+
+        if (!target) {
+          // No match found — caller will handle in-place update or new row creation
+          return prevItems;
+        }
+
+        // Found a target — compute merged quantities and flag for DB operations
+        mergeTargetId = target.id;
+        mergeNewTargetQty = (Number(target[quantityKey]) || 0) + qty;
+
+        if (newSourceQty <= 0) {
+          // Source fully consumed — remove it, update target qty
+          return prevItems.map((it) => it.id === target.id ? { ...it, [quantityKey]: mergeNewTargetQty } : it).filter((it) => it.id !== item.id);
+        } else {
+          // Source still has remaining — reduce it, increase target qty
+          return prevItems.map((it) => {
+            if (it.id === item.id) return { ...it, [quantityKey]: newSourceQty };
+            if (it.id === target.id) return { ...it, [quantityKey]: mergeNewTargetQty };
+            return it;
+          });
+        }
+      });
+
+      console.log("[handleRemarkChange] after setItems:", { mergeTargetId, mergeNewTargetQty, newSourceQty });
+
+      if (mergeTargetId !== null) {
+        // Merge path: persist DB changes after state update
+        if (newSourceQty <= 0) {
+          await upsertInventoryItem({ id: mergeTargetId, sectionId: selectedSection?.id, tableName: tabTableName || null, recordData: { [quantityKey]: mergeNewTargetQty } });
+          await deleteInventoryItem(item.id, tabTableName || null, selectedSection?.id || null);
+        } else {
+          await upsertInventoryItem({ id: mergeTargetId, sectionId: selectedSection?.id, tableName: tabTableName || null, recordData: { [quantityKey]: mergeNewTargetQty } });
+          await upsertInventoryItem({ id: item.id, sectionId: selectedSection?.id, tableName: tabTableName || null, recordData: { [quantityKey]: newSourceQty } });
+        }
+      } else if (newSourceQty <= 0) {
+        // No target, source fully consumed — update remark in-place
+        await upsertInventoryItem({ id: item.id, sectionId: selectedSection?.id, tableName: tabTableName || null, recordData: { [remarkColumnKey]: targetRemark } });
+        setItems((prev) => prev.map((it) => it.id === item.id ? { ...it, [remarkColumnKey]: targetRemark } : it));
+      } else {
+        // No target, source has remaining qty — create a new row
+        await upsertInventoryItem({ id: item.id, sectionId: selectedSection?.id, tableName: tabTableName || null, recordData: { [quantityKey]: newSourceQty } });
+        const nr = { ...item }; delete nr.id; delete nr.created_at; delete nr.updated_at;
+        nr[quantityKey] = qty; nr[remarkColumnKey] = targetRemark;
+        const newRecordData = { ...nr };
+        const created = await upsertInventoryItem({ id: null, sectionId: selectedSection?.id, tableName: tabTableName || null, recordData: newRecordData });
+        setItems((prev) => { const u = prev.map((it) => it.id === item.id ? { ...it, [quantityKey]: newSourceQty } : it); if (created?.id) { const newRow = { ...nr, id: created.id }; const si = u.findIndex((it) => it.id === item.id); u.splice(si + 1, 0, newRow); } return u; });
+      }
+      setRemarkChangeModal(null);
+    } catch (err) { console.error("Remark change failed:", err); alert("Remark change failed: " + (err.message || err)); }
+    finally { setRemarkSaving(false); }
+  };
+
   useEffect(() => {
     setPage(1);
   }, [selectedSectionSlug, refreshKey, isDefectiveOnlyView]);
+
+  const commitInlineRemark = async (newRemark) => {
+    if (!remarkInlineEdit) return;
+    const { item, currentRemark, remarkColumnKey } = remarkInlineEdit;
+    if (currentRemark === newRemark) { setRemarkInlineEdit(null); return; }
+    setRemarkSaving(true);
+    try {
+      await upsertInventoryItem({ id: item.id, sectionId: selectedSection?.id, tableName: tabTableName || null, recordData: { [remarkColumnKey]: newRemark } });
+      setItems((prev) => prev.map((it) => it.id === item.id ? { ...it, [remarkColumnKey]: newRemark } : it));
+      setRemarkInlineEdit(null);
+    } catch (err) { console.error("Remark change failed:", err); alert("Remark change failed: " + (err.message || err)); }
+    finally { setRemarkSaving(false); }
+  };
 
   useEffect(() => {
     setPage(1);
@@ -1280,6 +1451,23 @@ export default function InventorySection() {
       setSavingCellKey(null);
     }
   }, [gridEditMode, selectedSectionSlug]);
+
+  // Close inline edit popover on outside click
+  useEffect(() => {
+    if (!remarkInlineEdit) return;
+    const handleClick = (e) => {
+      if (inlineEditRef.current && !inlineEditRef.current.contains(e.target)) {
+        setRemarkInlineEdit(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [remarkInlineEdit]);
+
+  // Close inline edit when exiting edit mode
+  useEffect(() => {
+    if (!gridEditMode) setRemarkInlineEdit(null);
+  }, [gridEditMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -1398,7 +1586,6 @@ export default function InventorySection() {
         ],
     [templateColumns, usesTemplateColumns]
   );
-  const tableColSpan = displayTemplateColumns.length + 1;
   const displayItems = useMemo(() => {
     const visibleItems = isDefectiveOnlyView
       ? items.filter(isDefectiveInventoryRecord)
@@ -2359,6 +2546,10 @@ export default function InventorySection() {
                             : itemStatus.hasMissing
                               ? { boxShadow: "inset 4px 0 0 #f59e0b" }
                               : undefined;
+                        const remarkCol = findRemarkColumn(displayTemplateColumns);
+                        const currentRemark = getItemRemark(item, remarkCol);
+                        const quantityKey = displayTemplateColumns.find((c) => c.key === "quantity")?.key || "quantity";
+                        const itemQty = Number(item[quantityKey]) || 0;
                         return (
                           <tr
                             key={item.id}
@@ -2459,6 +2650,35 @@ export default function InventorySection() {
                                           );
                                         })}
                                       </div>
+                                    ) : REMARK_COLUMN_KEYS.includes(columnKey) ? (
+                                      gridEditMode ? (
+                                        <button
+                                          type="button"
+                                          ref={inlineEditRef}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const allOpts = getAllRemarkOptions(items, remarkCol);
+                                            setRemarkChangeModal({
+                                              item,
+                                              currentRemark,
+                                              targetRemark: allOpts.find((o) => o !== currentRemark) || "",
+                                              quantity: 1,
+                                              allRemarkOptions: allOpts,
+                                              remarkColumnKey: remarkCol?.key || null,
+                                              quantityKey,
+                                              itemQty,
+                                            });
+                                          }}
+                                          className="group inline-flex items-center gap-1 text-sm text-slate-700 cursor-pointer hover:text-indigo-600 transition-colors"
+                                        >
+                                          <span>{formatCellValue(columnValue)}</span>
+                                          <PencilLine className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-indigo-400" />
+                                        </button>
+                                      ) : (
+                                        <span className={String(columnValue || "").toUpperCase().includes("DEFECT") || String(columnValue || "").toUpperCase().includes("BROKEN") ? "text-red-600" : "text-slate-700"}>
+                                          {formatCellValue(columnValue)}
+                                        </span>
+                                      )
                                     ) : gridEditMode ? (
                                       columnEditorType === "dropdown" ? (
                                         <select
@@ -2834,6 +3054,127 @@ export default function InventorySection() {
                 className="rounded-md bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#5a1717] disabled:opacity-50"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Inline Remark Popover (qty === 1) ──────────────────────────────────── */}
+      {remarkInlineEdit && remarkInlineEdit.targetEl && createPortal(
+        <div
+          className="fixed z-[70] mt-1 rounded-lg border border-slate-200 bg-white shadow-lg py-1 min-w-[10rem]"
+          style={{
+            top: remarkInlineEdit.targetEl.getBoundingClientRect().bottom + 4,
+            left: remarkInlineEdit.targetEl.getBoundingClientRect().left,
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {remarkInlineEdit.allRemarkOptions
+            .filter((o) => o !== remarkInlineEdit.currentRemark)
+            .map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                onClick={() => commitInlineRemark(opt)}
+              >
+                {opt}
+              </button>
+            ))}
+        </div>,
+        document.body
+      )}
+
+      {/* ── Remark Change Modal ───────────────────────────────────────────────── */}
+      {remarkChangeModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-slate-900">Change Remark</h3>
+              <button
+                type="button"
+                onClick={() => { setRemarkChangeModal(null); setRemarkSaving(false); }}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Current remark info */}
+            <p className="mt-4 text-sm text-slate-500">
+              Changing <span className="font-medium text-slate-700">{remarkChangeModal.currentRemark}</span>
+              {" "}×{remarkChangeModal.itemQty}
+            </p>
+
+            {/* Target remark dropdown */}
+            <div className="mt-4">
+              <label className="text-sm font-medium text-slate-600">New Remark</label>
+              <select
+                value={remarkChangeModal.targetRemark}
+                onChange={(e) => setRemarkChangeModal((prev) => ({ ...prev, targetRemark: e.target.value }))}
+                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              >
+                <option value="">Select new remark...</option>
+                {remarkChangeModal.allRemarkOptions
+                  .filter((o) => o !== remarkChangeModal.currentRemark)
+                  .map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+              </select>
+            </div>
+
+            {/* Quantity input — only when item has more than 1 */}
+            {remarkChangeModal.itemQty > 1 && (
+              <div className="mt-4">
+                <label className="text-sm font-medium text-slate-600">
+                  How many items?
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={remarkChangeModal.itemQty}
+                  value={remarkChangeModal.quantity}
+                  onChange={(e) => {
+                    const max = remarkChangeModal.itemQty;
+                    const val = Math.max(1, Math.min(max, Math.floor(Number(e.target.value)) || 1));
+                    setRemarkChangeModal((prev) => ({ ...prev, quantity: val }));
+                  }}
+                  className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  Max: {remarkChangeModal.itemQty}
+                </p>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => { setRemarkChangeModal(null); setRemarkSaving(false); }}
+                disabled={remarkSaving}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRemarkChange}
+                disabled={remarkSaving || !remarkChangeModal.targetRemark || Number(remarkChangeModal.quantity) < 1}
+                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:bg-slate-300"
+              >
+                {remarkSaving ? (
+                  <>
+                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    Saving…
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Save
+                  </>
+                )}
               </button>
             </div>
           </div>

@@ -17,6 +17,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -55,7 +62,7 @@ const accountStatusColors = {
 };
 
 const createdAtFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "long",
+  month: "2-digit",
   day: "2-digit",
   year: "numeric",
 });
@@ -399,18 +406,24 @@ export default function UserAccounts() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <select
-          value={accountTypeFilter}
-          onChange={(e) => setAccountTypeFilter(e.target.value)}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 bg-white"
+        <Select
+          value={accountTypeFilter || "__ALL__"}
+          onValueChange={(v) => setAccountTypeFilter(v === "__ALL__" ? "" : v)}
         >
-          <option value="">All Types</option>
-          {uniqueAccountTypes.map((type) => (
-            <option key={type} value={type}>
-              {type.charAt(0).toUpperCase() + type.slice(1)}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger
+            className={"h-9 w-full sm:w-48 rounded-md border border-input bg-white px-3 py-1 text-sm text-slate-600 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"}
+          >
+            <SelectValue placeholder="All Types" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__ALL__">All Types</SelectItem>
+            {uniqueAccountTypes.map((type) => (
+              <SelectItem key={type} value={type}>
+                {type.charAt(0).toUpperCase() + type.slice(1)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Table */}
@@ -505,7 +518,7 @@ export default function UserAccounts() {
                             <DropdownMenuItem
                               onSelect={() => {
                                 setEditAccount(acc);
-                                setShowModal(true);
+                                requestAnimationFrame(() => setShowModal(true));
                               }}
                             >
                               <Edit className="h-4 w-4" />

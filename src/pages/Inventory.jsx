@@ -4,6 +4,14 @@ import { Edit, MoreVertical, Plus, Trash2, X, CheckCircle, Monitor, Armchair, Wr
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -138,13 +146,23 @@ const INVENTORY_TEMPLATES = [
   },
 ];
 
+const normalizeOption = (o) => {
+  if (o && typeof o === "object" && "value" in o) {
+    return { value: String(o.value), conditionGroup: o.conditionGroup || "operational" };
+  }
+  const str = String(o).trim();
+  if (!str) return null;
+  const group = KNOWN_OPERATIONAL_VALUES.has(str.toLowerCase()) ? "operational" : "quarantine";
+  return { value: str, conditionGroup: group };
+};
+
 const normalizeColumnConfig = (column) => ({
   key: String(column?.key || "").trim(),
   label: String(column?.label || column?.key || "").trim(),
   data_type: String(column?.data_type || column?.type || "text").toLowerCase(),
   visible: column?.visible !== false,
   fieldType: String(column?.fieldType || "text").toLowerCase(),
-  options: Array.isArray(column?.options) ? column.options.map((o) => String(o).trim()).filter((o) => o) : [],
+  options: Array.isArray(column?.options) ? column.options.map(normalizeOption).filter(Boolean) : [],
   subColumns: Array.isArray(column?.subColumns)
     ? column.subColumns
       .filter((subColumn) => subColumn && subColumn.key)
@@ -152,10 +170,40 @@ const normalizeColumnConfig = (column) => ({
         key: String(subColumn.key).trim(),
         label: String(subColumn.label || subColumn.key).trim(),
         fieldType: String(subColumn?.fieldType || "text").toLowerCase(),
-        options: Array.isArray(subColumn?.options) ? subColumn.options.map((o) => String(o).trim()).filter((o) => o) : [],
+        options: Array.isArray(subColumn?.options) ? subColumn.options.map(normalizeOption).filter(Boolean) : [],
       }))
     : [],
 });
+
+// ─── Instance-tracking columns injected into every new inventory table ───
+export const INSTANCE_COLUMNS = [
+  { key: "parent_id",     label: "Parent ID",        data_type: "bigint" },
+  { key: "instance_tag",  label: "Instance Tag",     data_type: "text" },
+  { key: "serial_number", label: "Serial Number",    data_type: "text" },
+  { key: "condition",     label: "Condition",        data_type: "text" },
+  { key: "remarks",       label: "Instance Remarks", data_type: "text" },
+];
+
+// Known operational values for heuristic classification of plain-string options
+const KNOWN_OPERATIONAL_VALUES = new Set(["working", "good", "new", "active", "operational"]);
+
+/**
+ * Classify a single remark/condition value given a column's options array.
+ * Returns "operational" | "quarantine".
+ * Works with both classified objects [{value, conditionGroup}] and plain strings.
+ */
+export const classifyConditionOption = (value, columnOptions) => {
+  if (!value || !columnOptions || !Array.isArray(columnOptions)) return "quarantine";
+  const needle = String(value).trim().toLowerCase();
+  const match = columnOptions.find((o) => {
+    const v = (o && typeof o === "object" && "value" in o) ? String(o.value) : String(o);
+    return v.trim().toLowerCase() === needle;
+  });
+  if (match && typeof match === "object" && "conditionGroup" in match) {
+    return match.conditionGroup === "operational" ? "operational" : "quarantine";
+  }
+  return KNOWN_OPERATIONAL_VALUES.has(needle) ? "operational" : "quarantine";
+};
 
 const flattenColumnsForDDL = (columns) => {
   const flattened = [];
@@ -355,14 +403,26 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
 
           <div>
             <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Field Type</label>
-            <select
-              className="mt-2 w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            <Select
               value={form.fieldType}
-              onChange={(e) => setForm((c) => ({ ...c, fieldType: e.target.value }))}
+              onValueChange={(v) =>
+                setForm((c) => ({
+                  ...c,
+                  fieldType: v,
+                  data_type: v === "number" ? "int" : v === "date" ? "date" : "text",
+                }))
+              }
             >
-              <option value="text">Text Input</option>
-              <option value="dropdown">Dropdown</option>
-            </select>
+              <SelectTrigger className="h-9 w-full rounded-md border border-input bg-white px-3 py-1 text-sm text-slate-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring mt-2">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="text">Text Input</SelectItem>
+                <SelectItem value="dropdown">Dropdown</SelectItem>
+                <SelectItem value="number">Number</SelectItem>
+                <SelectItem value="date">Date</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {form.fieldType === "dropdown" && (
@@ -418,12 +478,11 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
 
           <div className="border-t border-slate-200 pt-4">
             <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              <input
-                type="checkbox"
-                checked={form.hasSubColumns}
-                onChange={(e) => setForm((c) => ({ ...c, hasSubColumns: e.target.checked }))}
+              <Checkbox
+                checked={Boolean(form.hasSubColumns)}
+                onCheckedChange={(v) => setForm((c) => ({ ...c, hasSubColumns: Boolean(v) }))}
               />
-              Add sub fields
+              <span className="select-none">Add sub fields</span>
             </label>
 
             {form.hasSubColumns && (
@@ -484,21 +543,34 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
                           <div className="space-y-2 pl-2 border-l-2 border-slate-200">
                             <div>
                               <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Field Type</label>
-                              <select
-                                className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1 text-xs focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                              <Select
                                 value={subCol.fieldType || "text"}
-                                onChange={(e) =>
+                                onValueChange={(v) =>
                                   setForm((c) => ({
                                     ...c,
                                     subColumns: c.subColumns.map((sc) =>
-                                      sc.key === subCol.key ? { ...sc, fieldType: e.target.value, options: e.target.value === "dropdown" ? sc.options || [] : [] } : sc
+                                      sc.key === subCol.key
+                                        ? {
+                                            ...sc,
+                                            fieldType: v,
+                                            options: v === "dropdown" ? sc.options || [] : [],
+                                            data_type: v === "number" ? "int" : v === "date" ? "date" : "text",
+                                          }
+                                        : sc
                                     ),
                                   }))
                                 }
                               >
-                                <option value="text">Text Input</option>
-                                <option value="dropdown">Dropdown</option>
-                              </select>
+                                <SelectTrigger className="h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs text-slate-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring mt-1">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="text">Text Input</SelectItem>
+                                  <SelectItem value="dropdown">Dropdown</SelectItem>
+                                  <SelectItem value="number">Number</SelectItem>
+                                  <SelectItem value="date">Date</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
                             {(subCol.fieldType === "dropdown" || (subCol.fieldType === undefined && subCol.options?.length > 0)) && (
                               <div>
@@ -1569,7 +1641,7 @@ function TabModal({ tab, onClose, onSave }) {
                       size="sm"
                       className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
                     >
-                      Continue
+                      {wizardStep === 4 ? "Review" : "Continue"}
                     </Button>
                   ) : wizardStep === STEPS.length ? (
                     <Button
@@ -1942,9 +2014,11 @@ export default function Inventory() {
           .trim()
           .replace(/[^a-z0-9_]+/g, "_")
           .replace(/^_+|_+$/g, "")}`;
-        const cols = (form.columns || [])
-          .filter((it) => it && it.key)
-          .map((it) => normalizeColumnConfig(it));
+        const userColumns = (form.columns || []).filter((it) => it && it.key);
+        const instanceCols = INSTANCE_COLUMNS.filter(
+          (ic) => !userColumns.some((uc) => uc.key === ic.key)
+        );
+        const cols = [...userColumns, ...instanceCols].map((it) => normalizeColumnConfig(it));
 
         if (!cols || cols.length === 0) {
           throw new Error("No valid columns provided for table creation.");

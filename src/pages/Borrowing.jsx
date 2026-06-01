@@ -1840,11 +1840,10 @@ export default function Borrowing() {
                 setShowExportLogs((current) => !current);
                 setStatusFilter("borrowed");
               }}
-              className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition ${
-                showExportLogs
-                  ? "bg-[#4a1111] text-white hover:bg-[#5a1717]"
-                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-              }`}
+              className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition ${showExportLogs
+                ? "bg-[#4a1111] text-white hover:bg-[#5a1717]"
+                : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                }`}
               title={showExportLogs ? "Return to borrowed items" : "Show export logs"}
               aria-label={showExportLogs ? "Return to borrowed items" : "Show export logs"}
             >
@@ -1862,11 +1861,10 @@ export default function Borrowing() {
                 setShowExportLogs(false);
                 setStatusFilter(statusFilter === "borrowed" ? "all" : "borrowed");
               }}
-              className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition ${
-                !showExportLogs && statusFilter === "all"
-                  ? "bg-[#4a1111] text-white hover:bg-[#5a1717]"
-                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-              }`}
+              className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition ${!showExportLogs && statusFilter === "all"
+                ? "bg-[#4a1111] text-white hover:bg-[#5a1717]"
+                : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                }`}
               title={statusFilter === "borrowed" ? "Show borrowing history" : "Show current borrowed items"}
               aria-label={statusFilter === "borrowed" ? "Show borrowing history" : "Show current borrowed items"}
             >
@@ -2051,242 +2049,240 @@ export default function Borrowing() {
             fileNamePrefix="borrowing-records"
           />
         ) : (
-        <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-opacity duration-300">
-          {borrowingsError && (
-            <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              Error loading borrowings: {borrowingsError}
-            </div>
-          )}
-          {!borrowingsLoading && filteredData.length === 0 ? (
-            <div className="text-center py-16 text-slate-400">
-              <p>{statusFilter === "borrowed" ? "No borrowed items yet." : "No borrowing logs found."}</p>
-            </div>
-          ) : !borrowingsLoading && (
-            <>
-              <div className="max-h-[36rem] overflow-auto">
-                <table className="w-full min-w-[900px] border-separate border-spacing-0 transition-opacity duration-300">
-                  <thead className="sticky top-0 z-10 bg-slate-50 shadow-[inset_0_-1px_0_rgb(226,232,240)]">
-                    <tr>
-                      {[
-                        "Borrower",
-                        "Borrowed",
-                        "Status",
-                        "Items",
-                        "Quantity",
-                        "Condition",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
-                        >
-                          {h}
-                        </th>
-                      ))}
-                      {statusFilter !== "borrowed" && (
-                        <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Remarks</th>
-                      )}
-                      {statusFilter === "borrowed" && (
-                        <th className="bg-slate-50 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          <span className="sr-only">Row actions</span>
-                        </th>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {currentPageData.map((record) => (
-                      <tr
-                        key={record.id}
-                        onClick={() => setSelectedRecord(record)}
-                        className="cursor-pointer transition-colors hover:bg-slate-50"
-                      >
-                        {/* Borrower */}
-                        <td className="px-4 py-3">
-                          <p className="text-sm font-medium text-slate-900">{record.name}</p>
-                        </td>
-
-                        {/* Borrowed */}
-                        <td className="px-4 py-3 text-sm text-slate-600">
-                          {formatExportDate(record.date)}
-                        </td>
-
-                        {/* Status */}
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-1 text-xs font-medium ${getBorrowingStatusClass(record.status)}`}
+          <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-opacity duration-300">
+            {borrowingsError && (
+              <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                Error loading borrowings: {borrowingsError}
+              </div>
+            )}
+            {!borrowingsLoading && filteredData.length === 0 ? (
+              <div className="text-center py-16 text-slate-400">
+                <p>{statusFilter === "borrowed" ? "No borrowed items yet." : "No borrowing logs found."}</p>
+              </div>
+            ) : !borrowingsLoading && (
+              <>
+                <div className="max-h-[36rem] overflow-auto">
+                  <table className="w-full min-w-[900px] border-separate border-spacing-0 transition-opacity duration-300">
+                    <thead className="sticky top-0 z-10 bg-slate-50 shadow-[inset_0_-1px_0_rgb(226,232,240)]">
+                      <tr>
+                        {[
+                          "Borrower",
+                          "Borrowed",
+                          "Status",
+                          "Items",
+                          "Quantity",
+                          "Condition",
+                        ].map((h) => (
+                          <th
+                            key={h}
+                            className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                           >
-                            {formatBorrowingStatus(record.status)}
-                          </span>
-                        </td>
-
-                        {/* Items — bulleted list for multiple */}
-                        <td className="px-4 py-3 text-sm text-slate-600">
-                          {(record.items || []).length > 1 ? (
-                            <ul className="list-disc list-inside space-y-0.5">
-                              {(record.items || []).map((item) => (
-                                <li key={`${record.id}-${item.id}`}>{item.label}</li>
-                              ))}
-                            </ul>
-                          ) : (record.items || []).length === 1 ? (
-                            <span>{(record.items || [])[0].label}</span>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-
-                        {/* Quantity */}
-                        <td className="px-4 py-3 text-sm text-slate-600">
-                          {(record.items || []).length > 1 ? (
-                            <ul className="list-disc list-inside space-y-0.5">
-                              {(record.items || []).map((item) => {
-                                const isZero = item.inventoryItemId && depletedItems.has(item.inventoryItemId);
-                                return (
-                                  <li key={`${record.id}-${item.id}-qty`} className={isZero ? "text-rose-700 font-semibold" : ""}>
-                                    {getItemQuantity(item) || "—"}
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          ) : (record.items || []).length === 1 ? (
-                            (() => {
-                              const item = (record.items || [])[0];
-                              const isZero = item.inventoryItemId && depletedItems.has(item.inventoryItemId);
-                              return <span className={isZero ? "text-rose-700 font-semibold" : ""}>{getItemQuantity(item) || "—"}</span>;
-                            })()
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-
-                        {/* Condition */}
-                        <td className="px-4 py-3">
-                          {(record.items || []).length > 1 ? (
-                            <ul className="space-y-1">
-                              {(record.items || []).map((item) => {
-                                const condition = getBorrowingItemCondition(item);
-                                const label = getReturnConditionLabel(item);
-                                return (
-                                  <li key={`${record.id}-${item.id}-condition`}>
-                                    <span
-                                      className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                                        condition === "defective"
-                                          ? "bg-rose-100 text-rose-700 border-rose-200"
-                                          : "bg-emerald-100 text-emerald-700 border-emerald-200"
-                                      }`}
-                                    >
-                                      {label}
-                                    </span>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          ) : (record.items || []).length === 1 ? (
-                            (() => {
-                              const item = (record.items || [])[0];
-                              const condition = getBorrowingItemCondition(item);
-                              const label = getReturnConditionLabel(item);
-                              return (
-                                <span
-                                  className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                                    condition === "defective"
-                                      ? "bg-rose-100 text-rose-700 border-rose-200"
-                                      : "bg-emerald-100 text-emerald-700 border-emerald-200"
-                                  }`}
-                                >
-                                  {label}
-                                </span>
-                              );
-                            })()
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-
-                        {/* Remarks (logs view only) */}
+                            {h}
+                          </th>
+                        ))}
                         {statusFilter !== "borrowed" && (
+                          <th className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Remarks</th>
+                        )}
+                        {statusFilter === "borrowed" && (
+                          <th className="bg-slate-50 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <span className="sr-only">Row actions</span>
+                          </th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {currentPageData.map((record) => (
+                        <tr
+                          key={record.id}
+                          onClick={() => setSelectedRecord(record)}
+                          className="cursor-pointer transition-colors hover:bg-slate-50"
+                        >
+                          {/* Borrower */}
+                          <td className="px-4 py-3">
+                            <p className="text-sm font-medium text-slate-900">{record.name}</p>
+                          </td>
+
+                          {/* Borrowed */}
+                          <td className="px-4 py-3 text-sm text-slate-600">
+                            {formatExportDate(record.date)}
+                          </td>
+
+                          {/* Status */}
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-1 text-xs font-medium ${getBorrowingStatusClass(record.status)}`}
+                            >
+                              {formatBorrowingStatus(record.status)}
+                            </span>
+                          </td>
+
+                          {/* Items — bulleted list for multiple */}
                           <td className="px-4 py-3 text-sm text-slate-600">
                             {(record.items || []).length > 1 ? (
-                              <ul className="space-y-0.5">
+                              <ul className="list-disc list-inside space-y-0.5">
                                 {(record.items || []).map((item) => (
-                                  <li key={`${record.id}-${item.id}-remarks`} className="text-xs text-slate-600">
-                                    {item.returnRemarks?.trim() || "—"}
-                                  </li>
+                                  <li key={`${record.id}-${item.id}`}>{item.label}</li>
                                 ))}
                               </ul>
                             ) : (record.items || []).length === 1 ? (
-                              <span className="text-xs">{(record.items || [])[0].returnRemarks?.trim() || "—"}</span>
+                              <span>{(record.items || [])[0].label}</span>
                             ) : (
                               "—"
                             )}
                           </td>
-                        )}
 
-                        {/* Action (active view only) */}
-                        {statusFilter === "borrowed" && (
-                          <td className="px-4 py-3">
-                            <div className="flex justify-end">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  requestReturn(record);
-                                }}
-                                className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                              >
-                                Return
-                              </button>
-                            </div>
+                          {/* Quantity */}
+                          <td className="px-4 py-3 text-sm text-slate-600">
+                            {(record.items || []).length > 1 ? (
+                              <ul className="list-disc list-inside space-y-0.5">
+                                {(record.items || []).map((item) => {
+                                  const isZero = item.inventoryItemId && depletedItems.has(item.inventoryItemId);
+                                  return (
+                                    <li key={`${record.id}-${item.id}-qty`} className={isZero ? "text-rose-700 font-semibold" : ""}>
+                                      {getItemQuantity(item) || "—"}
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            ) : (record.items || []).length === 1 ? (
+                              (() => {
+                                const item = (record.items || [])[0];
+                                const isZero = item.inventoryItemId && depletedItems.has(item.inventoryItemId);
+                                return <span className={isZero ? "text-rose-700 font-semibold" : ""}>{getItemQuantity(item) || "—"}</span>;
+                              })()
+                            ) : (
+                              "—"
+                            )}
                           </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
 
-              {/* ── Pagination Footer ─────────────────────────────────────────────── */}
-              {filteredData.length > 0 && (
-                <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
-                  <div className="text-sm text-slate-500">
-                    Showing {Math.min(pageStartIndex + 1, filteredData.length)}–{Math.min(pageEndIndex, filteredData.length)} of {filteredData.length}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page === 1}
-                      className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                      aria-label="Previous page"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </button>
-                    {visiblePageNumbers.map((pageNumber) => {
-                      const isActive = page === pageNumber;
-                      return (
-                        <button
-                          key={pageNumber}
-                          type="button"
-                          onClick={() => setPage(pageNumber)}
-                          className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
-                        >
-                          {pageNumber}
-                        </button>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={page === totalPages || totalPages === 0}
-                      className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                      aria-label="Next page"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                  </div>
+                          {/* Condition */}
+                          <td className="px-4 py-3">
+                            {(record.items || []).length > 1 ? (
+                              <ul className="space-y-1">
+                                {(record.items || []).map((item) => {
+                                  const condition = getBorrowingItemCondition(item);
+                                  const label = getReturnConditionLabel(item);
+                                  return (
+                                    <li key={`${record.id}-${item.id}-condition`}>
+                                      <span
+                                        className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${condition === "defective"
+                                          ? "bg-rose-100 text-rose-700 border-rose-200"
+                                          : "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                          }`}
+                                      >
+                                        {label}
+                                      </span>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            ) : (record.items || []).length === 1 ? (
+                              (() => {
+                                const item = (record.items || [])[0];
+                                const condition = getBorrowingItemCondition(item);
+                                const label = getReturnConditionLabel(item);
+                                return (
+                                  <span
+                                    className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${condition === "defective"
+                                      ? "bg-rose-100 text-rose-700 border-rose-200"
+                                      : "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                      }`}
+                                  >
+                                    {label}
+                                  </span>
+                                );
+                              })()
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+
+                          {/* Remarks (logs view only) */}
+                          {statusFilter !== "borrowed" && (
+                            <td className="px-4 py-3 text-sm text-slate-600">
+                              {(record.items || []).length > 1 ? (
+                                <ul className="space-y-0.5">
+                                  {(record.items || []).map((item) => (
+                                    <li key={`${record.id}-${item.id}-remarks`} className="text-xs text-slate-600">
+                                      {item.returnRemarks?.trim() || "—"}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (record.items || []).length === 1 ? (
+                                <span className="text-xs">{(record.items || [])[0].returnRemarks?.trim() || "—"}</span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                          )}
+
+                          {/* Action (active view only) */}
+                          {statusFilter === "borrowed" && (
+                            <td className="px-4 py-3">
+                              <div className="flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    requestReturn(record);
+                                  }}
+                                  className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                                >
+                                  Return
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              )}
-            </>
-          )}
-        </div>
+
+                {/* ── Pagination Footer ─────────────────────────────────────────────── */}
+                {filteredData.length > 0 && (
+                  <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
+                    <div className="text-sm text-slate-500">
+                      Showing {Math.min(pageStartIndex + 1, filteredData.length)}–{Math.min(pageEndIndex, filteredData.length)} of {filteredData.length}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                        className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label="Previous page"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      {visiblePageNumbers.map((pageNumber) => {
+                        const isActive = page === pageNumber;
+                        return (
+                          <button
+                            key={pageNumber}
+                            type="button"
+                            onClick={() => setPage(pageNumber)}
+                            className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
+                          >
+                            {pageNumber}
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={page === totalPages || totalPages === 0}
+                        className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label="Next page"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -2395,11 +2391,10 @@ export default function Borrowing() {
                             <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
                               Qty: {displayQty}
                             </span>
-                            <span className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                              condition === "defective"
-                                ? "bg-rose-100 text-rose-700 border-rose-200"
-                                : "bg-emerald-100 text-emerald-700 border-emerald-200"
-                            }`}>
+                            <span className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${condition === "defective"
+                              ? "bg-rose-100 text-rose-700 border-rose-200"
+                              : "bg-emerald-100 text-emerald-700 border-emerald-200"
+                              }`}>
                               {returnConditionLabel}
                             </span>
                           </div>
@@ -2615,714 +2610,721 @@ export default function Borrowing() {
         ];
 
         return (
-        <Dialog open={showModal} onOpenChange={(open) => !open && closeBorrowModal()}>
-          <DialogContent
-            className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
-            onPointerDownOutside={(e) => e.preventDefault()}
-          >
-            {/* ── Stepper Header ──────────────────────────────────────── */}
-            <DialogHeader className="shrink-0 border-b border-slate-200 bg-slate-50 px-6 pt-5 pb-4 sm:px-8">
-              <div className="flex items-center justify-center">
-                {["Identity", "Select Items", "Review"].map((label, idx) => {
-                  const stepNum = idx + 1;
-                  const isActive = activeStep === stepNum;
-                  const isCompleted = activeStep > stepNum;
-                  const { Icon } = stepIcons[idx];
+          <Dialog open={showModal} onOpenChange={(open) => !open && closeBorrowModal()}>
+            <DialogContent
+              className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
+              onPointerDownOutside={(e) => e.preventDefault()}
+            >
+              {/* ── Stepper Header ──────────────────────────────────────── */}
+              <DialogHeader className="shrink-0 border-b border-slate-200 bg-slate-50 px-6 pt-5 pb-4 sm:px-8">
+                <div className="flex items-center justify-center">
+                  {["Identity", "Select Items", "Review"].map((label, idx) => {
+                    const stepNum = idx + 1;
+                    const isActive = activeStep === stepNum;
+                    const isCompleted = activeStep > stepNum;
+                    const { Icon } = stepIcons[idx];
 
-                  return (
-                    <div key={stepIcons[idx].key} className="flex items-center">
-                      <div className="flex flex-col items-center gap-1.5">
-                        <div
-                          className={cn(
-                            "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors",
-                            isActive && "border-[#4a1111] bg-[#4a1111] text-white",
-                            isCompleted && "border-[#4a1111] bg-[#4a1111] text-white",
-                            !isActive && !isCompleted && "border-slate-200 bg-white text-slate-400"
-                          )}
-                        >
-                          <Icon className="h-4 w-4" />
+                    return (
+                      <div key={stepIcons[idx].key} className="flex items-center">
+                        <div className="flex flex-col items-center gap-1.5">
+                          <div
+                            className={cn(
+                              "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors",
+                              isActive && "border-[#4a1111] bg-[#4a1111] text-white",
+                              isCompleted && "border-[#4a1111] bg-[#4a1111] text-white",
+                              !isActive && !isCompleted && "border-slate-200 bg-white text-slate-400"
+                            )}
+                          >
+                            <Icon className="h-4 w-4" />
+                          </div>
+                          <span
+                            className={cn(
+                              "text-[11px] font-medium tracking-wide",
+                              isActive && "text-[#4a1111]",
+                              isCompleted && "text-[#4a1111]/60",
+                              !isActive && !isCompleted && "text-slate-400"
+                            )}
+                          >
+                            {label}
+                          </span>
                         </div>
-                        <span
-                          className={cn(
-                            "text-[11px] font-medium tracking-wide",
-                            isActive && "text-[#4a1111]",
-                            isCompleted && "text-[#4a1111]/60",
-                            !isActive && !isCompleted && "text-slate-400"
-                          )}
-                        >
-                          {label}
-                        </span>
+                        {idx < 2 && (
+                          <div
+                            className={cn(
+                              "mx-4 mb-5 h-0.5 w-16 rounded-full transition-colors",
+                              activeStep > stepNum ? "bg-[#4a1111]" : "bg-slate-200"
+                            )}
+                          />
+                        )}
                       </div>
-                      {idx < 2 && (
-                        <div
-                          className={cn(
-                            "mx-4 mb-5 h-0.5 w-16 rounded-full transition-colors",
-                            activeStep > stepNum ? "bg-[#4a1111]" : "bg-slate-200"
-                          )}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </DialogHeader>
-
-            {/* ── Scrollable Body ──────────────────────────────────────── */}
-            <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-8">
-
-              {/* ═══ STEP 1: Borrower Identity ═══ */}
-              {activeStep === 1 && (
-                <div className="space-y-4">
-                  <div>
-                    <DialogTitle className="text-lg font-semibold text-slate-900">
-                      Borrower Information
-                    </DialogTitle>
-                    <DialogDescription className="mt-1 text-sm">
-                      Enter the borrower's identity details to begin.
-                    </DialogDescription>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="borrow-name" className="mb-1 block text-sm font-medium text-slate-700">
-                      Full Name <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      id="borrow-name"
-                      name="name"
-                      placeholder="Enter full name"
-                      value={form.name}
-                      onChange={handleChange}
-                      autoFocus
-                      aria-invalid={!!formErrors.name}
-                      aria-describedby={formErrors.name ? "name-error" : undefined}
-                      className={cn(
-                        "h-10",
-                        formErrors.name && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive"
-                      )}
-                    />
-                    {formErrors.name && (
-                      <p id="name-error" className="mt-1 text-xs font-medium text-destructive">{formErrors.name}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <Label htmlFor="borrow-studentId" className="mb-1 block text-sm font-medium text-slate-700">
-                      ID Number <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      id="borrow-studentId"
-                      name="studentId"
-                      placeholder="Enter ID number"
-                      value={form.studentId}
-                      onChange={handleChange}
-                      aria-invalid={!!formErrors.studentId}
-                      aria-describedby={formErrors.studentId ? "studentId-error" : undefined}
-                      className={cn(
-                        "h-10",
-                        formErrors.studentId && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive"
-                      )}
-                    />
-                    {formErrors.studentId && (
-                      <p id="studentId-error" className="mt-1 text-xs font-medium text-destructive">{formErrors.studentId}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <Label htmlFor="borrow-role" className="mb-1 block text-sm font-medium text-slate-700">
-                      Role <span className="text-destructive">*</span>
-                    </Label>
-                    <Select name="role" value={form.role} onValueChange={(val) => {
-                      setForm({ ...form, role: val });
-                      setFormErrors((prev) => ({ ...prev, role: validateField("role", val) }));
-                      setFormError("");
-                    }}>
-                      <SelectTrigger id="borrow-role" className="h-10">
-                        <SelectValue placeholder="Select role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Student">Student</SelectItem>
-                        <SelectItem value="Teacher">Teacher</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {formErrors.role && (
-                      <p id="role-error" className="mt-1 text-xs font-medium text-destructive">{formErrors.role}</p>
-                    )}
-                  </div>
+                    );
+                  })}
                 </div>
-              )}
+              </DialogHeader>
 
-              {/* ═══ STEP 2: Select Items ═══ */}
-              {activeStep === 2 && (
-                <div className="space-y-4">
-                  <div>
-                    <DialogTitle className="text-lg font-semibold text-slate-900">Select Items</DialogTitle>
-                    <DialogDescription className="mt-1 text-sm">
-                      Browse by location, pick items, and manage your cart.
-                    </DialogDescription>
-                  </div>
+              {/* ── Scrollable Body ──────────────────────────────────────── */}
+              <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-8">
 
-                  {/* ── Cascading Filters: Inventory → Section ──────────────── */}
-                  <div className="grid grid-cols-2 gap-3">
+                {/* ═══ STEP 1: Borrower Identity ═══ */}
+                {activeStep === 1 && (
+                  <div className="space-y-4">
                     <div>
-                      <Label className="mb-1 block text-sm font-medium text-slate-700">Inventory</Label>
-                      <Select value={filterTabId || "__all__"} onValueChange={(val) => { setFilterTabId(val === "__all__" ? "" : val); setFilterSectionId(""); }}>
-                        <SelectTrigger className="h-10"><SelectValue placeholder="All Inventories" /></SelectTrigger>
+                      <DialogTitle className="text-lg font-semibold text-slate-900">
+                        Borrower Information
+                      </DialogTitle>
+                      <DialogDescription className="mt-1 text-sm">
+                        Enter the borrower's identity details to begin.
+                      </DialogDescription>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="borrow-name" className="mb-1 block text-sm font-medium text-slate-700">
+                        Full Name <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        id="borrow-name"
+                        name="name"
+                        placeholder="Enter full name"
+                        value={form.name}
+                        onChange={handleChange}
+                        autoFocus
+                        aria-invalid={!!formErrors.name}
+                        aria-describedby={formErrors.name ? "name-error" : undefined}
+                        className={cn(
+                          "h-10",
+                          formErrors.name && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive"
+                        )}
+                      />
+                      {formErrors.name && (
+                        <p id="name-error" className="mt-1 text-xs font-medium text-destructive">{formErrors.name}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label htmlFor="borrow-studentId" className="mb-1 block text-sm font-medium text-slate-700">
+                        ID Number <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        id="borrow-studentId"
+                        name="studentId"
+                        placeholder="Enter ID number"
+                        value={form.studentId}
+                        onChange={handleChange}
+                        aria-invalid={!!formErrors.studentId}
+                        aria-describedby={formErrors.studentId ? "studentId-error" : undefined}
+                        className={cn(
+                          "h-10",
+                          formErrors.studentId && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive"
+                        )}
+                      />
+                      {formErrors.studentId && (
+                        <p id="studentId-error" className="mt-1 text-xs font-medium text-destructive">{formErrors.studentId}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label htmlFor="borrow-role" className="mb-1 block text-sm font-medium text-slate-700">
+                        Role <span className="text-destructive">*</span>
+                      </Label>
+                      <Select name="role" value={form.role} onValueChange={(val) => {
+                        setForm({ ...form, role: val });
+                        setFormErrors((prev) => ({ ...prev, role: validateField("role", val) }));
+                        setFormError("");
+                      }}>
+                        <SelectTrigger id="borrow-role" className="h-10">
+                          <SelectValue placeholder="Select role" />
+                        </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__all__">All Inventories</SelectItem>
-                          {tabs.map((tab) => (
-                            <SelectItem key={tab.id} value={String(tab.id)}>{tab.name}</SelectItem>
-                          ))}
+                          <SelectItem value="Student">Student</SelectItem>
+                          <SelectItem value="Teacher">Teacher</SelectItem>
                         </SelectContent>
                       </Select>
+                      {formErrors.role && (
+                        <p id="role-error" className="mt-1 text-xs font-medium text-destructive">{formErrors.role}</p>
+                      )}
                     </div>
+                  </div>
+                )}
+
+                {/* ═══ STEP 2: Select Items ═══ */}
+                {activeStep === 2 && (
+                  <div className="space-y-4">
                     <div>
-                      <Label className="mb-1 block text-sm font-medium text-slate-700">Section</Label>
-                      <Select value={filterSectionId || "__all__"} onValueChange={(val) => setFilterSectionId(val === "__all__" ? "" : val)} disabled={!filterTabId}>
-                        <SelectTrigger className="h-10"><SelectValue placeholder={filterTabId ? "All Sections" : "Select inventory first"} /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__all__">All Sections</SelectItem>
-                          {filterSections.map((section) => (
-                            <SelectItem key={section.id} value={String(section.id)}>{section.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <DialogTitle className="text-lg font-semibold text-slate-900">Select Items</DialogTitle>
+                      <DialogDescription className="mt-1 text-sm">
+                        Browse by location, pick items, and manage your cart.
+                      </DialogDescription>
                     </div>
-                  </div>
 
-                  {/* ── Secondary free-text search ─────────────────────────── */}
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      type="text"
-                      placeholder="Search within selection..."
-                      value={globalSearch}
-                      onChange={(e) => setGlobalSearch(e.target.value)}
-                      autoFocus
-                      className="h-9 pl-9 pr-9 text-sm"
-                    />
-                    {globalSearch && (
-                      <button
-                        type="button"
-                        onClick={() => setGlobalSearch("")}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-slate-400 hover:text-slate-600"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* ── Compact Scrollable Item List ────────────────────────── */}
-                  <div className="rounded-lg border border-slate-200 overflow-hidden">
-                    <div className="grid grid-cols-[1fr_90px_80px] gap-2 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                      <span>Item</span>
-                      <span className="text-center">In Stock</span>
-                      <span className="text-right">Action</span>
-                    </div>
-                    {allItemsLoading ? (
-                      <div className="flex items-center justify-center py-10">
-                        <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-[#4a1111]" />
-                        <span className="ml-2 text-sm text-slate-500">Loading inventory...</span>
+                    {/* ── Cascading Filters: Inventory → Section ──────────────── */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="mb-1 block text-sm font-medium text-slate-700">Inventory</Label>
+                        <Select value={filterTabId || "__all__"} onValueChange={(val) => { setFilterTabId(val === "__all__" ? "" : val); setFilterSectionId(""); }}>
+                          <SelectTrigger className="h-10"><SelectValue placeholder="All Inventories" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__all__">All Inventories</SelectItem>
+                            {tabs.map((tab) => (
+                              <SelectItem key={tab.id} value={String(tab.id)}>{tab.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
-                    ) : filteredItems.length === 0 ? (
-                      <p className="py-8 text-center text-sm text-slate-400">
-                        {globalSearch ? "No items match your search." : "No inventory items available."}
-                      </p>
-                    ) : (
-                      <div className="max-h-[250px] overflow-y-auto">
-                        {filteredItems.map((item) => {
-                          const cartId = `inv-${item.tabId}-${item.sectionId}-${item.id}`;
-                          const alreadyInCart = cartIdSet.has(cartId);
-                          const liveStock = getLiveStock(item);
-                          const reservedForThisItem = getCartReservedQuantity(cartId, borrowCart);
-                          const availableStock = Math.max(0, liveStock - reservedForThisItem);
+                      <div>
+                        <Label className="mb-1 block text-sm font-medium text-slate-700">Section</Label>
+                        <Select value={filterSectionId || "__all__"} onValueChange={(val) => setFilterSectionId(val === "__all__" ? "" : val)} disabled={!filterTabId}>
+                          <SelectTrigger className="h-10"><SelectValue placeholder={filterTabId ? "All Sections" : "Select inventory first"} /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__all__">All Sections</SelectItem>
+                            {filterSections.map((section) => (
+                              <SelectItem key={section.id} value={String(section.id)}>{section.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
 
-                          return (
-                            <div
-                              key={cartId}
-                              className="grid grid-cols-[1fr_90px_80px] gap-2 items-center border-b border-slate-100 px-3 py-2.5 hover:bg-slate-50 transition-colors"
-                            >
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-medium text-slate-800">{getItemLabel(item)}</p>
-                                <p className="truncate text-[11px] text-slate-400">{item.tabName} • {item.sectionName}</p>
-                              </div>
-                              <div className="text-center">
-                                <span className={cn(
-                                  "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                                  availableStock > 0
-                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                    : "bg-rose-50 text-rose-700 border border-rose-200"
-                                )}>
-                                  {availableStock > 0 ? availableStock : "Out"}
-                                </span>
-                              </div>
-                              <div className="text-right">
-                                {availableStock <= 0 && (
-                                  <span className="block text-[10px] font-semibold text-rose-500 leading-tight">
-                                    Out of Stock — Awaiting Return
+                    {/* ── Secondary free-text search ─────────────────────────── */}
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        type="text"
+                        placeholder="Search within selection..."
+                        value={globalSearch}
+                        onChange={(e) => setGlobalSearch(e.target.value)}
+                        autoFocus
+                        className="h-9 pl-9 pr-9 text-sm"
+                      />
+                      {globalSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setGlobalSearch("")}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-slate-400 hover:text-slate-600"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* ── Compact Scrollable Item List ────────────────────────── */}
+                    <div className="rounded-lg border border-slate-200 overflow-hidden">
+                      <div className="grid grid-cols-[1fr_90px_80px] gap-2 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                        <span>Item</span>
+                        <span className="text-center">In Stock</span>
+                        <span className="text-right">Action</span>
+                      </div>
+                      {allItemsLoading ? (
+                        <div className="flex items-center justify-center py-10">
+                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-[#4a1111]" />
+                          <span className="ml-2 text-sm text-slate-500">Loading inventory...</span>
+                        </div>
+                      ) : filteredItems.length === 0 ? (
+                        <p className="py-8 text-center text-sm text-slate-400">
+                          {globalSearch ? "No items match your search." : "No inventory items available."}
+                        </p>
+                      ) : (
+                        <div className="max-h-[250px] overflow-y-auto">
+                          {filteredItems.map((item) => {
+                            const cartId = `inv-${item.tabId}-${item.sectionId}-${item.id}`;
+                            const alreadyInCart = cartIdSet.has(cartId);
+                            const liveStock = getLiveStock(item);
+                            const reservedForThisItem = getCartReservedQuantity(cartId, borrowCart);
+                            const availableStock = Math.max(0, liveStock - reservedForThisItem);
+
+                            return (
+                              <div
+                                key={cartId}
+                                className="grid grid-cols-[1fr_90px_80px] gap-2 items-center border-b border-slate-100 px-3 py-2.5 hover:bg-slate-50 transition-colors"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium text-slate-800">{getItemLabel(item)}</p>
+                                  <p className="truncate text-[11px] text-slate-400">{item.tabName} • {item.sectionName}</p>
+                                </div>
+                                <div className="text-center">
+                                  <span className={cn(
+                                    "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                                    availableStock > 0
+                                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                      : "bg-rose-50 text-rose-700 border border-rose-200"
+                                  )}>
+                                    {availableStock > 0 ? availableStock : "0"}
                                   </span>
-                                )}
-                                <Button
-                                  size="sm"
-                                  variant={alreadyInCart ? "secondary" : "default"}
-                                  onClick={() => {
-                                    if (!alreadyInCart && availableStock > 0) {
-                                      setQtyDialogItem(item);
-                                      setQtyDialogValue(1);
-                                    }
-                                  }}
-                                  disabled={alreadyInCart || availableStock <= 0}
-                                  className={cn(
-                                    "h-7 px-2.5 text-[11px] font-semibold mt-0.5",
-                                    !alreadyInCart && availableStock > 0 && "bg-[#4a1111] hover:bg-[#5a1717]"
+                                </div>
+                                <div className="text-right">
+                                  {availableStock <= 0 && (
+                                    <span className="block text-[9px] font-semibold text-rose-500 leading-tight">
+                                      Not available
+                                    </span>
                                   )}
-                                >
-                                  {alreadyInCart ? "Added" : "+ Add"}
-                                </Button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                                  {availableStock > 0 && (
+                                    <Button
+                                      size="sm"
+                                      variant={alreadyInCart ? "secondary" : "default"}
+                                      onClick={() => {
+                                        if (!alreadyInCart && availableStock > 0) {
+                                          setQtyDialogItem(item);
+                                          setQtyDialogValue(1);
+                                        }
+                                      }}
+                                      disabled={alreadyInCart || availableStock <= 0}
+                                      className={cn(
+                                        "h-7 px-2.5 text-[11px] font-semibold mt-0.5",
+                                        !alreadyInCart && availableStock > 0 && "bg-[#4a1111] hover:bg-[#5a1717]"
+                                      )}
+                                    >
+                                      {alreadyInCart ? "Added" : "+ Add"}
+                                    </Button>
+                                  )}
 
-                  {/* ── Quantity Dialog (nested) ───────────────────────────── */}
-                  {qtyDialogItem && (
-                    <Dialog open={!!qtyDialogItem} onOpenChange={(open) => !open && setQtyDialogItem(null)}>
-                      <DialogContent
-                        className="max-w-sm rounded-2xl p-6"
-                        onPointerDownOutside={(e) => e.preventDefault()}
-                      >
-                        <DialogHeader>
-                          <DialogTitle className="text-base font-semibold text-slate-900">How many to borrow?</DialogTitle>
-                          <DialogDescription className="mt-1 text-sm text-slate-500">
-                            {getItemLabel(qtyDialogItem)}
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="mt-4 flex flex-col items-center gap-3">
-                          <span className="text-xs text-slate-400">Available: {Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 0)}</span>
-                          <div className="flex items-center gap-3">
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Quantity Dialog (nested) ───────────────────────────── */}
+                    {qtyDialogItem && (
+                      <Dialog open={!!qtyDialogItem} onOpenChange={(open) => !open && setQtyDialogItem(null)}>
+                        <DialogContent
+                          className="max-w-sm rounded-2xl p-6"
+                          onPointerDownOutside={(e) => e.preventDefault()}
+                        >
+                          <DialogHeader>
+                            <DialogTitle className="text-base font-semibold text-slate-900">How many to borrow?</DialogTitle>
+                            <DialogDescription className="mt-1 text-sm text-slate-500">
+                              {getItemLabel(qtyDialogItem)}
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="mt-4 flex flex-col items-center gap-3">
+                            <span className="text-xs text-slate-400">Available: {Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 0)}</span>
+                            <div className="flex items-center gap-3">
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="outline"
+                                className="h-9 w-9 rounded-full"
+                                onClick={() => setQtyDialogValue((v) => Math.max(1, v - 1))}
+                                disabled={qtyDialogValue <= 1}
+                              >
+                                <Minus className="h-4 w-4" />
+                              </Button>
+                              <Input
+                                type="number"
+                                min="1"
+                                max={Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1)}
+                                value={qtyDialogValue}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value);
+                                  if (!Number.isNaN(v)) {
+                                    const max = Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1);
+                                    setQtyDialogValue(Math.max(1, Math.min(v, max)));
+                                  }
+                                }}
+                                className="no-number-spinner h-10 w-20 text-center text-lg font-semibold"
+                              />
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="outline"
+                                className="h-9 w-9 rounded-full"
+                                onClick={() => {
+                                  const max = Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1);
+                                  setQtyDialogValue((v) => Math.min(max, v + 1));
+                                }}
+                                disabled={qtyDialogValue >= Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1)}
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                          <DialogFooter className="mt-5 gap-2 sm:gap-3">
                             <Button
                               type="button"
-                              size="icon"
                               variant="outline"
-                              className="h-9 w-9 rounded-full"
-                              onClick={() => setQtyDialogValue((v) => Math.max(1, v - 1))}
-                              disabled={qtyDialogValue <= 1}
+                              size="sm"
+                              onClick={() => setQtyDialogItem(null)}
+                              className="rounded-lg"
                             >
-                              <Minus className="h-4 w-4" />
+                              Cancel
                             </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => {
+                                addToCart(qtyDialogItem, false, qtyDialogValue);
+                                setQtyDialogItem(null);
+                              }}
+                              className="rounded-lg bg-[#4a1111] px-5 text-white hover:bg-[#3f0f0f]"
+                            >
+                              Add to Cart
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    )}
+
+                    {/* ── Custom Item Form ───────────────────────────────────── */}
+                    <div className="rounded-xl border border-dashed border-slate-300 bg-white p-4">
+                      <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-[#4a1111] mb-3">
+                        Or Add Custom Item (Outside Inventory)
+                      </h4>
+                      <div className="space-y-3">
+                        <div>
+                          <Label className="mb-1 block text-sm font-medium text-slate-700">Item Name</Label>
+                          <Input
+                            type="text"
+                            placeholder="e.g. External Hard Drive"
+                            value={customItemForm.name}
+                            onChange={(e) => setCustomItemForm({ ...customItemForm, name: e.target.value })}
+                            className="h-10"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="mb-1 block text-sm font-medium text-slate-700">
+                              Brand <span className="text-slate-400 font-normal">(optional)</span>
+                            </Label>
+                            <Input
+                              type="text"
+                              placeholder="e.g. Samsung"
+                              value={customItemForm.brand}
+                              onChange={(e) => setCustomItemForm({ ...customItemForm, brand: e.target.value })}
+                              className="h-10"
+                            />
+                          </div>
+                          <div>
+                            <Label className="mb-1 block text-sm font-medium text-slate-700">Quantity</Label>
                             <Input
                               type="number"
                               min="1"
-                              max={Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1)}
-                              value={qtyDialogValue}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                if (!Number.isNaN(v)) {
-                                  const max = Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1);
-                                  setQtyDialogValue(Math.max(1, Math.min(v, max)));
-                                }
-                              }}
-                              className="h-10 w-20 text-center text-lg font-semibold"
+                              placeholder="e.g. 1"
+                              value={customItemForm.quantity}
+                              onChange={(e) => setCustomItemForm({ ...customItemForm, quantity: e.target.value })}
+                              className="no-number-spinner h-10"
                             />
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="outline"
-                              className="h-9 w-9 rounded-full"
-                              onClick={() => {
-                                const max = Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1);
-                                setQtyDialogValue((v) => Math.min(max, v + 1));
-                              }}
-                              disabled={qtyDialogValue >= Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1)}
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
                           </div>
                         </div>
-                        <DialogFooter className="mt-5 gap-2 sm:gap-3">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setQtyDialogItem(null)}
-                            className="rounded-lg"
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => {
-                              addToCart(qtyDialogItem, false, qtyDialogValue);
-                              setQtyDialogItem(null);
-                            }}
-                            className="rounded-lg bg-[#4a1111] px-5 text-white hover:bg-[#3f0f0f]"
-                          >
-                            Add to Cart
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  )}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="mb-1 block text-sm font-medium text-slate-700">Condition</Label>
+                            <Select value={customItemForm.condition} onValueChange={(val) => setCustomItemForm({ ...customItemForm, condition: val })}>
+                              <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Working">Working</SelectItem>
+                                <SelectItem value="Defective">Defective</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label className="mb-1 block text-sm font-medium text-slate-700">
+                              Remarks <span className="text-slate-400 font-normal">(optional)</span>
+                            </Label>
+                            <Input
+                              type="text"
+                              placeholder="Any notes..."
+                              value={customItemForm.remarks}
+                              onChange={(e) => setCustomItemForm({ ...customItemForm, remarks: e.target.value })}
+                              className="h-10"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        variant="default"
+                        onClick={addCustomItemToCart}
+                        disabled={!canAddCustom}
+                        className={cn(
+                          "mt-4 w-full h-10 text-sm font-semibold",
+                          canAddCustom
+                            ? "bg-[#4a1111] hover:bg-[#5a1717]"
+                            : "bg-slate-100 text-slate-400 cursor-not-allowed hover:bg-slate-100"
+                        )}
+                      >
+                        + Add Custom Item
+                      </Button>
+                    </div>
 
-                  {/* ── Custom Item Form ───────────────────────────────────── */}
-                  <div className="rounded-xl border border-dashed border-slate-300 bg-white p-4">
-                    <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-[#4a1111] mb-3">
-                      Or Add Custom Item (Outside Inventory)
-                    </h4>
-                    <div className="space-y-3">
-                      <div>
-                        <Label className="mb-1 block text-sm font-medium text-slate-700">Item Name</Label>
-                        <Input
-                          type="text"
-                          placeholder="e.g. External Hard Drive"
-                          value={customItemForm.name}
-                          onChange={(e) => setCustomItemForm({ ...customItemForm, name: e.target.value })}
-                          className="h-10"
-                        />
+                    {/* ── Cart Summary with +/- controls ─────────────────────── */}
+                    {borrowCart.length > 0 && (
+                      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                        <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
+                          <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">
+                            Cart ({borrowCart.length} {borrowCart.length === 1 ? "item" : "items"})
+                          </h3>
+                        </div>
+                        <div className="divide-y divide-slate-100 max-h-[180px] overflow-y-auto">
+                          {borrowCart.map((item) => (
+                            <div key={item.cartId} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-slate-800 truncate">
+                                  {item.label || getItemLabel(item)}
+                                </p>
+                                <p className="text-xs text-slate-400">
+                                  {item.isCustom ? "Custom Item" : `${item.tabName} / ${item.sectionName}`}
+                                </p>
+                              </div>
+                              {!item.isCustom && (
+                                <div className="flex items-center gap-1.5">
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-6 w-6 rounded-full border-slate-200"
+                                    onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)}
+                                    disabled={item.quantity <= 1}
+                                  >
+                                    <Minus className="h-3 w-3" />
+                                  </Button>
+                                  <span className="w-8 text-center text-sm font-semibold text-slate-700">
+                                    {item.quantity}
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-6 w-6 rounded-full border-slate-200"
+                                    onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)}
+                                    disabled={item.quantity >= item.maxQuantity}
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              )}
+                              {item.isCustom && (
+                                <span className="px-2 py-0.5 text-sm font-semibold text-slate-600">
+                                  ×{item.quantity}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeFromCart(item.cartId)}
+                                className="shrink-0 rounded-md p-1.5 text-rose-500 transition hover:bg-rose-50"
+                                title="Remove"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label className="mb-1 block text-sm font-medium text-slate-700">
-                            Brand <span className="text-slate-400 font-normal">(optional)</span>
-                          </Label>
-                          <Input
-                            type="text"
-                            placeholder="e.g. Samsung"
-                            value={customItemForm.brand}
-                            onChange={(e) => setCustomItemForm({ ...customItemForm, brand: e.target.value })}
-                            className="h-10"
-                          />
-                        </div>
-                        <div>
-                          <Label className="mb-1 block text-sm font-medium text-slate-700">Quantity</Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            placeholder="e.g. 1"
-                            value={customItemForm.quantity}
-                            onChange={(e) => setCustomItemForm({ ...customItemForm, quantity: e.target.value })}
-                            className="h-10"
-                          />
-                        </div>
+                    )}
+
+                    {formError && (
+                      <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* ═══ STEP 3: Review & Summary ═══ */}
+                {activeStep === 3 && (
+                  <div className="space-y-5">
+                    <div>
+                      <DialogTitle className="text-lg font-semibold text-slate-900">Review & Confirm</DialogTitle>
+                      <DialogDescription className="mt-1 text-sm">
+                        Verify all details before confirming the borrowing record.
+                      </DialogDescription>
+                    </div>
+
+                    {/* Borrower Profile Block */}
+                    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                      <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
+                        <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">Borrower</h3>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label className="mb-1 block text-sm font-medium text-slate-700">Condition</Label>
-                          <Select value={customItemForm.condition} onValueChange={(val) => setCustomItemForm({ ...customItemForm, condition: val })}>
-                            <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Working">Working</SelectItem>
-                              <SelectItem value="Defective">Defective</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label className="mb-1 block text-sm font-medium text-slate-700">
-                            Remarks <span className="text-slate-400 font-normal">(optional)</span>
-                          </Label>
-                          <Input
-                            type="text"
-                            placeholder="Any notes..."
-                            value={customItemForm.remarks}
-                            onChange={(e) => setCustomItemForm({ ...customItemForm, remarks: e.target.value })}
-                            className="h-10"
-                          />
+                      <div className="px-5 py-4">
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Full Name</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-800">{form.name.trim()}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">ID Number</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-800">{form.studentId.trim()}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Role</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-800">{form.role}</p>
+                          </div>
                         </div>
                       </div>
                     </div>
-                    <Button
-                      variant="default"
-                      onClick={addCustomItemToCart}
-                      disabled={!canAddCustom}
-                      className={cn(
-                        "mt-4 w-full h-10 text-sm font-semibold",
-                        canAddCustom
-                          ? "bg-[#4a1111] hover:bg-[#5a1717]"
-                          : "bg-slate-100 text-slate-400 cursor-not-allowed hover:bg-slate-100"
-                      )}
-                    >
-                      + Add Custom Item
-                    </Button>
-                  </div>
 
-                  {/* ── Cart Summary with +/- controls ─────────────────────── */}
-                  {borrowCart.length > 0 && (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
-                      <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-800 mb-3">
-                        Cart ({borrowCart.length} {borrowCart.length === 1 ? "item" : "items"})
-                      </h4>
-                      <div className="space-y-2 max-h-[180px] overflow-y-auto">
+                    {/* Items Table */}
+                    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                      <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
+                        <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">
+                          Items ({borrowCart.length})
+                        </h3>
+                      </div>
+                      <div className="divide-y divide-slate-100">
                         {borrowCart.map((item) => (
-                          <div key={item.cartId} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2.5 shadow-sm">
+                          <div key={item.cartId} className="flex items-center justify-between gap-4 px-5 py-3.5">
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium text-slate-800 truncate">
-                                {item.label || getItemLabel(item)}
-                              </p>
-                              <p className="text-xs text-slate-400">
-                                {item.isCustom ? "Custom Item" : `${item.tabName} / ${item.sectionName}`}
+                              <p className="text-sm font-medium text-slate-800">{item.label || getItemLabel(item)}</p>
+                              <p className="mt-0.5 text-xs text-slate-400">
+                                {item.isCustom ? "Custom Item" : `${item.tabName} • ${item.sectionName}`}
                               </p>
                             </div>
-                            {!item.isCustom && (
-                              <div className="flex items-center gap-1.5">
-                                <Button
-                                  type="button"
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-6 w-6 rounded-full border-slate-200"
-                                  onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)}
-                                  disabled={item.quantity <= 1}
-                                >
-                                  <Minus className="h-3 w-3" />
-                                </Button>
-                                <span className="w-8 text-center text-sm font-semibold text-slate-700">
-                                  {item.quantity}
+                            <div className="flex items-center gap-3">
+                              {!item.isCustom && (
+                                <div className="flex items-center gap-1.5">
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-7 w-7 rounded-full border-slate-200"
+                                    onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)}
+                                    disabled={item.quantity <= 1}
+                                  >
+                                    <Minus className="h-3 w-3" />
+                                  </Button>
+                                  <span className="w-8 text-center text-sm font-semibold text-slate-700">
+                                    {item.quantity}
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-7 w-7 rounded-full border-slate-200"
+                                    onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)}
+                                    disabled={item.quantity >= item.maxQuantity}
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              )}
+                              {item.isCustom && (
+                                <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                                  Qty: {item.quantity}
                                 </span>
-                                <Button
-                                  type="button"
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-6 w-6 rounded-full border-slate-200"
-                                  onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)}
-                                  disabled={item.quantity >= item.maxQuantity}
-                                >
-                                  <Plus className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            )}
-                            {item.isCustom && (
-                              <span className="px-2 py-0.5 text-sm font-semibold text-slate-600">
-                                ×{item.quantity}
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => removeFromCart(item.cartId)}
-                              className="shrink-0 rounded-md p-1.5 text-rose-500 transition hover:bg-rose-50"
-                              title="Remove"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeFromCart(item.cartId)}
+                                className="rounded-md p-1.5 text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
+                                title="Remove item"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
                     </div>
-                  )}
 
-                  {formError && (
-                    <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p>
-                  )}
-                </div>
-              )}
-
-              {/* ═══ STEP 3: Review & Summary ═══ */}
-              {activeStep === 3 && (
-                <div className="space-y-5">
-                  <div>
-                    <DialogTitle className="text-lg font-semibold text-slate-900">Review & Confirm</DialogTitle>
-                    <DialogDescription className="mt-1 text-sm">
-                      Verify all details before confirming the borrowing record.
-                    </DialogDescription>
-                  </div>
-
-                  {/* Borrower Profile Block */}
-                  <div className="rounded-xl border border-[#4a1111]/10 bg-[#4a1111]/5 p-5">
-                    <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4a1111]/60">
-                      Borrower
-                    </h3>
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Full Name</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-800">{form.name.trim()}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">ID Number</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-800">{form.studentId.trim()}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Role</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-800">{form.role}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Items Table */}
-                  <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                    <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
-                      <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">
-                        Items ({borrowCart.length})
-                      </h3>
-                    </div>
-                    <div className="divide-y divide-slate-100">
-                      {borrowCart.map((item) => (
-                        <div key={item.cartId} className="flex items-center justify-between gap-4 px-5 py-3.5">
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-slate-800">{item.label || getItemLabel(item)}</p>
-                            <p className="mt-0.5 text-xs text-slate-400">
-                              {item.isCustom ? "Custom Item" : `${item.tabName} • ${item.sectionName}`}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            {!item.isCustom && (
-                              <div className="flex items-center gap-1.5">
-                                <Button
-                                  type="button"
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-7 w-7 rounded-full border-slate-200"
-                                  onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)}
-                                  disabled={item.quantity <= 1}
-                                >
-                                  <Minus className="h-3 w-3" />
-                                </Button>
-                                <span className="w-8 text-center text-sm font-semibold text-slate-700">
-                                  {item.quantity}
-                                </span>
-                                <Button
-                                  type="button"
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-7 w-7 rounded-full border-slate-200"
-                                  onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)}
-                                  disabled={item.quantity >= item.maxQuantity}
-                                >
-                                  <Plus className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            )}
-                            {item.isCustom && (
-                              <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                                Qty: {item.quantity}
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => removeFromCart(item.cartId)}
-                              className="rounded-md p-1.5 text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
-                              title="Remove item"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Merge with active borrow */}
-                  {latestActiveBorrowForBorrower ? (
-                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-sm text-amber-900">
-                      <Checkbox
-                        checked={mergeWithLastBorrow}
-                        onCheckedChange={(checked) => setMergeWithLastBorrow(!!checked)}
-                        className="mt-0.5 border-amber-400 data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
-                      />
-                      <span>
-                        <span className="block font-semibold">Merge with latest active borrow</span>
-                        <span className="mt-1 block text-xs text-amber-700">
-                          Latest record borrowed on{" "}
-                          {new Date(latestActiveBorrowForBorrower.date).toLocaleString()} has not been returned yet.
+                    {/* Merge with active borrow */}
+                    {latestActiveBorrowForBorrower ? (
+                      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-sm text-amber-900">
+                        <Checkbox
+                          checked={mergeWithLastBorrow}
+                          onCheckedChange={(checked) => setMergeWithLastBorrow(!!checked)}
+                          className="mt-0.5 border-amber-400 data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
+                        />
+                        <span>
+                          <span className="block font-semibold">Merge with latest active borrow</span>
+                          <span className="mt-1 block text-xs text-amber-700">
+                            Latest record borrowed on{" "}
+                            {new Date(latestActiveBorrowForBorrower.date).toLocaleString()} has not been returned yet.
+                          </span>
                         </span>
-                      </span>
-                    </label>
-                  ) : null}
+                      </label>
+                    ) : null}
 
-                  {formError && (
-                    <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p>
-                  )}
-                </div>
-              )}
-            </div>
+                    {formError && (
+                      <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p>
+                    )}
+                  </div>
+                )}
+              </div>
 
-            {/* ── Footer ──────────────────────────────────────────────── */}
-            <DialogFooter className="shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={closeBorrowModal}
-                className="rounded-lg"
-              >
-                Cancel
-              </Button>
-
-              {activeStep > 1 && (
+              {/* ── Footer ──────────────────────────────────────────────── */}
+              <DialogFooter className="shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => { setActiveStep((s) => s - 1); setFormError(""); }}
+                  onClick={closeBorrowModal}
                   className="rounded-lg"
                 >
-                  Back
+                  Cancel
                 </Button>
-              )}
 
-              {activeStep === 1 && (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => {
-                    const errors = {
-                      name: validateField("name", form.name),
-                      studentId: validateField("studentId", form.studentId),
-                      role: validateField("role", form.role),
-                    };
-                    setFormErrors(errors);
+                {activeStep > 1 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { setActiveStep((s) => s - 1); setFormError(""); }}
+                    className="rounded-lg"
+                  >
+                    Back
+                  </Button>
+                )}
 
-                    if (Object.values(errors).some(Boolean)) return;
+                {activeStep === 1 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      const errors = {
+                        name: validateField("name", form.name),
+                        studentId: validateField("studentId", form.studentId),
+                        role: validateField("role", form.role),
+                      };
+                      setFormErrors(errors);
 
-                    setActiveStep(2);
-                    setFormError("");
-                  }}
-                  disabled={!step1Valid}
-                  className="rounded-lg bg-[#4a1111] px-5 text-white hover:bg-[#3f0f0f]"
-                >
-                  Proceed to Select →
-                </Button>
-              )}
+                      if (Object.values(errors).some(Boolean)) return;
 
-              {activeStep === 2 && (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => {
-                    if (borrowCart.length === 0) {
-                      setFormError("Add at least one item to the cart.");
-                      return;
-                    }
-                    setActiveStep(3);
-                    setFormError("");
-                  }}
-                  disabled={borrowCart.length === 0}
-                  className={cn(
-                    "rounded-lg px-5",
-                    borrowCart.length > 0
-                      ? "bg-[#4a1111] text-white hover:bg-[#3f0f0f]"
-                      : "bg-slate-100 text-slate-400 cursor-not-allowed hover:bg-slate-100"
-                  )}
-                >
-                  Review →
-                </Button>
-              )}
+                      setActiveStep(2);
+                      setFormError("");
+                    }}
+                    disabled={!step1Valid}
+                    className="rounded-lg bg-[#4a1111] px-5 text-white hover:bg-[#3f0f0f]"
+                  >
+                    Continue
+                  </Button>
+                )}
 
-              {activeStep === 3 && (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={confirmBorrow}
-                  disabled={savingBorrow || borrowCart.length === 0}
-                  className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f] disabled:cursor-wait disabled:opacity-60"
-                >
-                  {savingBorrow ? "Saving..." : "Confirm Borrow"}
-                </Button>
-              )}
-            </DialogFooter>
+                {activeStep === 2 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      if (borrowCart.length === 0) {
+                        setFormError("Add at least one item to the cart.");
+                        return;
+                      }
+                      setActiveStep(3);
+                      setFormError("");
+                    }}
+                    disabled={borrowCart.length === 0}
+                    className={cn(
+                      "rounded-lg px-5",
+                      borrowCart.length > 0
+                        ? "bg-[#4a1111] text-white hover:bg-[#3f0f0f]"
+                        : "bg-slate-100 text-slate-400 cursor-not-allowed hover:bg-slate-100"
+                    )}
+                  >
+                    Review
+                  </Button>
+                )}
 
-          </DialogContent>
-        </Dialog>
+                {activeStep === 3 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={confirmBorrow}
+                    disabled={savingBorrow || borrowCart.length === 0}
+                    className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f] disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {savingBorrow ? "Saving..." : "Confirm Borrow"}
+                  </Button>
+                )}
+              </DialogFooter>
+
+            </DialogContent>
+          </Dialog>
         );
       })()}
 
