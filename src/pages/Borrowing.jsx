@@ -3688,17 +3688,19 @@ export default function Borrowing() {
                             ))}
                           </select>
                         </div>
+
+                        {isDefective && (
                           <div className="space-y-3">
                             <div className="grid gap-3 sm:grid-cols-[140px_1fr] sm:items-end">
                               <div>
                                 <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                  Defective qty
+                                  {qLabel} qty
                                 </label>
                                 <input
                                   type="number"
                                   min="1"
                                   max={borrowedQuantity}
-                                  value={returnData.defectiveQuantity || ""}
+                                  value={returnData.defectiveQuantity || borrowedQuantity}
                                   onChange={(e) => {
                                     const nextQuantity = Math.max(
                                       1,
@@ -3717,30 +3719,38 @@ export default function Borrowing() {
                                 />
                               </div>
                               <p className="text-xs text-slate-500">
-                                Working qty to return: {workingQuantity}
+                                {tabMeta.operational || "Working"} qty to return: {workingQuantity}
                               </p>
                             </div>
+                          </div>
+                        )}
 
-                            <div>
-                              <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                Describe defect
-                              </label>
-                              <textarea
-                                value={returnData.remarks || ""}
-                                onChange={(e) =>
-                                  setReturnRemarksByItem((current) => ({
-                                    ...current,
-                                    [item.id]: {
-                                      ...(current[item.id] || {}),
-                                      remarks: e.target.value,
-                                    },
-                                  }))
-                                }
-                                rows={3}
-                                placeholder="Explain how the item became defective"
-                                className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                              />
-                            </div>
+                        {!isDefective && (
+                          <p className="text-xs text-slate-500">
+                            Full qty ({borrowedQuantity}) will be returned as {tabMeta.operational || "Working"}.
+                          </p>
+                        )}
+
+                        {isDefective && (
+                          <div>
+                            <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                              Describe defect
+                            </label>
+                            <textarea
+                              value={returnData.remarks || ""}
+                              onChange={(e) =>
+                                setReturnRemarksByItem((current) => ({
+                                  ...current,
+                                  [item.id]: {
+                                    ...(current[item.id] || {}),
+                                    remarks: e.target.value,
+                                  },
+                                }))
+                              }
+                              rows={3}
+                              placeholder={`Explain why the item is ${qLabel.toLowerCase()}`}
+                              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                            />
                           </div>
                         )}
                       </div>
