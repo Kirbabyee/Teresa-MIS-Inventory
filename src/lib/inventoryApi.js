@@ -898,6 +898,7 @@ export const createReturnedDefectiveInventoryItem = async ({
   tableName = null,
   quantity,
   remarks = "",
+  targetCondition = null,
 }) => {
   if (!id) throw new Error("Inventory item is required.");
   if (!sectionId) throw new Error("Inventory section is required.");
@@ -921,7 +922,10 @@ export const createReturnedDefectiveInventoryItem = async ({
 
   if (sourceError) throw sourceError;
 
-  const defectFieldKey = getDefectFieldKey(sourceItem);
+  const { remarkKey: defectFieldKey } = detectItemColumns(sourceItem);
+  const norm = (v) => String(v ?? "").trim().toLowerCase();
+  const defectVal = getDefectiveFieldValue(defectFieldKey, remarks, targetCondition);
+
   const { data: sectionItems, error: sectionItemsError } = await supabase
     .from(resolvedTableName)
     .select("*")
@@ -929,12 +933,19 @@ export const createReturnedDefectiveInventoryItem = async ({
 
   if (sectionItemsError) throw sectionItemsError;
 
-  const existingDefectiveItem = (sectionItems || []).find(
-    (candidateItem) =>
-      String(candidateItem?.id) !== String(sourceItem?.id) &&
-      isDefectiveInventoryRow(candidateItem) &&
-      doInventoryRowsMatchSameItem(sourceItem, candidateItem)
-  );
+  // Exact remark-value match: find the sibling whose remark value equals
+  // the targetCondition (the dynamic schema option the operator selected).
+  // Falls back to any sibling whose remark differs from the source row.
+  const sourceRemark = defectFieldKey ? norm(sourceItem[defectFieldKey]) : "";
+  const matchVal = targetCondition ? norm(targetCondition) : null;
+
+  const existingDefectiveItem = (sectionItems || []).find((candidateItem) => {
+    if (String(candidateItem?.id) === String(sourceItem?.id)) return false;
+    if (!doInventoryRowsMatchSameItem(sourceItem, candidateItem)) return false;
+    if (!defectFieldKey) return false;
+    if (matchVal) return norm(candidateItem[defectFieldKey]) === matchVal;
+    return norm(candidateItem[defectFieldKey]) !== sourceRemark;
+  });
 
   if (existingDefectiveItem?.id) {
     const currentDefectiveQuantity = Number(existingDefectiveItem.quantity ?? 0);
@@ -960,11 +971,11 @@ export const createReturnedDefectiveInventoryItem = async ({
   recordData.quantity = returnedQuantity;
 
   if (defectFieldKey) {
-    recordData[defectFieldKey] = getDefectiveFieldValue(defectFieldKey, remarks);
+    recordData[defectFieldKey] = defectVal;
   }
 
-  if (Object.prototype.hasOwnProperty.call(recordData, "remarks")) {
-    recordData.remarks = getDefectiveFieldValue("remarks", remarks);
+  if (Object.prototype.hasOwnProperty.call(recordData, "remarks") && defectFieldKey !== "remarks") {
+    recordData.remarks = defectVal;
   }
 
   return upsertInventoryItem({

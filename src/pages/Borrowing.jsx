@@ -1271,6 +1271,8 @@ export default function Borrowing() {
             );
           }
           if (defectiveQuantity > 0) {
+            const legColumns = (await getTabTableConfig(item.inventoryTabId))?.columns || [];
+            const legTarget = deriveTargetCondition(legColumns, "quarantine");
             dbUpdates.push(
               createReturnedDefectiveInventoryItem({
                 id: item.inventoryItemId,
@@ -1278,6 +1280,7 @@ export default function Borrowing() {
                 tableName,
                 quantity: defectiveQuantity,
                 remarks: returnData?.remarks || "",
+                targetCondition: legTarget,
               })
             );
           }
@@ -1303,6 +1306,7 @@ export default function Borrowing() {
             );
           }
           if (defectiveQuantity > 0) {
+            const missTarget = deriveTargetCondition(sectionConfig.columns, "quarantine");
             dbUpdates.push(
               createReturnedDefectiveInventoryItem({
                 id: item.inventoryItemId,
@@ -1310,6 +1314,7 @@ export default function Borrowing() {
                 tableName,
                 quantity: defectiveQuantity,
                 remarks: returnData?.remarks || "",
+                targetCondition: missTarget,
               })
             );
           }
