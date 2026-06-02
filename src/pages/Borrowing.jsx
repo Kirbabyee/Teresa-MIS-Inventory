@@ -1379,15 +1379,25 @@ export default function Borrowing() {
                 addDelta(sourceItemId, -qty);
               }
             } else {
-              // ── CREATE NEW ROW ────────────────────────────────────
-              const newRow = {};
-              for (const [k, v] of Object.entries(sourceRowData || {})) {
-                if (["id", "created_at", "updated_at"].includes(k)) continue;
-                newRow[k] = v;
+              // ── CREATE NEW ROW (or merge into pending insert) ────
+              // If a row with the same targetRemark was already queued
+              // for insert, merge qty into that instead of creating another.
+              const pendingInsert = rowsToInsert.find(
+                (nr) => remarkKey && norm(nr[remarkKey]) === norm(targetRemark) &&
+                  matchKeys.every((k) => norm(nr[k]) === norm(sourceRowData[k]))
+              );
+              if (pendingInsert) {
+                pendingInsert[quantityKey] = (Number(pendingInsert[quantityKey]) || 0) + qty;
+              } else {
+                const newRow = {};
+                for (const [k, v] of Object.entries(sourceRowData || {})) {
+                  if (["id", "created_at", "updated_at"].includes(k)) continue;
+                  newRow[k] = v;
+                }
+                newRow[quantityKey] = qty;
+                if (remarkKey) newRow[remarkKey] = targetRemark;
+                rowsToInsert.push(newRow);
               }
-              newRow[quantityKey] = qty;
-              if (remarkKey) newRow[remarkKey] = targetRemark;
-              rowsToInsert.push(newRow);
               addDelta(sourceItemId, -qty);
             }
           }
