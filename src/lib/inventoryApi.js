@@ -881,14 +881,14 @@ const getDefectFieldKey = (record = {}) => {
   });
 };
 
-const getDefectiveFieldValue = (fieldKey = "", remarks = "") => {
-  const normalizedKey = String(fieldKey || "").toLowerCase();
-  const cleanRemarks = String(remarks || "").trim();
-
-  if (normalizedKey.includes("remarks")) {
-    return cleanRemarks ? `Defective` : "Defective";
+const getDefectiveFieldValue = (fieldKey = "", remarks = "", targetCondition = null) => {
+  if (targetCondition != null && String(targetCondition).trim() !== "") {
+    return String(targetCondition).trim();
   }
-
+  const cleanRemarks = String(remarks || "").trim();
+  if (String(fieldKey || "").toLowerCase().includes("remarks")) {
+    return cleanRemarks ? cleanRemarks : "Defective";
+  }
   return "Defective";
 };
 
@@ -1036,6 +1036,332 @@ export const getTabTableConfig = async (tabId) => {
 export const getTabTableName = async (tabId) => {
   const config = await getTabTableConfig(tabId);
   return config?.tableName || null;
+};
+
+// ─── Shared Item Matching Engine ──────────────────────────────────────────
+// Used by both the remark-change merge logic and borrow/return flows to
+// reliably identify "the same item" across different rows (split by remark).
+
+/**
+ * Configuration for a table's identifier, quantity, and remark columns.
+ * Each dynamic inventory table can have different column names, so we
+ * auto-detect them from the row data.
+ */
+export const detectItemColumns = (row = {}) => {
+  const keys = Object.keys(row || {});
+
+  // Identifier: item_number or computer_number
+  const identifierKey = keys.find((k) =>
+    ["item_number", "computer_number"].includes(String(k).trim())
+  ) || null;
+
+  // Quantity: exact "quantity" or ends with "_quantity", excluding identifiers
+  const quantityKey = keys.find((k) => {
+    const nk = String(k || "").trim().toLowerCase();
+    if (GENERATED_INVENTORY_FIELDS.has(k)) return false;
+    return nk === "quantity" || (nk.endsWith("_quantity") && !isIdentifierField(k));
+  }) || "quantity";
+
+  // Remark / condition / status field: first match from known keys
+  const REMARK_PRIORITY = ["remarks", "condition", "status", "state", "item_status", "return_condition"];
+  const remarkKey = REMARK_PRIORITY.find((k) => keys.includes(k)) ||
+    keys.find((k) => {
+      const nk = String(k || "").trim().toLowerCase();
+      return nk.includes("remarks") || nk.includes("condition") || nk.includes("status");
+    }) || null;
+
+  return { identifierKey, quantityKey, remarkKey };
+};
+
+/** Check if a field key is an identifier (item_number or computer_number) */
+export const isIdentifierField = (key = "") =>
+  ["item_number", "computer_number"].includes(String(key || "").trim());
+
+/**
+ * Determine which columns to use for matching "same item".
+ * Excludes: generated fields, quantity, identifier, remark/defect fields, empty values.
+ */
+export const getMatchComparisonKeys = (row = {}, remarkKey = null) =>
+  Object.keys(row || {}).filter((k) => {
+    if (GENERATED_INVENTORY_FIELDS.has(k)) return false;
+    if (isQuantityFieldKey(k)) return false;
+    if (isIdentifierField(k)) return false;
+    if (isDefectFieldKey(k)) return false;
+    if (k === remarkKey) return false;
+    return row[k] != null && String(row[k]).trim() !== "";
+  });
+
+/**
+ * Check whether two rows represent "the same item" (same underlying asset,
+ * possibly split across different remarks/conditions).
+ */
+export const isSameInventoryItem = (rowA = {}, rowB = {}, remarkKey = null) => {
+  const norm = (v) => String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+
+  // Try identifier match first (most reliable)
+  const idKey = ["item_number", "computer_number"].find(
+    (k) => rowA[k] != null && rowB[k] != null
+  );
+  if (idKey && norm(rowA[idKey]) === norm(rowB[idKey])) return true;
+
+  // Fallback: match on all non-excluded columns being equal
+  const keys = getMatchComparisonKeys(rowA, remarkKey);
+  if (keys.length === 0) return false;
+  return keys.every((k) => norm(rowA[k]) === norm(rowB[k]));
+};
+
+// ─── Borrow: Split quantity from a Working row ─────────────────────────────
+/**
+ * Borrow `qty` from the best-matching row in `rows` (prefers "Working").
+ * Returns { updatedRows, borrowedFromId, createdBorrowedRow }.
+ *
+ * Strategy:
+ * 1. Find the "Working" row matching the item (by identifier or data match).
+ * 2. If the Working row has exactly `qty`, reduce its quantity.
+ * 3. If the Working row has more than `qty`, split: reduce source, create
+ *    a new "Borrowed" row with the taken quantity.
+ * 4. If no Working row found, borrow from any matching row.
+ */
+export const borrowFromWorkingRow = ({
+  rows = [],
+  itemId,
+  quantity,
+  sectionId,
+  tableName = null,
+}) => {
+  const targetRow = rows.find((r) => String(r.id) === String(itemId));
+  if (!targetRow) throw new Error("Item not found for borrowing.");
+
+  const { identifierKey, quantityKey, remarkKey } = detectItemColumns(targetRow);
+  const borrowedQty = Number(quantity);
+  if (!Number.isFinite(borrowedQty) || borrowedQty <= 0) {
+    throw new Error("Borrow quantity must be a positive number.");
+  }
+
+  const currentQty = Number(targetRow[quantityKey] || 0);
+  if (borrowedQty > currentQty) {
+    throw new Error(`Insufficient stock: requested ${borrowedQty}, available ${currentQty}.`);
+  }
+
+  const remaining = currentQty - borrowedQty;
+  const norm = (v) => String(v ?? "").trim().toLowerCase();
+
+  // Determine if the selected row is in the "primary" remark group.
+  // Instead of hardcoding "Working"/"Defect", we look for a sibling whose
+  // remark DIFFERS from the selected row. If one exists, the selected row is
+  // in a "non-primary" group and we should borrow from the sibling instead.
+  // If no differing sibling exists, the selected row itself is the source.
+  let sourceRow = targetRow;
+  if (remarkKey) {
+    const diffSibling = rows.find((r) => {
+      if (String(r.id) === String(itemId)) return false;
+      if (!isSameInventoryItem(targetRow, r, remarkKey)) return false;
+      // Different remark value → this sibling is in another group
+      return norm(r[remarkKey]) !== norm(targetRow[remarkKey]);
+    });
+    if (diffSibling) {
+      // The selected row's remark differs from this sibling → borrow from
+      // the sibling (which is in the "other" / operational group).
+      sourceRow = diffSibling;
+    }
+    // If no differing sibling found, selected row is the only/primary group →
+    // borrow from it directly (sourceRow stays as targetRow).
+  }
+
+  const sourceId = sourceRow.id;
+  const sourceCurrentQty = Number(sourceRow[quantityKey] || 0);
+  const sourceRemaining = sourceCurrentQty - borrowedQty;
+
+  if (sourceRemaining < 0) {
+    throw new Error(`Insufficient working stock: requested ${borrowedQty}, available ${sourceCurrentQty}.`);
+  }
+
+  const updatedRows = rows.map((r) => {
+    if (String(r.id) === String(sourceId)) {
+      return { ...r, [quantityKey]: sourceRemaining };
+    }
+    return r;
+  });
+
+  return {
+    sourceId,
+    sourceRemaining,
+    targetRow,
+    updatedRows,
+    wasSplit: false,
+    remarkKey,
+    quantityKey,
+  };
+};
+
+// ─── Return: Merge working qty back, route defective to Defective row ───────
+/**
+ * Process a return for a borrowed item.
+ * @returns { updatedRows, workingTargetId, workingNewQty, defectiveQty, remarkKey, quantityKey }
+ *
+ * Working quantity → merges back into the original Working row.
+ * Defective quantity → routes to the Defective sibling row (or creates one).
+ */
+// ─── Helpers for dynamic remark classification ──────────────────────────────
+// Since inventory tables are fully customizable, we cannot hardcode "Working" /
+// "Defective" strings. Instead we classify siblings relative to the source row:
+//   - "same group"  → sibling remark equals source remark (or both empty)
+//   - "other group" → sibling remark differs from source remark
+// The caller decides which group is "working" vs "defective" via the
+// workingQty / defectiveQty split.
+
+/** Check if two rows share the same remark value (dynamic, no hardcoded strings). */
+const isSameRemarkGroup = (rowA, rowB, remarkKey, norm) => {
+  if (!remarkKey) return true; // no remark column → treat as same group
+  const a = norm(rowA[remarkKey]);
+  const b = norm(rowB[remarkKey]);
+  return a === b;
+};
+
+const OPERATIONAL_VALUES = new Set(["working", "good", "new", "active", "operational"]);
+
+/**
+ * Given a column config array (from getTabTableConfig().columns) and a group
+ * ("quarantine" or "operational"), return the matching remark option value.
+ * Falls back to "Defective" for quarantine when no match is found.
+ */
+export const deriveTargetCondition = (columns = [], group = "quarantine") => {
+  if (group !== "quarantine") return null;
+  const remarkCol = (columns || []).find(
+    (c) =>
+      c.fieldType === "dropdown" &&
+      Array.isArray(c.options) &&
+      c.options.length > 0 &&
+      ["remarks", "condition", "status", "item_status"].includes(
+        String(c.key || "").toLowerCase()
+      )
+  );
+  if (!remarkCol) return "Defective";
+  const opt = (remarkCol.options || []).find((o) => {
+    const v =
+      o && typeof o === "object" && "value" in o ? String(o.value) : String(o);
+    if (o && typeof o === "object" && "conditionGroup" in o)
+      return o.conditionGroup === "quarantine";
+    return !OPERATIONAL_VALUES.has(v.toLowerCase());
+  });
+  if (opt) {
+    return opt && typeof opt === "object" && "value" in opt
+      ? opt.value
+      : String(opt);
+  }
+  return "Defective";
+};
+
+export const processReturnToInventory = ({
+  rows = [],
+  itemId,
+  workingQty,
+  defectiveQty,
+  defectiveRemarks = "",
+  sectionId,
+  targetCondition = null,
+}) => {
+  const sourceRow = rows.find((r) => String(r.id) === String(itemId));
+  if (!sourceRow) throw new Error("Item not found for return processing.");
+
+  const { identifierKey, quantityKey, remarkKey } = detectItemColumns(sourceRow);
+  const norm = (v) => String(v ?? "").trim().toLowerCase();
+  const sourceOrigQty = Number(sourceRow[quantityKey]) || 0;
+
+  let updatedRows = rows.map((r) => ({ ...r }));
+  let workingTargetId = null;
+  let workingNewQty = null;
+  let defectiveTargetId = null;
+  let defectiveNewQty = null;
+
+  // ── Working quantity: add back to a sibling in the SAME remark group ──
+  // If targetCondition is set and classified operational, prefer an exact
+  // same-group sibling match. Otherwise fall back to any same-group sibling.
+  if (workingQty > 0) {
+    const sameGroupSibling = remarkKey
+      ? rows.find((r) => {
+          if (String(r.id) === String(itemId)) return false;
+          if (!isSameInventoryItem(sourceRow, r, remarkKey)) return false;
+          return isSameRemarkGroup(sourceRow, r, remarkKey, norm);
+        })
+      : null;
+
+    if (sameGroupSibling) {
+      workingTargetId = sameGroupSibling.id;
+      workingNewQty = (Number(sameGroupSibling[quantityKey]) || 0) + workingQty;
+      updatedRows = updatedRows.map((r) =>
+        String(r.id) === String(sameGroupSibling.id)
+          ? { ...r, [quantityKey]: workingNewQty }
+          : r
+      );
+    } else {
+      workingTargetId = sourceRow.id;
+      workingNewQty = sourceOrigQty + workingQty;
+      updatedRows = updatedRows.map((r) =>
+        String(r.id) === String(itemId)
+          ? { ...r, [quantityKey]: workingNewQty }
+          : r
+      );
+    }
+  }
+
+  // ── Defective quantity: route to a sibling with the EXACT target remark ──
+  // Phase 1: exact-value match (dynamically precise)
+  // Phase 2: any different-remark sibling (backward-compat fallback)
+  if (defectiveQty > 0 && remarkKey) {
+    const defectVal = getDefectiveFieldValue(remarkKey, defectiveRemarks, targetCondition);
+
+    // Phase 1 — prefer a sibling whose remark equals the target value exactly
+    const exactMatchSibling = targetCondition
+      ? rows.find((r) => {
+          if (String(r.id) === String(itemId)) return false;
+          if (!isSameInventoryItem(sourceRow, r, remarkKey)) return false;
+          return norm(r[remarkKey]) === norm(targetCondition);
+        })
+      : null;
+
+    // Phase 2 — any sibling with a different remark (legacy fallback)
+    const fallbackSibling = exactMatchSibling ? null : rows.find((r) => {
+      if (String(r.id) === String(itemId)) return false;
+      if (!isSameInventoryItem(sourceRow, r, remarkKey)) return false;
+      return !isSameRemarkGroup(sourceRow, r, remarkKey, norm);
+    });
+
+    const mergeTarget = exactMatchSibling ?? fallbackSibling;
+
+    if (mergeTarget) {
+      defectiveTargetId = mergeTarget.id;
+      defectiveNewQty = (Number(mergeTarget[quantityKey]) || 0) + defectiveQty;
+      updatedRows = updatedRows.map((r) =>
+        String(r.id) === String(mergeTarget.id)
+          ? { ...r, [quantityKey]: defectiveNewQty, [remarkKey]: defectVal }
+          : r
+      );
+    } else {
+      // No sibling found — create new row with the dynamic remark value
+      const syntheticId = `new_defective_${itemId}_${Date.now()}`;
+      const newRow = {
+        ...sourceRow,
+        id: syntheticId,
+        [quantityKey]: defectiveQty,
+        [remarkKey]: defectVal,
+      };
+      updatedRows = [...updatedRows, newRow];
+      defectiveTargetId = syntheticId;
+      defectiveNewQty = defectiveQty;
+    }
+  }
+
+  return {
+    updatedRows,
+    workingTargetId,
+    workingNewQty,
+    defectiveTargetId,
+    defectiveNewQty,
+    remarkKey,
+    quantityKey,
+    sourceRow,
+  };
 };
 
 // Column metadata CRUD

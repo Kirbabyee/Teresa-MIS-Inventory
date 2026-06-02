@@ -47,9 +47,13 @@ import {
 import {
   adjustInventoryItemQuantity,
   createReturnedDefectiveInventoryItem,
+  deriveTargetCondition,
+  detectItemColumns,
+  isSameInventoryItem,
+  processReturnToInventory,
   fetchInventoryItems,
   getTabTableConfig,
-  updateInventoryItemQuantity,
+  upsertInventoryItem,
   useInventoryCatalog,
 } from "@/lib/inventoryApi";
 import {
@@ -115,6 +119,13 @@ const getItemLabel = (item = {}) => {
   );
 
   return fallback ? String(fallback[1]) : `Item ${item.id || ""}`.trim();
+};
+
+const getItemRemark = (item = {}) => {
+  const { remarkKey } = detectItemColumns(item);
+  if (!remarkKey) return null;
+  const val = item[remarkKey];
+  return val != null && String(val).trim() !== "" ? String(val).trim() : null;
 };
 
 const getItemDetails = (item = {}) =>
@@ -839,7 +850,6 @@ export default function Borrowing() {
 
   const closeBorrowModal = () => {
     setShowModal(false);
-    setShowConfirm(false);
     resetBorrowForm();
   };
 
@@ -1189,52 +1199,238 @@ export default function Borrowing() {
     setReturningBorrow(true);
     setReturnError("");
     try {
-      await Promise.all(
-        (pendingReturn.items || [])
-          .filter((item) => item.inventoryItemId && item.inventorySectionId)
-          .map(async (item) => {
-            const returnData = normalizedReturnRemarks[item.id] || {};
-            const borrowedQuantity = getBorrowedQuantity(item);
-            const defectiveQuantity = Number(returnData.defectiveQuantity || 0);
-            const workingQuantity = Math.max(0, borrowedQuantity - defectiveQuantity);
-            const tableName =
-              item.tableName ||
-              tabTableNames[item.inventoryTabId] ||
-              (await getTabTableConfig(item.inventoryTabId))?.tableName ||
-              "";
-
-            const inventoryUpdates = [];
-
-            // WORKING: return quantity back to available stock via sign-delta
-            if (workingQuantity > 0) {
-              inventoryUpdates.push(
-                adjustInventoryItemQuantity({
-                  id: item.inventoryItemId,
-                  sectionId: item.inventorySectionId,
-                  tableName,
-                  delta: workingQuantity,
-                })
-              );
-            }
-
-            // DEFECTIVE: route to defective pool — NEVER back to working stock.
-            // adjustInventoryItemQuantity is intentionally NOT called for defective
-            // quantities so damaged hardware cannot be accidentally re-borrowed.
-            if (defectiveQuantity > 0) {
-              inventoryUpdates.push(
-                createReturnedDefectiveInventoryItem({
-                  id: item.inventoryItemId,
-                  sectionId: item.inventorySectionId,
-                  tableName,
-                  quantity: defectiveQuantity,
-                  remarks: returnData?.remarks || "",
-                })
-              );
-            }
-
-            return Promise.all(inventoryUpdates);
-          })
+      // Fetch all inventory items for sections that have returns with custom tables
+      // This allows us to use processReturnToInventory for smart merging
+      const returnItems = (pendingReturn.items || []).filter(
+        (item) => item.inventoryItemId && item.inventorySectionId
       );
+
+      // Get unique section IDs and their table configs
+      const sectionConfigs = new Map();
+      for (const item of returnItems) {
+        const sectionId = item.inventorySectionId;
+        if (!sectionConfigs.has(sectionId)) {
+          const tabId = item.inventoryTabId;
+          const config = await getTabTableConfig(tabId);
+          sectionConfigs.set(sectionId, {
+            tabId,
+            tableName: item.tableName || tabTableNames[tabId] || config?.tableName || "",
+            columns: config?.columns || [],
+            items: [],
+          });
+        }
+      }
+
+      // Fetch items for each section with custom tables
+      for (const [sectionId, sectionConfig] of sectionConfigs) {
+        if (sectionConfig.tableName) {
+          try {
+            const items = await fetchInventoryItems(sectionId, sectionConfig.tableName);
+            sectionConfig.items = items || [];
+          } catch (err) {
+            console.warn("Failed to fetch items for section:", sectionId, err);
+            sectionConfig.items = [];
+          }
+        }
+      }
+
+      // Process each return with smart merging
+      const dbUpdates = [];
+      const toPersistableRow = (row = {}) => {
+        const nextRow = { ...row };
+        delete nextRow.id;
+        delete nextRow.created_at;
+        delete nextRow.updated_at;
+        return nextRow;
+      };
+
+      for (const item of returnItems) {
+        const returnData = normalizedReturnRemarks[item.id] || {};
+        const borrowedQuantity = getBorrowedQuantity(item);
+        const defectiveQuantity = Number(returnData.defectiveQuantity || 0);
+        const workingQuantity = Math.max(0, borrowedQuantity - defectiveQuantity);
+
+        const sectionConfig = sectionConfigs.get(item.inventorySectionId);
+
+        // If no custom table or no items fetched, fall back to legacy behavior
+        if (!sectionConfig || !sectionConfig.tableName || sectionConfig.items.length === 0) {
+          const tableName =
+            item.tableName ||
+            tabTableNames[item.inventoryTabId] ||
+            (await getTabTableConfig(item.inventoryTabId))?.tableName ||
+            "";
+
+          if (workingQuantity > 0) {
+            dbUpdates.push(
+              adjustInventoryItemQuantity({
+                id: item.inventoryItemId,
+                sectionId: item.inventorySectionId,
+                tableName,
+                delta: workingQuantity,
+              })
+            );
+          }
+          if (defectiveQuantity > 0) {
+            dbUpdates.push(
+              createReturnedDefectiveInventoryItem({
+                id: item.inventoryItemId,
+                sectionId: item.inventorySectionId,
+                tableName,
+                quantity: defectiveQuantity,
+                remarks: returnData?.remarks || "",
+              })
+            );
+          }
+          continue;
+        }
+
+        // Use processReturnToInventory for smart merging with custom tables
+        const { items } = sectionConfig;
+        const sourceItem = items.find((it) => String(it.id) === String(item.inventoryItemId));
+
+        if (!sourceItem) {
+          console.warn("Source item not found for return:", item.inventoryItemId);
+          // Fallback to legacy behavior
+          const tableName = sectionConfig.tableName;
+          if (workingQuantity > 0) {
+            dbUpdates.push(
+              adjustInventoryItemQuantity({
+                id: item.inventoryItemId,
+                sectionId: item.inventorySectionId,
+                tableName,
+                delta: workingQuantity,
+              })
+            );
+          }
+          if (defectiveQuantity > 0) {
+            dbUpdates.push(
+              createReturnedDefectiveInventoryItem({
+                id: item.inventoryItemId,
+                sectionId: item.inventorySectionId,
+                tableName,
+                quantity: defectiveQuantity,
+                remarks: returnData?.remarks || "",
+              })
+            );
+          }
+          continue;
+        }
+
+        const { remarkKey, quantityKey } = detectItemColumns(sourceItem);
+
+        // Apply the return logic to get the new state
+        const result = processReturnToInventory({
+          rows: items,
+          itemId: item.inventoryItemId,
+          workingQty: workingQuantity,
+          defectiveQty: defectiveQuantity,
+          defectiveRemarks: returnData?.remarks || "",
+          sectionId: item.inventorySectionId,
+          targetCondition: defectiveQuantity > 0
+            ? deriveTargetCondition(sectionConfig.columns, "quarantine")
+            : null,
+        });
+
+        // Persist the changes based on processReturnToInventory result
+
+        // 1. Handle source row changes
+        const sourceRow = result.updatedRows?.find(
+          (r) => String(r.id) === String(item.inventoryItemId)
+        );
+        if (sourceRow) {
+          const originalQty = Number(sourceItem[quantityKey]) || 0;
+          const newQty = Number(sourceRow[quantityKey]) || 0;
+          const originalRemark = remarkKey ? String(sourceItem[remarkKey] || "").trim().toLowerCase() : "";
+          const nextRemark = remarkKey ? String(sourceRow[remarkKey] || "").trim().toLowerCase() : "";
+          const shouldReplaceZeroSourceRow =
+            originalQty === 0 &&
+            newQty > 0 &&
+            remarkKey &&
+            originalRemark &&
+            nextRemark &&
+            originalRemark !== nextRemark;
+
+          if (newQty === 0 && originalQty > 0) {
+            // Source row fully consumed - delete it
+            dbUpdates.push(
+              supabase.from(sectionConfig.tableName).delete().eq("id", item.inventoryItemId)
+            );
+          } else if (shouldReplaceZeroSourceRow) {
+            // Source row was already exhausted and the returned remark differs.
+            // Replace the stale row with a fresh insert so the old 0-qty row is removed.
+            dbUpdates.push(
+              supabase.from(sectionConfig.tableName).delete().eq("id", item.inventoryItemId)
+            );
+            dbUpdates.push(
+              upsertInventoryItem({
+                sectionId: item.inventorySectionId,
+                tableName: sectionConfig.tableName,
+                recordData: toPersistableRow(sourceRow),
+              })
+            );
+          } else if (newQty !== originalQty) {
+            // Quantity or defect state changed - update the full row
+            dbUpdates.push(
+              upsertInventoryItem({
+                id: item.inventoryItemId,
+                sectionId: item.inventorySectionId,
+                tableName: sectionConfig.tableName,
+                recordData: toPersistableRow(sourceRow),
+              })
+            );
+          }
+        }
+
+        // 2. Handle working qty merged into existing Working row
+        if (result.workingTargetId && result.workingNewQty !== null && result.workingTargetId !== item.inventoryItemId) {
+          const workingRow = result.updatedRows?.find(
+            (r) => String(r.id) === String(result.workingTargetId)
+          );
+          dbUpdates.push(
+            upsertInventoryItem({
+              id: result.workingTargetId,
+              sectionId: item.inventorySectionId,
+              tableName: sectionConfig.tableName,
+              recordData: toPersistableRow(workingRow || {}),
+            })
+          );
+        }
+
+        // 3. Handle defective qty merged into existing Defective row
+        if (result.defectiveTargetId && result.defectiveNewQty !== null && result.defectiveTargetId !== item.inventoryItemId) {
+          const defectiveRow = result.updatedRows?.find(
+            (r) => String(r.id) === String(result.defectiveTargetId)
+          );
+          dbUpdates.push(
+            upsertInventoryItem({
+              id: result.defectiveTargetId,
+              sectionId: item.inventorySectionId,
+              tableName: sectionConfig.tableName,
+              recordData: toPersistableRow(defectiveRow || {}),
+            })
+          );
+        }
+
+        // 4. Handle new row creation (when no existing target row found)
+        // processReturnToInventory converts source row, so we need to check if a new row was created
+        const otherRows = result.updatedRows?.filter(
+          (r) => !items.find((orig) => String(orig.id) === String(r.id))
+        );
+        if (otherRows && otherRows.length > 0) {
+          for (const newRow of otherRows) {
+            const newRowData = toPersistableRow(newRow);
+            dbUpdates.push(
+              upsertInventoryItem({
+                sectionId: item.inventorySectionId,
+                tableName: sectionConfig.tableName,
+                recordData: newRowData,
+              })
+            );
+          }
+        }
+      }
+
+      await Promise.all(dbUpdates);
       await returnBorrowingRecord(pendingReturn.id, normalizedReturnRemarks);
       await loadBorrowings();
       setSuccessMessage("Borrowed item returned.");
@@ -1411,7 +1607,6 @@ export default function Borrowing() {
       });
     }
 
-    setShowConfirm(true);
   };
 
   const confirmBorrow = async () => {
@@ -1436,7 +1631,7 @@ export default function Borrowing() {
           });
 
           return {
-            inventoryItemId: item.id,
+            inventoryItemId: item._deductedRowId || item.id,
             inventoryTabId: item.tabId || null,
             inventoryTabName: item.tabName || "",
             inventorySectionId: item.sectionId || null,
@@ -1460,41 +1655,83 @@ export default function Borrowing() {
         })),
       ];
 
-      const inventoryQuantityUpdates = inventoryCartItems.map((item) => {
-        const currentQuantity = Number(item.quantity ?? item.data?.quantity ?? 0);
-        const borrowedQuantity = Number(item.quantity || 1);
-        const remainingQuantity = Math.max(0, currentQuantity - borrowedQuantity);
+      // Deduct borrowed quantity from the Working row in each item's table.
+      // Uses detectItemColumns to find the remark/quantity keys dynamically.
+      const dbUpdates = [];
+      const cartUpdates = [];
 
-        return {
-          item,
-          currentQuantity,
-          borrowedQuantity,
-          remainingQuantity,
-        };
-      });
+      for (const cartItem of inventoryCartItems) {
+        const tableName = cartItem.tableName || tabTableNames[cartItem.tabId] || "";
+        if (!tableName) continue;
 
-      const invalidInventoryQuantity = inventoryQuantityUpdates.some(
-        ({ currentQuantity, borrowedQuantity }) =>
-          !Number.isFinite(currentQuantity) ||
-          !Number.isInteger(borrowedQuantity) ||
-          borrowedQuantity <= 0 ||
-          borrowedQuantity > currentQuantity
-      );
+        // Fetch fresh rows for this item's section so we can find the Working row
+        const sectionRows = await fetchInventoryItems(cartItem.sectionId, tableName);
+        const targetRow = sectionRows.find((r) => String(r.id) === String(cartItem.id));
+        if (!targetRow) throw new Error(`Item not found in ${tableName}.`);
 
-      if (invalidInventoryQuantity) {
-        throw new Error("One or more selected item quantities are invalid or exceed available stock.");
+        const { quantityKey, remarkKey } = detectItemColumns(targetRow);
+        const borrowedQty = Number(cartItem.quantity || 1);
+        const currentQty = Number(targetRow[quantityKey] || 0);
+
+        if (borrowedQty > currentQty) {
+          throw new Error(`${getItemLabel(cartItem)}: insufficient stock (requested ${borrowedQty}, available ${currentQty}).`);
+        }
+
+        const remaining = currentQty - borrowedQty;
+
+        // Track which row ID was actually deducted — this must match what we
+        // store in inventoryItemId so the return flow restores the correct row.
+        let deductedRowId = cartItem.id;
+
+        // Dynamic remark-based sibling resolution (no hardcoded strings).
+        // If the selected row has a remark column, look for a sibling whose
+        // remark DIFFERS — that sibling is in the "other" condition group and
+        // should be the source of the borrow. If no differing sibling exists,
+        // the selected row itself is the only/primary group → deduct from it.
+        if (remarkKey) {
+          const norm = (v) => String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+          const targetRemark = norm(targetRow[remarkKey]);
+
+          // Find a sibling with a different remark value (same item, different condition).
+          const otherGroupSibling = sectionRows.find((r) => {
+            if (String(r.id) === String(cartItem.id)) return false;
+            if (!isSameInventoryItem(targetRow, r, remarkKey)) return false;
+            return norm(r[remarkKey]) !== targetRemark;
+          });
+
+          if (otherGroupSibling) {
+            // Borrow from the sibling in the other condition group
+            const sibQty = Number(otherGroupSibling[quantityKey] || 0);
+            if (borrowedQty > sibQty) {
+              throw new Error(`${getItemLabel(cartItem)}: insufficient stock in the other condition group (requested ${borrowedQty}, available ${sibQty}).`);
+            }
+            dbUpdates.push(
+              supabase.from(tableName).update({ [quantityKey]: sibQty - borrowedQty }).eq("id", otherGroupSibling.id)
+            );
+            deductedRowId = otherGroupSibling.id;
+          } else {
+            // No sibling in another group — deduct from the selected row directly
+            dbUpdates.push(
+              supabase.from(tableName).update({ [quantityKey]: remaining }).eq("id", cartItem.id)
+            );
+          }
+        } else {
+          // No remark column — deduct from the selected row directly
+          dbUpdates.push(
+            supabase.from(tableName).update({ [quantityKey]: remaining }).eq("id", cartItem.id)
+          );
+        }
+
+        // Store the actual deducted row ID so the return flow knows which row to restore.
+        cartItem._deductedRowId = deductedRowId;
+        cartUpdates.push({ item: cartItem, remainingQuantity: remaining });
       }
 
-      await Promise.all(
-        inventoryQuantityUpdates.map(({ item, remainingQuantity }) =>
-          updateInventoryItemQuantity({
-            id: item.id,
-            sectionId: item.sectionId,
-            tableName: item.tableName || null,
-            quantity: remainingQuantity,
-          })
-        )
-      );
+      // Execute all DB updates
+      const results = await Promise.allSettled(dbUpdates);
+      for (const r of results) {
+        if (r.status === "rejected") throw r.reason;
+      }
 
       const shouldMerge = mergeWithLastBorrow && latestActiveBorrowForBorrower?.id;
 
@@ -1524,7 +1761,7 @@ export default function Borrowing() {
 
       setInventoryItems((currentItems) =>
         currentItems.map((item) => {
-          const update = inventoryQuantityUpdates.find(
+          const update = cartUpdates.find(
             ({ item: updatedItem }) =>
               String(updatedItem.id) === String(item.id) &&
               String(updatedItem.sectionId || "") === String(item.section_id || "")
@@ -1538,7 +1775,7 @@ export default function Borrowing() {
       // the exact live stock immediately after the DB deduction.
       setAllItems((prev) =>
         prev.map((aItem) => {
-          const update = inventoryQuantityUpdates.find(
+          const update = cartUpdates.find(
             ({ item: updatedItem }) =>
               String(updatedItem.id) === String(aItem.id) &&
               String(updatedItem.sectionId || "") === String(aItem.sectionId || "") &&
@@ -1561,14 +1798,13 @@ export default function Borrowing() {
 
       setDepletedItems(
         new Set(
-          inventoryQuantityUpdates
+          cartUpdates
             .filter(({ remainingQuantity }) => remainingQuantity <= 0)
             .map(({ item }) => item.id)
         )
       );
     } catch (error) {
       setFormError(error?.message || "Failed to save borrowing record.");
-      setShowConfirm(false);
     } finally {
       setSavingBorrow(false);
     }
@@ -2831,13 +3067,22 @@ export default function Borrowing() {
                             const reservedForThisItem = getCartReservedQuantity(cartId, borrowCart);
                             const availableStock = Math.max(0, liveStock - reservedForThisItem);
 
+                            const itemRemark = getItemRemark(item);
+
                             return (
                               <div
                                 key={cartId}
                                 className="grid grid-cols-[1fr_90px_80px] gap-2 items-center border-b border-slate-100 px-3 py-2.5 hover:bg-slate-50 transition-colors"
                               >
                                 <div className="min-w-0">
-                                  <p className="truncate text-sm font-medium text-slate-800">{getItemLabel(item)}</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="truncate text-sm font-medium text-slate-800">{getItemLabel(item)}</p>
+                                    {itemRemark && (
+                                      <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-600">
+                                        {itemRemark}
+                                      </span>
+                                    )}
+                                  </div>
                                   <p className="truncate text-[11px] text-slate-400">{item.tabName} • {item.sectionName}</p>
                                 </div>
                                 <div className="text-center">
@@ -2893,8 +3138,13 @@ export default function Borrowing() {
                         >
                           <DialogHeader>
                             <DialogTitle className="text-base font-semibold text-slate-900">How many to borrow?</DialogTitle>
-                            <DialogDescription className="mt-1 text-sm text-slate-500">
+                            <DialogDescription className="mt-1 flex items-center gap-2 text-sm text-slate-500">
                               {getItemLabel(qtyDialogItem)}
+                              {getItemRemark(qtyDialogItem) && (
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-600">
+                                  {getItemRemark(qtyDialogItem)}
+                                </span>
+                              )}
                             </DialogDescription>
                           </DialogHeader>
                           <div className="mt-4 flex flex-col items-center gap-3">
@@ -3058,9 +3308,16 @@ export default function Borrowing() {
                           {borrowCart.map((item) => (
                             <div key={item.cartId} className="flex items-center justify-between gap-3 px-3 py-2.5">
                               <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-slate-800 truncate">
-                                  {item.label || getItemLabel(item)}
-                                </p>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-sm font-medium text-slate-800 truncate">
+                                    {item.label || getItemLabel(item)}
+                                  </p>
+                                  {getItemRemark(item) && (
+                                    <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-600">
+                                      {getItemRemark(item)}
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-xs text-slate-400">
                                   {item.isCustom ? "Custom Item" : `${item.tabName} / ${item.sectionName}`}
                                 </p>
@@ -3161,7 +3418,14 @@ export default function Borrowing() {
                         {borrowCart.map((item) => (
                           <div key={item.cartId} className="flex items-center justify-between gap-4 px-5 py-3.5">
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium text-slate-800">{item.label || getItemLabel(item)}</p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-sm font-medium text-slate-800">{item.label || getItemLabel(item)}</p>
+                                {getItemRemark(item) && (
+                                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-600">
+                                    {getItemRemark(item)}
+                                  </span>
+                                )}
+                              </div>
                               <p className="mt-0.5 text-xs text-slate-400">
                                 {item.isCustom ? "Custom Item" : `${item.tabName} • ${item.sectionName}`}
                               </p>
