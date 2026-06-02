@@ -350,3 +350,43 @@ export const returnBorrowingRecord = async (id, returnRemarks = {}) => {
 
   if (updateError) throw updateError;
 };
+
+/**
+ * Update per-item return status on a borrowing record.
+ * Writes a jsonb map at borrowing_items.{itemId}.return_status so the
+ * record can render "Returned" / "Still Borrowed" per line item.
+ */
+export const updateBorrowingItemsStatus = async (recordId, itemStatusMap = {}) => {
+  if (!recordId) throw new Error("Borrowing record is required.");
+
+  const { data: currentItems, error: fetchError } = await supabase
+    .from("borrowing_items")
+    .select("id, inventory_item_id")
+    .eq("borrowing_record_id", recordId);
+
+  if (fetchError) throw fetchError;
+
+  const currentItemsById = (currentItems || []).reduce((acc, item) => {
+    acc[item.id] = item;
+    return acc;
+  }, {});
+
+  const updates = Object.entries(itemStatusMap).map(([itemId, status]) => {
+    const targetItem =
+      currentItemsById[itemId] ||
+      (currentItems || []).find(
+        (item) => item.inventory_item_id && String(item.inventory_item_id) === String(itemId)
+      );
+
+    if (!targetItem?.id) return Promise.resolve({ error: null });
+
+    return supabase
+      .from("borrowing_items")
+      .update({ return_status: status || null })
+      .eq("id", targetItem.id);
+  });
+
+  const results = await Promise.all(updates);
+  const updateError = results.find((result) => result.error)?.error;
+  if (updateError) throw updateError;
+};

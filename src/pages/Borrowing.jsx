@@ -50,10 +50,8 @@ import {
   deriveTargetCondition,
   detectItemColumns,
   isSameInventoryItem,
-  processReturnToInventory,
   fetchInventoryItems,
   getTabTableConfig,
-  upsertInventoryItem,
   useInventoryCatalog,
 } from "@/lib/inventoryApi";
 import {
@@ -62,6 +60,7 @@ import {
   fetchBorrowingRecords,
   markOverdueBorrowingRecords,
   returnBorrowingRecord,
+  updateBorrowingItemsStatus,
 } from "@/lib/borrowingApi";
 import { cn } from "@/lib/utils";
 
@@ -283,6 +282,29 @@ const getBorrowingItemCondition = (item = {}) => {
 
   const condition = String(detailCondition?.value || "").trim().toLowerCase();
   return condition.includes("defect") ? "defective" : "working";
+};
+
+/**
+ * Unroll a borrowed item into 1-by-1 unit rows.
+ * Each unit gets a stable unique key: `${item.id}::${index}`.
+ * Returns an array of unit descriptors with the original item's metadata
+ * plus the unit index and the item's original remark.
+ */
+const unrollBorrowedUnits = (items = []) => {
+  const units = [];
+  for (const item of items) {
+    const qty = getBorrowedQuantity(item);
+    const originalRemark = getItemRemark(item) || null;
+    for (let i = 0; i < qty; i += 1) {
+      units.push({
+        unitKey: `${item.id}::${i}`,
+        item,
+        unitIndex: i,
+        originalRemark,
+      });
+    }
+  }
+  return units;
 };
 
 const formatBorrowingStatus = (status = "borrowed") => {
@@ -513,7 +535,7 @@ export default function Borrowing() {
     remarks: "",
   });
   const [addingCustom, setAddingCustom] = useState(false);
-  const [returnRemarksByItem, setReturnRemarksByItem] = useState({});
+  const [returnSelections, setReturnSelections] = useState({});
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
   const [selectedRecord, setSelectedRecord] = useState(null);
@@ -902,18 +924,19 @@ export default function Borrowing() {
   const requestReturn = (record) => {
     setPendingReturn(record);
     setReturnError("");
-    setReturnRemarksByItem(
-      (record.items || []).reduce((acc, item) => {
-        const condition = getBorrowingItemCondition(item);
-        const borrowedQuantity = getBorrowedQuantity(item);
-        acc[item.id] = {
-          condition: condition === "defective" ? "Defective" : "Working",
-          defectiveQuantity: condition === "defective" ? borrowedQuantity : 0,
-          remarks: item.returnRemarks || "",
-        };
-        return acc;
-      }, {})
-    );
+    const units = unrollBorrowedUnits(record.items || []);
+    const metaByTab = conditionMetaByTab;
+    const initialSelections = {};
+    for (const unit of units) {
+      const tabMeta = metaByTab[unit.item.inventoryTabId] || {};
+      const defaultRemark = tabMeta.operational || "Working";
+      initialSelections[unit.unitKey] = {
+        checked: true,
+        returnRemark: defaultRemark,
+        remarks: "",
+      };
+    }
+    setReturnSelections(initialSelections);
   };
 
   const openExportModal = () => {
@@ -1157,332 +1180,318 @@ export default function Borrowing() {
 
   const cancelReturn = () => {
     setPendingReturn(null);
-    setReturnRemarksByItem({});
+    setReturnSelections({});
   };
 
+  // ── Confirm Return — Ledger Merge Engine ──────────────────────────────
+  // Mirrors the exact remark-change row-shifting architecture from
+  // InventorySection.jsx handleRemarkChange(), but operates on checked
+  // units and dynamic per-row return remarks.
   const confirmReturn = async () => {
     if (!pendingReturn?.id || returningBorrow) return;
 
-    const defectiveItems = (pendingReturn.items || []).filter((item) => {
-      const returnData = returnRemarksByItem[item.id] || {};
-      const defectiveQuantity = Number(returnData.defectiveQuantity || 0);
-      const itemQ = conditionMetaByTab[item.inventoryTabId]?.quarantine || "Defective";
-      return (
-        String(returnData?.condition || "") === itemQ &&
-        defectiveQuantity > 0
-      );
-    });
-    const missingDescriptions = defectiveItems.filter(
-      (item) => !String(returnRemarksByItem[item.id]?.remarks || "").trim()
-    );
-    const invalidDefectiveQuantity = (pendingReturn.items || []).some((item) => {
-      const returnData = returnRemarksByItem[item.id] || {};
-      const invItemQ = conditionMetaByTab[item.inventoryTabId]?.quarantine || "Defective";
-      if (String(returnData?.condition || "") !== invItemQ) return false;
-
-      const borrowedQuantity = getBorrowedQuantity(item);
-      const defectiveQuantity = Number(returnData.defectiveQuantity || 0);
-      return (
-        !Number.isInteger(defectiveQuantity) ||
-        defectiveQuantity <= 0 ||
-        defectiveQuantity > borrowedQuantity
-      );
-    });
-
-    if (invalidDefectiveQuantity) {
-      setReturnError("Defective quantity must be between 1 and the borrowed quantity.");
+    const units = unrollBorrowedUnits(pendingReturn.items || []);
+    const checkedUnits = units.filter((u) => returnSelections[u.unitKey]?.checked);
+    if (checkedUnits.length === 0) {
       return;
     }
-
-    if (missingDescriptions.length > 0) {
-      setReturnError("Please describe why the defective item is defective.");
-      return;
-    }
-
-    const normalizedReturnRemarks = Object.fromEntries(
-      Object.entries(returnRemarksByItem).map(([itemId, data]) => {
-        const matchingItem = (pendingReturn.items || []).find(
-          (item) => String(item.id) === String(itemId)
-        );
-        const borrowedQuantity = matchingItem ? getBorrowedQuantity(matchingItem) : 1;
-        const itemTabId = matchingItem?.inventoryTabId;
-        const tabMeta = itemTabId ? conditionMetaByTab[itemTabId] : null;
-        const qLabel = tabMeta?.quarantine || "Defective";
-        const oLabel = tabMeta?.operational || "Working";
-        const isQuarantine = data?.condition === qLabel;
-        const defectiveQuantity = isQuarantine
-          ? Math.min(borrowedQuantity, Math.max(0, Number(data.defectiveQuantity || 0)))
-          : 0;
-
-        return [
-          itemId,
-          {
-            ...data,
-            condition: defectiveQuantity > 0 ? qLabel : oLabel,
-            defectiveQuantity,
-            workingQuantity: Math.max(0, borrowedQuantity - defectiveQuantity),
-          },
-        ];
-      })
-    );
 
     setReturningBorrow(true);
     setReturnError("");
+
     try {
-      // Fetch all inventory items for sections that have returns with custom tables
-      // This allows us to use processReturnToInventory for smart merging
-      const returnItems = (pendingReturn.items || []).filter(
+      // Group checked units by the borrowed item they belong to
+      const unitsByItemId = new Map();
+      for (const unit of checkedUnits) {
+        const id = unit.item.id;
+        if (!unitsByItemId.has(id)) unitsByItemId.set(id, []);
+        unitsByItemId.get(id).push(unit);
+      }
+
+      // Identify which sections need fetching (custom-table items only)
+      const inventoryItems = (pendingReturn.items || []).filter(
         (item) => item.inventoryItemId && item.inventorySectionId
       );
 
-      // Get unique section IDs and their table configs
-      const sectionConfigs = new Map();
-      for (const item of returnItems) {
+      // Build a SectionRowsCache: one fetch per impacted section
+      const sectionCache = new Map();
+      for (const item of inventoryItems) {
         const sectionId = item.inventorySectionId;
-        if (!sectionConfigs.has(sectionId)) {
-          const tabId = item.inventoryTabId;
-          const config = await getTabTableConfig(tabId);
-          sectionConfigs.set(sectionId, {
-            tabId,
-            tableName: item.tableName || tabTableNames[tabId] || config?.tableName || "",
-            columns: config?.columns || [],
-            items: [],
-          });
-        }
-      }
-
-      // Fetch items for each section with custom tables
-      for (const [sectionId, sectionConfig] of sectionConfigs) {
-        if (sectionConfig.tableName) {
+        if (sectionCache.has(sectionId)) continue;
+        const tabId = item.inventoryTabId;
+        const config = await getTabTableConfig(tabId).catch(() => null);
+        const tableName = item.tableName || tabTableNames[tabId] || config?.tableName || "";
+        const columns = config?.columns || [];
+        let rows = [];
+        if (tableName) {
           try {
-            const items = await fetchInventoryItems(sectionId, sectionConfig.tableName);
-            sectionConfig.items = items || [];
-          } catch (err) {
-            console.warn("Failed to fetch items for section:", sectionId, err);
-            sectionConfig.items = [];
+            rows = (await fetchInventoryItems(sectionId, tableName)) || [];
+          } catch {
+            rows = [];
           }
         }
+        sectionCache.set(sectionId, { tabId, tableName, columns, rows });
       }
 
-      // Process each return with smart merging
-      const dbUpdates = [];
-      const toPersistableRow = (row = {}) => {
-        const nextRow = { ...row };
-        delete nextRow.id;
-        delete nextRow.created_at;
-        delete nextRow.updated_at;
-        return nextRow;
-      };
+      // ── Per-unit ledger merge ──────────────────────────────────────────
+      const dbOps = [];
+      const norm = (v) => String(v ?? "").trim().toLowerCase();
 
-      for (const item of returnItems) {
-        const returnData = normalizedReturnRemarks[item.id] || {};
-        const borrowedQuantity = getBorrowedQuantity(item);
-        const defectiveQuantity = Number(returnData.defectiveQuantity || 0);
-        const workingQuantity = Math.max(0, borrowedQuantity - defectiveQuantity);
+      // Group borrowed items by section so all items in the same section
+      // share a single delta accumulator (prevents conflicting DB updates).
+      const itemsBySection = new Map();
+      for (const [, itemUnits] of unitsByItemId) {
+        const borrowedItem = itemUnits[0].item;
+        const sectionId = borrowedItem.inventorySectionId;
+        if (!itemsBySection.has(sectionId)) itemsBySection.set(sectionId, []);
+        itemsBySection.get(sectionId).push(itemUnits);
+      }
 
-        const sectionConfig = sectionConfigs.get(item.inventorySectionId);
+      for (const [sectionId, sectionItemGroups] of itemsBySection) {
+        const cache = sectionCache.get(sectionId);
+        const isCustomTable = cache?.tableName && cache?.rows?.length > 0;
 
-        // If no custom table or no items fetched, fall back to legacy behavior
-        if (!sectionConfig || !sectionConfig.tableName || sectionConfig.items.length === 0) {
-          const tableName =
-            item.tableName ||
-            tabTableNames[item.inventoryTabId] ||
-            (await getTabTableConfig(item.inventoryTabId))?.tableName ||
-            "";
-
-          if (workingQuantity > 0) {
-            dbUpdates.push(
-              adjustInventoryItemQuantity({
-                id: item.inventoryItemId,
-                sectionId: item.inventorySectionId,
-                tableName,
-                delta: workingQuantity,
-              })
-            );
+        // Handle legacy (no-table) items — these don't need shared delta maps
+        for (const itemUnits of sectionItemGroups) {
+          const borrowedItem = itemUnits[0].item;
+          const sourceItemId = borrowedItem.inventoryItemId;
+          const byRemark = new Map();
+          for (const unit of itemUnits) {
+            const remark = returnSelections[unit.unitKey]?.returnRemark || "Working";
+            byRemark.set(remark, (byRemark.get(remark) || 0) + 1);
           }
-          if (defectiveQuantity > 0) {
-            const legColumns = (await getTabTableConfig(item.inventoryTabId))?.columns || [];
-            const legTarget = deriveTargetCondition(legColumns, "quarantine");
-            dbUpdates.push(
-              createReturnedDefectiveInventoryItem({
-                id: item.inventoryItemId,
-                sectionId: item.inventorySectionId,
-                tableName,
-                quantity: defectiveQuantity,
-                remarks: returnData?.remarks || "",
-                targetCondition: legTarget,
-              })
-            );
-          }
-          continue;
-        }
 
-        // Use processReturnToInventory for smart merging with custom tables
-        const { items } = sectionConfig;
-        const sourceItem = items.find((it) => String(it.id) === String(item.inventoryItemId));
+          if (!isCustomTable) {
+            const totalReturnQty = itemUnits.length;
+            const tableName =
+              borrowedItem.tableName ||
+              tabTableNames[borrowedItem.inventoryTabId] ||
+              (await getTabTableConfig(borrowedItem.inventoryTabId).catch(() => null))?.tableName ||
+              "";
 
-        if (!sourceItem) {
-          console.warn("Source item not found for return:", item.inventoryItemId);
-          // Fallback to legacy behavior
-          const tableName = sectionConfig.tableName;
-          if (workingQuantity > 0) {
-            dbUpdates.push(
-              adjustInventoryItemQuantity({
-                id: item.inventoryItemId,
-                sectionId: item.inventorySectionId,
-                tableName,
-                delta: workingQuantity,
-              })
-            );
-          }
-          if (defectiveQuantity > 0) {
-            const missTarget = deriveTargetCondition(sectionConfig.columns, "quarantine");
-            dbUpdates.push(
-              createReturnedDefectiveInventoryItem({
-                id: item.inventoryItemId,
-                sectionId: item.inventorySectionId,
-                tableName,
-                quantity: defectiveQuantity,
-                remarks: returnData?.remarks || "",
-                targetCondition: missTarget,
-              })
-            );
-          }
-          continue;
-        }
-
-        const { remarkKey, quantityKey } = detectItemColumns(sourceItem);
-
-        // Apply the return logic to get the new state
-        const result = processReturnToInventory({
-          rows: items,
-          itemId: item.inventoryItemId,
-          workingQty: workingQuantity,
-          defectiveQty: defectiveQuantity,
-          defectiveRemarks: returnData?.remarks || "",
-          sectionId: item.inventorySectionId,
-          targetCondition: defectiveQuantity > 0
-            ? deriveTargetCondition(sectionConfig.columns, "quarantine")
-            : null,
-        });
-
-        // Persist the changes based on processReturnToInventory result
-
-        // 1. Handle source row changes
-        const sourceRow = result.updatedRows?.find(
-          (r) => String(r.id) === String(item.inventoryItemId)
-        );
-        if (sourceRow) {
-          const originalQty = Number(sourceItem[quantityKey]) || 0;
-          const newQty = Number(sourceRow[quantityKey]) || 0;
-          const originalRemark = remarkKey ? String(sourceItem[remarkKey] || "").trim().toLowerCase() : "";
-          const nextRemark = remarkKey ? String(sourceRow[remarkKey] || "").trim().toLowerCase() : "";
-          const shouldReplaceZeroSourceRow =
-            originalQty === 0 &&
-            newQty > 0 &&
-            remarkKey &&
-            originalRemark &&
-            nextRemark &&
-            originalRemark !== nextRemark;
-
-          if (newQty === 0 && originalQty > 0) {
-            // Source row fully consumed - delete it
-            dbUpdates.push(
-              supabase.from(sectionConfig.tableName).delete().eq("id", item.inventoryItemId)
-            );
-          } else if (shouldReplaceZeroSourceRow) {
-            // Source row was already exhausted and the returned remark differs.
-            // Replace the stale row with a fresh insert so the old 0-qty row is removed.
-            dbUpdates.push(
-              supabase.from(sectionConfig.tableName).delete().eq("id", item.inventoryItemId)
-            );
-            dbUpdates.push(
-              upsertInventoryItem({
-                sectionId: item.inventorySectionId,
-                tableName: sectionConfig.tableName,
-                recordData: toPersistableRow(sourceRow),
-              })
-            );
-          } else if (newQty !== originalQty) {
-            // Quantity or defect state changed - update the full row
-            dbUpdates.push(
-              upsertInventoryItem({
-                id: item.inventoryItemId,
-                sectionId: item.inventorySectionId,
-                tableName: sectionConfig.tableName,
-                recordData: toPersistableRow(sourceRow),
-              })
-            );
+            if (totalReturnQty > 0 && tableName) {
+              dbOps.push(
+                adjustInventoryItemQuantity({
+                  id: sourceItemId,
+                  sectionId,
+                  tableName,
+                  delta: totalReturnQty,
+                })
+              );
+            }
+            for (const [remark, qty] of byRemark) {
+              const tabMeta = conditionMetaByTab[borrowedItem.inventoryTabId] || {};
+              const qLabel = tabMeta.quarantine || "Defective";
+              if (remark === qLabel && qty > 0 && tableName) {
+                const columns = (await getTabTableConfig(borrowedItem.inventoryTabId).catch(() => null))?.columns || [];
+                dbOps.push(
+                  createReturnedDefectiveInventoryItem({
+                    id: sourceItemId,
+                    sectionId,
+                    tableName,
+                    quantity: qty,
+                    targetCondition: deriveTargetCondition(columns, "quarantine"),
+                  })
+                );
+              }
+            }
           }
         }
 
-        // 2. Handle working qty merged into existing Working row
-        if (result.workingTargetId && result.workingNewQty !== null && result.workingTargetId !== item.inventoryItemId) {
-          const workingRow = result.updatedRows?.find(
-            (r) => String(r.id) === String(result.workingTargetId)
-          );
-          dbUpdates.push(
-            upsertInventoryItem({
-              id: result.workingTargetId,
-              sectionId: item.inventorySectionId,
-              tableName: sectionConfig.tableName,
-              recordData: toPersistableRow(workingRow || {}),
-            })
-          );
+        if (!isCustomTable) continue;
+
+        // ── Custom-table ledger merge for this section ────────────────────
+        // ONE shared delta accumulator for ALL items in this section,
+        // preventing conflicting DB updates when multiple borrowed items
+        // target the same inventory row (e.g. two items returned as "Working"
+        // both merging into the same Working row).
+        const { tableName, rows } = cache;
+
+        // Detect columns from any source row in this section
+        const sampleRow = rows.find(() => true) || {};
+        const { remarkKey, quantityKey } = detectItemColumns(sampleRow);
+
+        const rowDeltas = new Map();
+        const rowsToInsert = [];
+        const rowsToDelete = new Set();
+
+        const addDelta = (rowId, delta) => {
+          rowDeltas.set(rowId, (rowDeltas.get(rowId) || 0) + delta);
+        };
+
+        // Process each borrowed item in this section
+        for (const itemUnits of sectionItemGroups) {
+          const byRemark = new Map();
+          for (const unit of itemUnits) {
+            const remark = returnSelections[unit.unitKey]?.returnRemark || "Working";
+            byRemark.set(remark, (byRemark.get(remark) || 0) + 1);
+          }
+
+          const borrowedItem = itemUnits[0].item;
+          const sourceItemId = borrowedItem.inventoryItemId;
+          const sourceRowData = rows.find((r) => String(r.id) === String(sourceItemId));
+          const matchKeys = sourceRowData
+            ? Object.keys(sourceRowData).filter((k) => {
+                const nk = String(k).trim().toLowerCase();
+                if (["id", "created_at", "updated_at", "sort_order"].includes(nk)) return false;
+                if (nk === String(quantityKey || "").toLowerCase()) return false;
+                if (nk === String(remarkKey || "").trim().toLowerCase()) return false;
+                return sourceRowData[k] != null && String(sourceRowData[k]).trim() !== "";
+              })
+            : [];
+
+          // Process each distinct return-remark group for this item
+          for (const [targetRemark, qty] of byRemark) {
+            if (qty <= 0) continue;
+
+            // Find target row: could be source itself (same remark) or a sibling
+            let targetRow = null;
+            if (remarkKey && sourceRowData && norm(sourceRowData[remarkKey]) === norm(targetRemark)) {
+              // Returning to source row's own remark group
+              targetRow = sourceRowData;
+            } else if (remarkKey && sourceRowData) {
+              // Search for a sibling with the target remark
+              const idKey = ["item_number", "computer_number"].find(
+                (k) => sourceRowData[k] != null && rows.some((r) => r[k] != null)
+              );
+              if (idKey) {
+                targetRow = rows.find(
+                  (r) =>
+                    String(r.id) !== String(sourceItemId) &&
+                    r[idKey] === sourceRowData[idKey] &&
+                    norm(r[remarkKey]) === norm(targetRemark)
+                ) || null;
+              }
+              if (!targetRow && matchKeys.length > 0) {
+                targetRow = rows.find(
+                  (r) =>
+                    String(r.id) !== String(sourceItemId) &&
+                    norm(r[remarkKey]) === norm(targetRemark) &&
+                    matchKeys.every((k) => norm(r[k]) === norm(sourceRowData[k]))
+                ) || null;
+              }
+            }
+
+            if (targetRow) {
+              // ── MERGE INTO EXISTING ROW (source or sibling) ──────
+              addDelta(targetRow.id, qty);
+              if (String(targetRow.id) !== String(sourceItemId)) {
+                addDelta(sourceItemId, -qty);
+              }
+            } else {
+              // ── CREATE NEW ROW ────────────────────────────────────
+              const newRow = {};
+              for (const [k, v] of Object.entries(sourceRowData || {})) {
+                if (["id", "created_at", "updated_at"].includes(k)) continue;
+                newRow[k] = v;
+              }
+              newRow[quantityKey] = qty;
+              if (remarkKey) newRow[remarkKey] = targetRemark;
+              rowsToInsert.push(newRow);
+              addDelta(sourceItemId, -qty);
+            }
+          }
         }
 
-        // 3. Handle defective qty — either merged into existing sibling or newly created
-        if (result.defectiveTargetId && result.defectiveNewQty !== null && result.defectiveTargetId !== item.inventoryItemId) {
-          const defectiveRow = result.updatedRows?.find(
-            (r) => String(r.id) === String(result.defectiveTargetId)
-          );
-          const isNewDefectiveRow = String(result.defectiveTargetId).startsWith("new_defective_");
-          const rowData = toPersistableRow(defectiveRow || {});
-
-          if (isNewDefectiveRow) {
-            // Newly created row — insert only (pass no id so DB generates a UUID)
-            dbUpdates.push(
-              upsertInventoryItem({
-                sectionId: item.inventorySectionId,
-                tableName: sectionConfig.tableName,
-                recordData: rowData,
-              })
-            );
+        // Apply accumulated deltas — ONE update per row for the whole section
+        for (const [rowId, delta] of rowDeltas) {
+          if (delta === 0) continue;
+          const row = rows.find((r) => String(r.id) === String(rowId));
+          if (!row) continue;
+          const newQty = Math.max(0, (Number(row[quantityKey]) || 0) + delta);
+          if (newQty <= 0) {
+            rowsToDelete.add(rowId);
           } else {
-            // Existing sibling row merged — update by its real DB id
-            dbUpdates.push(
-              upsertInventoryItem({
-                id: result.defectiveTargetId,
-                sectionId: item.inventorySectionId,
-                tableName: sectionConfig.tableName,
-                recordData: rowData,
-              })
+            const capturedId = rowId;
+            const capturedQty = newQty;
+            dbOps.push(
+              async () => {
+                const { error } = await supabase
+                  .from(tableName)
+                  .update({ [quantityKey]: capturedQty })
+                  .eq("id", capturedId);
+                if (error) throw error;
+              }
             );
           }
         }
+
+        // Schedule inserts for new rows
+        for (const newRow of rowsToInsert) {
+          dbOps.push(
+            async () => {
+              const { data: created, error } = await supabase
+                .from(tableName)
+                .insert([newRow])
+                .select("*")
+                .single();
+              if (error) throw error;
+              if (created) rows.push(created);
+            }
+          );
+        }
+
+        // Schedule deletes for zero-purged rows
+        for (const rowId of rowsToDelete) {
+          const capturedId = rowId;
+          dbOps.push(
+            async () => {
+              const { error } = await supabase.from(tableName).delete().eq("id", capturedId);
+              if (error) throw error;
+            }
+          );
+          const idx = rows.findIndex((r) => String(r.id) === String(rowId));
+          if (idx >= 0) rows.splice(idx, 1);
+        }
       }
 
-      await Promise.all(dbUpdates);
-      await returnBorrowingRecord(pendingReturn.id, normalizedReturnRemarks);
-      await loadBorrowings();
-      setSuccessMessage("Borrowed item returned.");
-      setPendingReturn(null);
+      // Execute all DB operations
+      for (const op of dbOps) {
+        await op();
+      }
 
-      // Refresh impacted inventory sections in allItems so the wizard Step-2
-      // item list reflects live post-return stock (working restored, defective not).
+      // ── Determine if all units are returned ───────────────────────────
+      const totalBorrowedUnits = units.length;
+      const allReturned = checkedUnits.length >= totalBorrowedUnits;
+
+      if (allReturned) {
+        await returnBorrowingRecord(pendingReturn.id, {});
+      } else {
+        const itemStatusMap = {};
+        for (const [itemId, itemUnits] of unitsByItemId) {
+          const itemTotal = getBorrowedQuantity(itemUnits[0].item);
+          const itemChecked = itemUnits.length;
+          itemStatusMap[itemId] = itemChecked >= itemTotal ? "returned" : "partially_returned";
+        }
+        for (const item of pendingReturn.items || []) {
+          if (!itemStatusMap[item.id]) {
+            itemStatusMap[item.id] = "borrowed";
+          }
+        }
+        await updateBorrowingItemsStatus(pendingReturn.id, itemStatusMap);
+      }
+
+      await loadBorrowings();
+      setSuccessMessage(
+        allReturned
+          ? "All items returned successfully."
+          : `Returned ${checkedUnits.length} of ${totalBorrowedUnits} units.`
+      );
+      setPendingReturn(null);
+      setReturnSelections({});
+
+      // Refresh impacted sections in allItems cache
       try {
         const impacted = new Map();
-        (pendingReturn.items || [])
-          .filter((item) => item.inventoryItemId && item.inventorySectionId)
-          .forEach((item) => {
-            const key = String(item.inventoryTabId) + "::" + String(item.inventorySectionId);
-            if (!impacted.has(key))
-              impacted.set(key, {
-                tabId: item.inventoryTabId,
-                sectionId: item.inventorySectionId,
-                tableName: item.tableName || tabTableNames[item.inventoryTabId] || "",
-              });
-          });
+        for (const item of inventoryItems) {
+          const key = String(item.inventoryTabId) + "::" + String(item.inventorySectionId);
+          if (!impacted.has(key))
+            impacted.set(key, {
+              tabId: item.inventoryTabId,
+              sectionId: item.inventorySectionId,
+              tableName: item.tableName || tabTableNames[item.inventoryTabId] || "",
+            });
+        }
         if (impacted.size > 0) {
           const results = await Promise.allSettled(
             [...impacted.values()].map((sec) =>
@@ -3624,165 +3633,147 @@ export default function Borrowing() {
         );
       })()}
 
-      {pendingReturn && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-bold text-[#4a1111]">Confirm return</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Mark borrowed items from {pendingReturn.name} as returned?
-            </p>
-            {pendingReturn.items?.length > 0 ? (
-              <ul className="mt-4 space-y-3 text-sm">
-                {pendingReturn.items.map((item) => {
-                  const borrowedQuantity = getBorrowedQuantity(item);
-                  const returnData = returnRemarksByItem[item.id] || {};
-                  const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
-                  const qLabel = tabMeta.quarantine || "Defective";
-                  const isDefective = returnData.condition === qLabel;
-                  const defectiveQuantity = Math.min(
-                    borrowedQuantity,
-                    Math.max(0, Number(returnData.defectiveQuantity || 0))
-                  );
-                  const workingQuantity = borrowedQuantity - defectiveQuantity;
+      {pendingReturn && (() => {
+        const units = unrollBorrowedUnits(pendingReturn.items || []);
+        const checkedCount = units.filter((u) => returnSelections[u.unitKey]?.checked).length;
+        const totalUnits = units.length;
 
-                  return (
-                    <li
-                      key={`${pendingReturn.id}-${item.id}`}
-                      className="rounded-lg bg-slate-50 px-3 py-3"
-                    >
-                      <div className="space-y-3">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <p className="font-medium text-slate-800">{item.label}</p>
-                            <p className="text-xs text-slate-400">
-                              {item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / {item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}
-                            </p>
-                            <p className="mt-1 text-xs font-medium text-slate-500">
-                              Borrowed qty: {borrowedQuantity}
-                            </p>
-                          </div>
-                          <select
-                            value={returnData.condition || tabMeta.operational || "Working"}
-                            onChange={(e) =>
-                              setReturnRemarksByItem((current) => {
-                                const nextCondition = e.target.value;
-                                const currentItem = current[item.id] || {};
+        // Group consecutive units by item for display (each row is still 1-by-1)
+        const itemGroups = [];
+        let currentGroup = null;
+        for (const unit of units) {
+          if (!currentGroup || currentGroup.item.id !== unit.item.id) {
+            currentGroup = { item: unit.item, units: [] };
+            itemGroups.push(currentGroup);
+          }
+          currentGroup.units.push(unit);
+        }
 
-                                return {
-                                  ...current,
-                                  [item.id]: {
-                                    ...currentItem,
-                                    condition: nextCondition,
-                                    defectiveQuantity:
-                                      nextCondition === qLabel
-                                        ? currentItem.defectiveQuantity || borrowedQuantity
-                                        : 0,
-                                  },
-                                };
-                              })
-                            }
-                            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111] sm:max-w-40"
-                          >
-                            {(tabMeta.allOptions || ["Working", "Defective"]).map((opt) => (
-                              <option key={opt} value={opt}>{opt}</option>
-                            ))}
-                          </select>
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
+            <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl">
+              {/* ── Header ──────────────────────────────────────────────── */}
+              <div className="shrink-0 border-b border-slate-200 px-6 py-4">
+                <h3 className="text-lg font-bold text-[#4a1111]">Return Items</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  {pendingReturn.name} &middot; {checkedCount}/{totalUnits} units selected for return
+                </p>
+              </div>
+
+              {/* ── Scrollable unit list ────────────────────────────────── */}
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                {returnError && (
+                  <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    {returnError}
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  {itemGroups.map((group) => {
+                    const tabMeta = conditionMetaByTab[group.item.inventoryTabId] || {};
+                    const allOptions = tabMeta.allOptions || ["Working", "Defective"];
+                    const locLabel = [
+                      group.item.tab || inventoryNameLookup.tabNames[group.item.inventoryTabId] || "Inventory",
+                      group.item.section || inventoryNameLookup.sectionNames[group.item.inventorySectionId] || "Section",
+                    ].join(" / ");
+
+                    return (
+                      <div key={group.item.id} className="rounded-xl border border-slate-200 overflow-hidden">
+                        {/* Item header */}
+                        <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200">
+                          <p className="text-sm font-semibold text-slate-800">{group.item.label}</p>
+                          <p className="text-xs text-slate-400">{locLabel}</p>
                         </div>
 
-                        {isDefective && (
-                          <div className="space-y-3">
-                            <div className="grid gap-3 sm:grid-cols-[140px_1fr] sm:items-end">
-                              <div>
-                                <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                  {qLabel} qty
-                                </label>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max={borrowedQuantity}
-                                  value={returnData.defectiveQuantity || borrowedQuantity}
-                                  onChange={(e) => {
-                                    const nextQuantity = Math.max(
-                                      1,
-                                      Math.min(borrowedQuantity, Number(e.target.value) || 1)
-                                    );
-                                    setReturnRemarksByItem((current) => ({
-                                      ...current,
-                                      [item.id]: {
-                                        ...(current[item.id] || {}),
-                                        condition: qLabel,
-                                        defectiveQuantity: nextQuantity,
-                                      },
-                                    }));
-                                  }}
-                                  className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
+                        {/* Unrolled unit rows */}
+                        <div className="divide-y divide-slate-100">
+                          {group.units.map((unit) => {
+                            const sel = returnSelections[unit.unitKey] || { checked: true, returnRemark: allOptions[0] || "Working", remarks: "" };
+                            const unitNum = unit.unitIndex + 1;
+                            const groupQty = group.units.length;
+
+                            return (
+                              <div
+                                key={unit.unitKey}
+                                className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${sel.checked ? "bg-white" : "bg-slate-50/60"}`}
+                              >
+                                {/* Checkbox */}
+                                <Checkbox
+                                  checked={!!sel.checked}
+                                  onCheckedChange={(checked) =>
+                                    setReturnSelections((prev) => ({
+                                      ...prev,
+                                      [unit.unitKey]: { ...(prev[unit.unitKey] || {}), checked: !!checked },
+                                    }))
+                                  }
+                                  className="border-slate-300 data-[state=checked]:bg-[#4a1111] data-[state=checked]:border-[#4a1111]"
                                 />
+
+                                {/* Unit label */}
+                                <div className="min-w-0 flex-1">
+                                  <p className={`text-sm ${sel.checked ? "font-medium text-slate-800" : "text-slate-400"}`}>
+                                    Unit {unitNum}{groupQty > 1 ? ` of ${groupQty}` : ""}
+                                  </p>
+                                  {unit.originalRemark && (
+                                    <p className="text-xs text-slate-400">
+                                      Borrowed as: <span className="font-medium">{unit.originalRemark}</span>
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Dynamic remark dropdown */}
+                                <select
+                                  value={sel.returnRemark || allOptions[0] || "Working"}
+                                  onChange={(e) =>
+                                    setReturnSelections((prev) => ({
+                                      ...prev,
+                                      [unit.unitKey]: { ...(prev[unit.unitKey] || {}), returnRemark: e.target.value },
+                                    }))
+                                  }
+                                  disabled={!sel.checked}
+                                  className={`h-8 rounded-lg border px-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111] ${
+                                    sel.checked
+                                      ? "border-slate-200 bg-white text-slate-700"
+                                      : "border-slate-100 bg-slate-50 text-slate-400"
+                                  }`}
+                                >
+                                  {allOptions.map((opt) => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ))}
+                                </select>
                               </div>
-                              <p className="text-xs text-slate-500">
-                                {tabMeta.operational || "Working"} qty to return: {workingQuantity}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        {!isDefective && (
-                          <p className="text-xs text-slate-500">
-                            Full qty ({borrowedQuantity}) will be returned as {tabMeta.operational || "Working"}.
-                          </p>
-                        )}
-
-                        {isDefective && (
-                          <div>
-                            <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                              Describe defect
-                            </label>
-                            <textarea
-                              value={returnData.remarks || ""}
-                              onChange={(e) =>
-                                setReturnRemarksByItem((current) => ({
-                                  ...current,
-                                  [item.id]: {
-                                    ...(current[item.id] || {}),
-                                    remarks: e.target.value,
-                                  },
-                                }))
-                              }
-                              rows={3}
-                              placeholder={`Explain why the item is ${qLabel.toLowerCase()}`}
-                              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-                            />
-                          </div>
-                        )}
+                            );
+                          })}
+                        </div>
                       </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
-            {returnError ? (
-              <p className="mt-4 text-sm text-rose-600">{returnError}</p>
-            ) : null}
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={cancelReturn}
-                disabled={returningBorrow}
-                className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmReturn}
-                disabled={returningBorrow}
-                className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
-              >
-                {returningBorrow ? "Returning..." : "Confirm Return"}
-              </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ── Footer ─────────────────────────────────────────────── */}
+              <div className="shrink-0 flex justify-end gap-3 border-t border-slate-200 bg-slate-50/80 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={cancelReturn}
+                  disabled={returningBorrow}
+                  className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmReturn}
+                  disabled={returningBorrow || checkedCount === 0}
+                  className="rounded-lg bg-[#4a1111] px-5 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {returningBorrow ? "Returning..." : `Return ${checkedCount} Unit${checkedCount !== 1 ? "s" : ""}`}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {successMessage && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
