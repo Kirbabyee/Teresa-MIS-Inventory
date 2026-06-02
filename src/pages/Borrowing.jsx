@@ -121,6 +121,22 @@ const getItemLabel = (item = {}) => {
   return fallback ? String(fallback[1]) : `Item ${item.id || ""}`.trim();
 };
 
+const buildConditionMeta = (columns = []) => {
+  const remarkCol = (columns || []).find(
+    (c) =>
+      c.fieldType === "dropdown" &&
+      Array.isArray(c.options) &&
+      c.options.length > 0 &&
+      ["remarks", "condition", "status", "item_status"].includes(String(c.key || "").toLowerCase())
+  );
+  const opts = (remarkCol?.options || []).map((o) =>
+    o && typeof o === "object" && "value" in o ? String(o.value) ?? "" : String(o ?? "")
+  ).filter(Boolean);
+  const quarantine = deriveTargetCondition(columns, "quarantine");
+  const operational = opts.find((v) => v !== quarantine) || opts[0] || "Working";
+  return { allOptions: opts.length ? opts : ["Working", "Defective"], operational, quarantine };
+};
+
 const getItemRemark = (item = {}) => {
   const { remarkKey } = detectItemColumns(item);
   if (!remarkKey) return null;
@@ -471,6 +487,7 @@ export default function Borrowing() {
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState("");
   const [tabTableNames, setTabTableNames] = useState({});
+  const [conditionMetaByTab, setConditionMetaByTab] = useState({});
   const [formError, setFormError] = useState("");
   const [formErrors, setFormErrors] = useState({});
   const [pendingReturn, setPendingReturn] = useState(null);
@@ -688,19 +705,26 @@ export default function Borrowing() {
     let cancelled = false;
 
     const loadTableNames = async () => {
-      const entries = await Promise.all(
+      const results = await Promise.all(
         tabs.map(async (tab) => {
           try {
             const config = await getTabTableConfig(tab.id);
-            return [tab.id, config?.tableName || null];
+            return { tabId: tab.id, tableName: config?.tableName || null, columns: config?.columns || [] };
           } catch (error) {
-            return [tab.id, null];
+            return { tabId: tab.id, tableName: null, columns: [] };
           }
         })
       );
 
       if (!cancelled) {
-        setTabTableNames(Object.fromEntries(entries));
+        const names = {};
+        const meta = {};
+        for (const r of results) {
+          names[r.tabId] = r.tableName;
+          meta[r.tabId] = buildConditionMeta(r.columns);
+        }
+        setTabTableNames(names);
+        setConditionMetaByTab(meta);
       }
     };
 
@@ -1142,8 +1166,9 @@ export default function Borrowing() {
     const defectiveItems = (pendingReturn.items || []).filter((item) => {
       const returnData = returnRemarksByItem[item.id] || {};
       const defectiveQuantity = Number(returnData.defectiveQuantity || 0);
+      const itemQ = conditionMetaByTab[item.inventoryTabId]?.quarantine || "Defective";
       return (
-        String(returnData?.condition || "").toLowerCase() === "defective" &&
+        String(returnData?.condition || "") === itemQ &&
         defectiveQuantity > 0
       );
     });
@@ -1152,7 +1177,8 @@ export default function Borrowing() {
     );
     const invalidDefectiveQuantity = (pendingReturn.items || []).some((item) => {
       const returnData = returnRemarksByItem[item.id] || {};
-      if (String(returnData?.condition || "").toLowerCase() !== "defective") return false;
+      const invItemQ = conditionMetaByTab[item.inventoryTabId]?.quarantine || "Defective";
+      if (String(returnData?.condition || "") !== invItemQ) return false;
 
       const borrowedQuantity = getBorrowedQuantity(item);
       const defectiveQuantity = Number(returnData.defectiveQuantity || 0);
@@ -1179,16 +1205,20 @@ export default function Borrowing() {
           (item) => String(item.id) === String(itemId)
         );
         const borrowedQuantity = matchingItem ? getBorrowedQuantity(matchingItem) : 1;
-        const defectiveQuantity =
-          String(data?.condition || "").toLowerCase() === "defective"
-            ? Math.min(borrowedQuantity, Math.max(0, Number(data.defectiveQuantity || 0)))
-            : 0;
+        const itemTabId = matchingItem?.inventoryTabId;
+        const tabMeta = itemTabId ? conditionMetaByTab[itemTabId] : null;
+        const qLabel = tabMeta?.quarantine || "Defective";
+        const oLabel = tabMeta?.operational || "Working";
+        const isQuarantine = data?.condition === qLabel;
+        const defectiveQuantity = isQuarantine
+          ? Math.min(borrowedQuantity, Math.max(0, Number(data.defectiveQuantity || 0)))
+          : 0;
 
         return [
           itemId,
           {
             ...data,
-            condition: defectiveQuantity > 0 ? "Defective" : "Working",
+            condition: defectiveQuantity > 0 ? qLabel : oLabel,
             defectiveQuantity,
             workingQuantity: Math.max(0, borrowedQuantity - defectiveQuantity),
           },
@@ -1401,34 +1431,31 @@ export default function Borrowing() {
           );
         }
 
-        // 3. Handle defective qty merged into existing Defective row
+        // 3. Handle defective qty — either merged into existing sibling or newly created
         if (result.defectiveTargetId && result.defectiveNewQty !== null && result.defectiveTargetId !== item.inventoryItemId) {
           const defectiveRow = result.updatedRows?.find(
             (r) => String(r.id) === String(result.defectiveTargetId)
           );
-          dbUpdates.push(
-            upsertInventoryItem({
-              id: result.defectiveTargetId,
-              sectionId: item.inventorySectionId,
-              tableName: sectionConfig.tableName,
-              recordData: toPersistableRow(defectiveRow || {}),
-            })
-          );
-        }
+          const isNewDefectiveRow = String(result.defectiveTargetId).startsWith("new_defective_");
+          const rowData = toPersistableRow(defectiveRow || {});
 
-        // 4. Handle new row creation (when no existing target row found)
-        // processReturnToInventory converts source row, so we need to check if a new row was created
-        const otherRows = result.updatedRows?.filter(
-          (r) => !items.find((orig) => String(orig.id) === String(r.id))
-        );
-        if (otherRows && otherRows.length > 0) {
-          for (const newRow of otherRows) {
-            const newRowData = toPersistableRow(newRow);
+          if (isNewDefectiveRow) {
+            // Newly created row — insert only (pass no id so DB generates a UUID)
             dbUpdates.push(
               upsertInventoryItem({
                 sectionId: item.inventorySectionId,
                 tableName: sectionConfig.tableName,
-                recordData: newRowData,
+                recordData: rowData,
+              })
+            );
+          } else {
+            // Existing sibling row merged — update by its real DB id
+            dbUpdates.push(
+              upsertInventoryItem({
+                id: result.defectiveTargetId,
+                sectionId: item.inventorySectionId,
+                tableName: sectionConfig.tableName,
+                recordData: rowData,
               })
             );
           }
@@ -3609,7 +3636,9 @@ export default function Borrowing() {
                 {pendingReturn.items.map((item) => {
                   const borrowedQuantity = getBorrowedQuantity(item);
                   const returnData = returnRemarksByItem[item.id] || {};
-                  const isDefective = returnData.condition === "Defective";
+                  const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
+                  const qLabel = tabMeta.quarantine || "Defective";
+                  const isDefective = returnData.condition === qLabel;
                   const defectiveQuantity = Math.min(
                     borrowedQuantity,
                     Math.max(0, Number(returnData.defectiveQuantity || 0))
@@ -3633,7 +3662,7 @@ export default function Borrowing() {
                             </p>
                           </div>
                           <select
-                            value={returnData.condition || "Working"}
+                            value={returnData.condition || tabMeta.operational || "Working"}
                             onChange={(e) =>
                               setReturnRemarksByItem((current) => {
                                 const nextCondition = e.target.value;
@@ -3645,7 +3674,7 @@ export default function Borrowing() {
                                     ...currentItem,
                                     condition: nextCondition,
                                     defectiveQuantity:
-                                      nextCondition === "Defective"
+                                      nextCondition === qLabel
                                         ? currentItem.defectiveQuantity || borrowedQuantity
                                         : 0,
                                   },
@@ -3654,12 +3683,11 @@ export default function Borrowing() {
                             }
                             className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111] sm:max-w-40"
                           >
-                            <option value="Working">Working</option>
-                            <option value="Defective">Defective</option>
+                            {(tabMeta.allOptions || ["Working", "Defective"]).map((opt) => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
                           </select>
                         </div>
-
-                        {isDefective && (
                           <div className="space-y-3">
                             <div className="grid gap-3 sm:grid-cols-[140px_1fr] sm:items-end">
                               <div>
@@ -3680,7 +3708,7 @@ export default function Borrowing() {
                                       ...current,
                                       [item.id]: {
                                         ...(current[item.id] || {}),
-                                        condition: "Defective",
+                                        condition: qLabel,
                                         defectiveQuantity: nextQuantity,
                                       },
                                     }));
