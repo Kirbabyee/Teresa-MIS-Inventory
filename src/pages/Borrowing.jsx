@@ -2487,7 +2487,14 @@ export default function Borrowing() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {currentPageData.map((record) => (
+                      {currentPageData.map((record) => {
+                        // Only show items that still have unreturned units
+                        const activeItems = (record.items || []).filter((item) => {
+                          const total = getBorrowedQuantity(item);
+                          const returned = getReturnedQuantity(item);
+                          return returned < total;
+                        });
+                        return (
                         <tr
                           key={record.id}
                           onClick={() => setSelectedRecord(record)}
@@ -2514,37 +2521,43 @@ export default function Borrowing() {
 
                           {/* Items — bulleted list for multiple */}
                           <td className="px-4 py-3 text-sm text-slate-600">
-                            {(record.items || []).length > 1 ? (
+                            {activeItems.length > 1 ? (
                               <ul className="list-disc list-inside space-y-0.5">
-                                {(record.items || []).map((item) => (
+                                {activeItems.map((item) => (
                                   <li key={`${record.id}-${item.id}`}>{item.label}</li>
                                 ))}
                               </ul>
-                            ) : (record.items || []).length === 1 ? (
-                              <span>{(record.items || [])[0].label}</span>
+                            ) : activeItems.length === 1 ? (
+                              <span>{activeItems[0].label}</span>
                             ) : (
                               "—"
                             )}
                           </td>
 
-                          {/* Quantity */}
+                          {/* Quantity (remaining = borrowed - returned) */}
                           <td className="px-4 py-3 text-sm text-slate-600">
-                            {(record.items || []).length > 1 ? (
+                            {activeItems.length > 1 ? (
                               <ul className="list-disc list-inside space-y-0.5">
-                                {(record.items || []).map((item) => {
-                                  const isZero = item.inventoryItemId && depletedItems.has(item.inventoryItemId);
+                                {activeItems.map((item) => {
+                                  const total = getBorrowedQuantity(item);
+                                  const returned = getReturnedQuantity(item);
+                                  const remaining = Math.max(0, total - returned);
+                                  const isZero = remaining === 0 || (item.inventoryItemId && depletedItems.has(item.inventoryItemId));
                                   return (
                                     <li key={`${record.id}-${item.id}-qty`} className={isZero ? "text-rose-700 font-semibold" : ""}>
-                                      {getItemQuantity(item) || "—"}
+                                      {remaining || "—"}
                                     </li>
                                   );
                                 })}
                               </ul>
-                            ) : (record.items || []).length === 1 ? (
+                            ) : activeItems.length === 1 ? (
                               (() => {
-                                const item = (record.items || [])[0];
-                                const isZero = item.inventoryItemId && depletedItems.has(item.inventoryItemId);
-                                return <span className={isZero ? "text-rose-700 font-semibold" : ""}>{getItemQuantity(item) || "—"}</span>;
+                                const item = activeItems[0];
+                                const total = getBorrowedQuantity(item);
+                                const returned = getReturnedQuantity(item);
+                                const remaining = Math.max(0, total - returned);
+                                const isZero = remaining === 0 || (item.inventoryItemId && depletedItems.has(item.inventoryItemId));
+                                return <span className={isZero ? "text-rose-700 font-semibold" : ""}>{remaining || "—"}</span>;
                               })()
                             ) : (
                               "—"
@@ -2553,9 +2566,9 @@ export default function Borrowing() {
 
                           {/* Condition */}
                           <td className="px-4 py-3">
-                            {(record.items || []).length > 1 ? (
+                            {activeItems.length > 1 ? (
                               <ul className="space-y-1">
-                                {(record.items || []).map((item) => {
+                                {activeItems.map((item) => {
                                   const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
                                   const opLabel = tabMeta.operational || "Working";
                                   const qLabel = tabMeta.quarantine || "Defective";
@@ -2575,9 +2588,9 @@ export default function Borrowing() {
                                   );
                                 })}
                               </ul>
-                            ) : (record.items || []).length === 1 ? (
+                            ) : activeItems.length === 1 ? (
                               (() => {
-                                const item = (record.items || [])[0];
+                                const item = activeItems[0];
                                 const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
                                 const opLabel = tabMeta.operational || "Working";
                                 const qLabel = tabMeta.quarantine || "Defective";
@@ -2602,16 +2615,16 @@ export default function Borrowing() {
                           {/* Remarks (logs view only) */}
                           {statusFilter !== "borrowed" && (
                             <td className="px-4 py-3 text-sm text-slate-600">
-                              {(record.items || []).length > 1 ? (
+                              {activeItems.length > 1 ? (
                                 <ul className="space-y-0.5">
-                                  {(record.items || []).map((item) => (
+                                  {activeItems.map((item) => (
                                     <li key={`${record.id}-${item.id}-remarks`} className="text-xs text-slate-600">
                                       {item.returnRemarks?.trim() || "—"}
                                     </li>
                                   ))}
                                 </ul>
-                              ) : (record.items || []).length === 1 ? (
-                                <span className="text-xs">{(record.items || [])[0].returnRemarks?.trim() || "—"}</span>
+                              ) : activeItems.length === 1 ? (
+                                <span className="text-xs">{activeItems[0].returnRemarks?.trim() || "—"}</span>
                               ) : (
                                 "—"
                               )}
@@ -2636,7 +2649,8 @@ export default function Borrowing() {
                             </td>
                           )}
                         </tr>
-                      ))}
+                      );
+                      })}
                     </tbody>
                   </table>
                 </div>
