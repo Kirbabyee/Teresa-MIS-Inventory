@@ -1314,6 +1314,8 @@ export default function Borrowing() {
         const rowDeltas = new Map();
         const rowsToInsert = [];
         const rowsToDelete = new Set();
+        const sourceRowsWithSameRemarkReturn = new Set();
+        const allSourceItemIds = new Set();
 
         const addDelta = (rowId, delta) => {
           rowDeltas.set(rowId, (rowDeltas.get(rowId) || 0) + delta);
@@ -1329,6 +1331,7 @@ export default function Borrowing() {
 
           const borrowedItem = itemUnits[0].item;
           const sourceItemId = borrowedItem.inventoryItemId;
+          allSourceItemIds.add(String(sourceItemId));
           const sourceRowData = rows.find((r) => String(r.id) === String(sourceItemId));
           const matchKeys = sourceRowData
             ? Object.keys(sourceRowData).filter((k) => {
@@ -1349,6 +1352,7 @@ export default function Borrowing() {
             if (remarkKey && sourceRowData && norm(sourceRowData[remarkKey]) === norm(targetRemark)) {
               // Returning to source row's own remark group
               targetRow = sourceRowData;
+              sourceRowsWithSameRemarkReturn.add(String(sourceItemId));
             } else if (remarkKey && sourceRowData) {
               // Search for a sibling with the target remark
               const idKey = ["item_number", "computer_number"].find(
@@ -1421,6 +1425,17 @@ export default function Borrowing() {
                 if (error) throw error;
               }
             );
+          }
+        }
+
+        // Purge zero-qty source rows that received no same-remark returns
+        for (const sid of allSourceItemIds) {
+          if (rowsToDelete.has(sid)) continue;
+          if (sourceRowsWithSameRemarkReturn.has(sid)) continue;
+          const row = rows.find((r) => String(r.id) === sid);
+          if (!row) continue;
+          if (Number(row[quantityKey] || 0) <= 0) {
+            rowsToDelete.add(sid);
           }
         }
 
