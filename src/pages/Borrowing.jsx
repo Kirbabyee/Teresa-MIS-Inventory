@@ -60,6 +60,7 @@ import {
   markOverdueBorrowingRecords,
   returnBorrowingRecord,
   updateBorrowingItemsStatus,
+  updateBorrowingItemsRemarks,
 } from "@/lib/borrowingApi";
 import { cn } from "@/lib/utils";
 
@@ -358,7 +359,7 @@ const unrollBorrowedUnits = (items = []) => {
     const totalQty = getBorrowedQuantity(item);
     const alreadyReturned = getReturnedQuantity(item);
     const remaining = Math.max(0, totalQty - alreadyReturned);
-    const originalRemark = getItemRemark(item) || null;
+    const originalRemark = getItemConditionRaw(item) || getItemRemark(item) || null;
     for (let i = 0; i < remaining; i += 1) {
       units.push({
         unitKey: `${item.id}::${alreadyReturned + i}`,
@@ -1009,7 +1010,16 @@ export default function Borrowing() {
     const initialSelections = {};
     for (const unit of units) {
       const tabMeta = metaByTab[unit.item.inventoryTabId] || {};
-      const defaultRemark = tabMeta.operational || "Working";
+      const allOptions = tabMeta.allOptions || ["Working", "Defective"];
+      const opLabel = tabMeta.operational || "Working";
+      // Default to the item's current remark if it's in the available options,
+      // otherwise fall back to the operational label
+      const currentRemark = unit.originalRemark || null;
+      const defaultRemark = currentRemark && allOptions.some(
+        (opt) => String(opt).toLowerCase() === String(currentRemark).toLowerCase()
+      )
+        ? allOptions.find((opt) => String(opt).toLowerCase() === String(currentRemark).toLowerCase())
+        : opLabel;
       initialSelections[unit.unitKey] = {
         checked: true,
         returnRemark: defaultRemark,
@@ -1575,12 +1585,48 @@ export default function Borrowing() {
         await op();
       }
 
+      // ── Collect per-item return remarks from selections ────────────────
+      // Aggregate remarks per borrowed item (merge all unit-level remarks)
+      const itemRemarkMap = {};
+      for (const unit of checkedUnits) {
+        const sel = returnSelections[unit.unitKey];
+        if (!sel) continue;
+        const remarkText = String(sel.remarks || "").trim();
+        const conditionText = String(sel.returnRemark || "Working").trim();
+        const itemId = unit.item.id;
+        if (!itemRemarkMap[itemId]) {
+          itemRemarkMap[itemId] = { condition: conditionText, remarks: remarkText };
+        } else {
+          // Append additional remarks from other units of same item
+          if (remarkText) {
+            const existing = itemRemarkMap[itemId].remarks;
+            itemRemarkMap[itemId].remarks = existing
+              ? `${existing}\n${remarkText}`
+              : remarkText;
+          }
+          // If any unit has a non-operational condition, keep it
+          const tabMeta = conditionMetaByTab[unit.item.inventoryTabId] || {};
+          const opLabel = tabMeta.operational || "Working";
+          if (conditionText !== opLabel) {
+            itemRemarkMap[itemId].condition = conditionText;
+          }
+        }
+      }
+
       // ── Determine if all units are returned ───────────────────────────
       const remainingUnits = units.length;
       const allReturned = checkedUnits.length >= remainingUnits;
 
       if (allReturned) {
-        await returnBorrowingRecord(pendingReturn.id, {});
+        // Build remarks map for returnBorrowingRecord
+        const fullRemarksMap = {};
+        for (const [itemId, remarkData] of Object.entries(itemRemarkMap)) {
+          fullRemarksMap[itemId] = remarkData;
+        }
+        const hasRemarks = Object.values(fullRemarksMap).some(
+          (r) => (r.remarks && r.remarks.trim()) || (r.condition && r.condition !== "Working")
+        );
+        await returnBorrowingRecord(pendingReturn.id, hasRemarks ? fullRemarksMap : {});
       } else {
         // Build a map of itemId → number of newly-checked units
         const itemQtyMap = {};
@@ -1588,6 +1634,17 @@ export default function Borrowing() {
           itemQtyMap[itemId] = itemUnits.length;
         }
         await updateBorrowingItemsStatus(pendingReturn.id, itemQtyMap);
+
+        // Write remarks separately for partial returns
+        const partialRemarksMap = {};
+        for (const [itemId, remarkData] of Object.entries(itemRemarkMap)) {
+          if (remarkData.remarks || (remarkData.condition && remarkData.condition !== "Working")) {
+            partialRemarksMap[itemId] = remarkData;
+          }
+        }
+        if (Object.keys(partialRemarksMap).length > 0) {
+          await updateBorrowingItemsRemarks(pendingReturn.id, partialRemarksMap);
+        }
       }
 
       await loadBorrowings();
@@ -2544,7 +2601,7 @@ export default function Borrowing() {
                                   const remaining = Math.max(0, total - returned);
                                   const isZero = remaining === 0 || (item.inventoryItemId && depletedItems.has(item.inventoryItemId));
                                   return (
-                                    <li key={`${record.id}-${item.id}-qty`} className={isZero ? "text-rose-700 font-semibold" : ""}>
+                                    <li key={`${record.id}-${item.id}-qty`} className={isZero ? "text-slate-600 font-semibold" : ""}>
                                       {remaining || "—"}
                                     </li>
                                   );
@@ -3952,56 +4009,80 @@ export default function Borrowing() {
                             const sel = returnSelections[unit.unitKey] || { checked: true, returnRemark: allOptions[0] || "Working", remarks: "" };
                             const unitNum = unit.unitIndex + 1;
                             const groupQty = group.units.length;
+                            const opLabel = tabMeta.operational || "Working";
+                            const isNonOperational = sel.checked && sel.returnRemark && sel.returnRemark !== opLabel;
 
                             return (
-                              <div
-                                key={unit.unitKey}
-                                className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${sel.checked ? "bg-white" : "bg-slate-50/60"}`}
-                              >
-                                {/* Checkbox */}
-                                <Checkbox
-                                  checked={!!sel.checked}
-                                  onCheckedChange={(checked) =>
-                                    setReturnSelections((prev) => ({
-                                      ...prev,
-                                      [unit.unitKey]: { ...(prev[unit.unitKey] || {}), checked: !!checked },
-                                    }))
-                                  }
-                                  className="border-slate-300 data-[state=checked]:bg-[#4a1111] data-[state=checked]:border-[#4a1111]"
-                                />
+                              <div key={unit.unitKey}>
+                                <div
+                                  className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${sel.checked ? "bg-white" : "bg-slate-50/60"}`}
+                                >
+                                  {/* Checkbox */}
+                                  <Checkbox
+                                    checked={!!sel.checked}
+                                    onCheckedChange={(checked) =>
+                                      setReturnSelections((prev) => ({
+                                        ...prev,
+                                        [unit.unitKey]: { ...(prev[unit.unitKey] || {}), checked: !!checked },
+                                      }))
+                                    }
+                                    className="border-slate-300 data-[state=checked]:bg-[#4a1111] data-[state=checked]:border-[#4a1111]"
+                                  />
 
-                                {/* Unit label */}
-                                <div className="min-w-0 flex-1">
-                                  <p className={`text-sm ${sel.checked ? "font-medium text-slate-800" : "text-slate-400"}`}>
-                                    Unit {unitNum}{groupQty > 1 ? ` of ${groupQty}` : ""}
-                                  </p>
-                                  {unit.originalRemark && (
-                                    <p className="text-xs text-slate-400">
-                                      Borrowed as: <span className="font-medium">{unit.originalRemark}</span>
+                                  {/* Unit label */}
+                                  <div className="min-w-0 flex-1">
+                                    <p className={`text-sm ${sel.checked ? "font-medium text-slate-800" : "text-slate-400"}`}>
+                                      Unit {unitNum}{groupQty > 1 ? ` of ${groupQty}` : ""}
                                     </p>
-                                  )}
+                                    {unit.originalRemark && (
+                                      <p className="text-xs text-slate-400">
+                                        Current: <span className="font-medium text-slate-600">{unit.originalRemark}</span>
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  {/* Dynamic remark dropdown */}
+                                  <select
+                                    value={sel.returnRemark || allOptions[0] || "Working"}
+                                    onChange={(e) =>
+                                      setReturnSelections((prev) => ({
+                                        ...prev,
+                                        [unit.unitKey]: { ...(prev[unit.unitKey] || {}), returnRemark: e.target.value },
+                                      }))
+                                    }
+                                    disabled={!sel.checked}
+                                    className={`h-8 rounded-lg border px-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111] ${
+                                      sel.checked
+                                        ? "border-slate-200 bg-white text-slate-700"
+                                        : "border-slate-100 bg-slate-50 text-slate-400"
+                                    }`}
+                                  >
+                                    {allOptions.map((opt) => (
+                                      <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                  </select>
                                 </div>
 
-                                {/* Dynamic remark dropdown */}
-                                <select
-                                  value={sel.returnRemark || allOptions[0] || "Working"}
-                                  onChange={(e) =>
-                                    setReturnSelections((prev) => ({
-                                      ...prev,
-                                      [unit.unitKey]: { ...(prev[unit.unitKey] || {}), returnRemark: e.target.value },
-                                    }))
-                                  }
-                                  disabled={!sel.checked}
-                                  className={`h-8 rounded-lg border px-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111] ${
-                                    sel.checked
-                                      ? "border-slate-200 bg-white text-slate-700"
-                                      : "border-slate-100 bg-slate-50 text-slate-400"
-                                  }`}
-                                >
-                                  {allOptions.map((opt) => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                  ))}
-                                </select>
+                                {/* Reason input — shown when remark is non-operational */}
+                                {isNonOperational && (
+                                  <div className="border-t border-dashed border-slate-200 bg-amber-50/40 px-4 py-2.5">
+                                    <label className="block text-xs font-medium text-amber-800 mb-1">
+                                      Why is this unit being returned as "{sel.returnRemark}"?
+                                    </label>
+                                    <textarea
+                                      value={sel.remarks || ""}
+                                      onChange={(e) =>
+                                        setReturnSelections((prev) => ({
+                                          ...prev,
+                                          [unit.unitKey]: { ...(prev[unit.unitKey] || {}), remarks: e.target.value },
+                                        }))
+                                      }
+                                      placeholder="e.g. Screen cracked, battery not charging, water damage..."
+                                      rows={2}
+                                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    />
+                                  </div>
+                                )}
                               </div>
                             );
                           })}

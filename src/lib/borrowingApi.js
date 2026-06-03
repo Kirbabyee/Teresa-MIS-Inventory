@@ -403,3 +403,56 @@ export const updateBorrowingItemsStatus = async (recordId, itemStatusMap = {}) =
   const updateError = results.find((result) => result.error)?.error;
   if (updateError) throw updateError;
 };
+
+/**
+ * Write return remarks to borrowing_items for a given borrowing record.
+ * remarksMap: { itemId: { condition, remarks } }
+ * where itemId is the borrowing_items.id (or inventory_item_id as fallback).
+ */
+export const updateBorrowingItemsRemarks = async (recordId, remarksMap = {}) => {
+  if (!recordId) return;
+
+  const { data: currentItems, error: fetchError } = await supabase
+    .from("borrowing_items")
+    .select("id, inventory_item_id, return_remarks")
+    .eq("borrowing_record_id", recordId);
+
+  if (fetchError) throw fetchError;
+
+  const currentItemsById = (currentItems || []).reduce((acc, item) => {
+    acc[item.id] = item;
+    return acc;
+  }, {});
+
+  const updates = Object.entries(remarksMap).map(([itemId, remarkData]) => {
+    const targetItem =
+      currentItemsById[itemId] ||
+      (currentItems || []).find(
+        (item) => item.inventory_item_id && String(item.inventory_item_id) === String(itemId)
+      );
+
+    if (!targetItem?.id) return Promise.resolve({ error: null });
+
+    const remarkText =
+      remarkData && typeof remarkData === "object" ? remarkData.remarks || "" : String(remarkData || "");
+    const conditionText =
+      remarkData && typeof remarkData === "object" ? remarkData.condition || "" : "";
+
+    // Merge: keep existing remarks, append new ones
+    const existing = String(targetItem.return_remarks || "").trim();
+    const nextRemarks = remarkText
+      ? existing
+        ? `${existing}\n${remarkText}`
+        : remarkText
+      : existing;
+
+    const updatePayload = { return_remarks: nextRemarks || null };
+    if (conditionText) updatePayload.return_condition = conditionText;
+
+    return supabase.from("borrowing_items").update(updatePayload).eq("id", targetItem.id);
+  });
+
+  const results = await Promise.all(updates);
+  const updateError = results.find((result) => result.error)?.error;
+  if (updateError) throw updateError;
+};
