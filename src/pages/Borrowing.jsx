@@ -46,7 +46,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   adjustInventoryItemQuantity,
-  createReturnedDefectiveInventoryItem,
   deriveTargetCondition,
   detectItemColumns,
   isSameInventoryItem,
@@ -77,6 +76,8 @@ const hiddenItemDetailKeys = new Set([
   "updated_at",
   "sort_order",
   "data",
+  "_returned_qty",
+  "_return_status",
 ]);
 
 const fieldLabels = {
@@ -285,21 +286,34 @@ const getBorrowingItemCondition = (item = {}) => {
 };
 
 /**
- * Unroll a borrowed item into 1-by-1 unit rows.
+ * Get the number of already-returned units for an item.
+ * Reads _returned_qty from item_details JSONB (stored by confirmReturn).
+ */
+const getReturnedQuantity = (item = {}) => {
+  const fromDetails = (item.details || []).find(
+    (d) => String(d.key || "").toLowerCase() === "_returned_qty"
+  )?.value;
+  const val = Number(fromDetails);
+  return Number.isFinite(val) && val >= 0 ? val : 0;
+};
+
+/**
+ * Unroll a borrowed item into 1-by-1 unit rows for NOT-YET-returned units.
  * Each unit gets a stable unique key: `${item.id}::${index}`.
- * Returns an array of unit descriptors with the original item's metadata
- * plus the unit index and the item's original remark.
+ * Only unrolls remaining units (total qty - already returned).
  */
 const unrollBorrowedUnits = (items = []) => {
   const units = [];
   for (const item of items) {
-    const qty = getBorrowedQuantity(item);
+    const totalQty = getBorrowedQuantity(item);
+    const alreadyReturned = getReturnedQuantity(item);
+    const remaining = Math.max(0, totalQty - alreadyReturned);
     const originalRemark = getItemRemark(item) || null;
-    for (let i = 0; i < qty; i += 1) {
+    for (let i = 0; i < remaining; i += 1) {
       units.push({
-        unitKey: `${item.id}::${i}`,
+        unitKey: `${item.id}::${alreadyReturned + i}`,
         item,
-        unitIndex: i,
+        unitIndex: alreadyReturned + i,
         originalRemark,
       });
     }
@@ -921,10 +935,26 @@ export default function Borrowing() {
     }
   };
 
-  const requestReturn = (record) => {
-    setPendingReturn(record);
+  const requestReturn = async (record) => {
+    // Fetch fresh data so _returned_qty in item_details is current
+    let freshRecord = record;
+    try {
+      freshRecord = await fetchBorrowingRecord(record.id);
+    } catch {
+      // fall back to passed record
+    }
+
+    // Filter out items that have already been fully returned
+    const activeItems = (freshRecord.items || []).filter((item) => {
+      const total = getBorrowedQuantity(item);
+      const returned = getReturnedQuantity(item);
+      return returned < total;
+    });
+
+    const returnRecord = { ...freshRecord, items: activeItems };
+    setPendingReturn(returnRecord);
     setReturnError("");
-    const units = unrollBorrowedUnits(record.items || []);
+    const units = unrollBorrowedUnits(activeItems || []);
     const metaByTab = conditionMetaByTab;
     const initialSelections = {};
     for (const unit of units) {
@@ -1270,28 +1300,57 @@ export default function Borrowing() {
               "";
 
             if (totalReturnQty > 0 && tableName) {
-              dbOps.push(
-                adjustInventoryItemQuantity({
-                  id: sourceItemId,
-                  sectionId,
-                  tableName,
-                  delta: totalReturnQty,
-                })
-              );
-            }
-            for (const [remark, qty] of byRemark) {
+              // Get the operational (non-quarantine) remark label dynamically
               const tabMeta = conditionMetaByTab[borrowedItem.inventoryTabId] || {};
-              const qLabel = tabMeta.quarantine || "Defective";
-              if (remark === qLabel && qty > 0 && tableName) {
-                const columns = (await getTabTableConfig(borrowedItem.inventoryTabId).catch(() => null))?.columns || [];
+              const operationalLabel = tabMeta.operational || "Working";
+
+              // Separate units by whether they go back to the source (operational)
+              // or need a sibling row (non-operational remark)
+              const operationalQty = [...byRemark.entries()]
+                .filter(([r]) => r === operationalLabel)
+                .reduce((sum, [, q]) => sum + q, 0);
+
+              // Add operational-remark units back to the source row
+              if (operationalQty > 0) {
                 dbOps.push(
-                  createReturnedDefectiveInventoryItem({
+                  adjustInventoryItemQuantity({
                     id: sourceItemId,
                     sectionId,
                     tableName,
-                    quantity: qty,
-                    targetCondition: deriveTargetCondition(columns, "quarantine"),
+                    delta: operationalQty,
                   })
+                );
+              }
+
+              // For non-operational remarks, create a new row with that remark
+              // (no existing sibling to merge into in the legacy path)
+              for (const [remark, qty] of byRemark) {
+                if (remark === operationalLabel) continue;
+                if (qty <= 0) continue;
+
+                // Create a new inventory row for this non-operational remark
+                dbOps.push(
+                  (async () => {
+                    // Fetch source item data to clone attributes
+                    const { data: src, error: srcErr } = await supabase
+                      .from(tableName)
+                      .select("*")
+                      .eq("id", sourceItemId)
+                      .single();
+                    if (srcErr) throw srcErr;
+
+                    const { remarkKey: rk, quantityKey: qk } = detectItemColumns(src);
+                    const newRow = {};
+                    for (const [k, v] of Object.entries(src)) {
+                      if (["id", "created_at", "updated_at"].includes(k)) continue;
+                      newRow[k] = v;
+                    }
+                    newRow[qk] = qty;
+                    if (rk) newRow[rk] = remark;
+
+                    const { error: insErr } = await supabase.from(tableName).insert([newRow]);
+                    if (insErr) throw insErr;
+                  })()
                 );
               }
             }
@@ -1333,6 +1392,7 @@ export default function Borrowing() {
           const sourceItemId = borrowedItem.inventoryItemId;
           allSourceItemIds.add(String(sourceItemId));
           const sourceRowData = rows.find((r) => String(r.id) === String(sourceItemId));
+
           const matchKeys = sourceRowData
             ? Object.keys(sourceRowData).filter((k) => {
                 const nk = String(k).trim().toLowerCase();
@@ -1350,11 +1410,9 @@ export default function Borrowing() {
             // Find target row: could be source itself (same remark) or a sibling
             let targetRow = null;
             if (remarkKey && sourceRowData && norm(sourceRowData[remarkKey]) === norm(targetRemark)) {
-              // Returning to source row's own remark group
               targetRow = sourceRowData;
               sourceRowsWithSameRemarkReturn.add(String(sourceItemId));
             } else if (remarkKey && sourceRowData) {
-              // Search for a sibling with the target remark
               const idKey = ["item_number", "computer_number"].find(
                 (k) => sourceRowData[k] != null && rows.some((r) => r[k] != null)
               );
@@ -1377,14 +1435,8 @@ export default function Borrowing() {
             }
 
             if (targetRow) {
-              // ── MERGE INTO EXISTING ROW (source or sibling) ──────
-              // Inventory was already decremented at borrow time, so
-              // returns are purely additive — never subtract from source.
               addDelta(targetRow.id, qty);
             } else {
-              // ── CREATE NEW ROW (or merge into pending insert) ────
-              // If a row with the same targetRemark was already queued
-              // for insert, merge qty into that instead of creating another.
               const pendingInsert = rowsToInsert.find(
                 (nr) => remarkKey && norm(nr[remarkKey]) === norm(targetRemark) &&
                   matchKeys.every((k) => norm(nr[k]) === norm(sourceRowData[k]))
@@ -1474,31 +1526,25 @@ export default function Borrowing() {
       }
 
       // ── Determine if all units are returned ───────────────────────────
-      const totalBorrowedUnits = units.length;
-      const allReturned = checkedUnits.length >= totalBorrowedUnits;
+      const remainingUnits = units.length;
+      const allReturned = checkedUnits.length >= remainingUnits;
 
       if (allReturned) {
         await returnBorrowingRecord(pendingReturn.id, {});
       } else {
-        const itemStatusMap = {};
+        // Build a map of itemId → number of newly-checked units
+        const itemQtyMap = {};
         for (const [itemId, itemUnits] of unitsByItemId) {
-          const itemTotal = getBorrowedQuantity(itemUnits[0].item);
-          const itemChecked = itemUnits.length;
-          itemStatusMap[itemId] = itemChecked >= itemTotal ? "returned" : "partially_returned";
+          itemQtyMap[itemId] = itemUnits.length;
         }
-        for (const item of pendingReturn.items || []) {
-          if (!itemStatusMap[item.id]) {
-            itemStatusMap[item.id] = "borrowed";
-          }
-        }
-        await updateBorrowingItemsStatus(pendingReturn.id, itemStatusMap);
+        await updateBorrowingItemsStatus(pendingReturn.id, itemQtyMap);
       }
 
       await loadBorrowings();
       setSuccessMessage(
         allReturned
           ? "All items returned successfully."
-          : `Returned ${checkedUnits.length} of ${totalBorrowedUnits} units.`
+          : `Returned ${checkedUnits.length} unit${checkedUnits.length !== 1 ? "s" : ""}.`
       );
       setPendingReturn(null);
       setReturnSelections({});
@@ -2661,11 +2707,49 @@ export default function Borrowing() {
                 </h3>
                 <div className="space-y-4">
                   {(selectedRecord.items || []).map((item, idx) => {
-                    const condition = getBorrowingItemCondition(item);
                     const borrowedQty = getBorrowedQuantity(item);
                     const returnConditionLabel = getReturnConditionLabel(item);
-                    const itemDetails = getItemDetails(item);
-                    const quantityDetail = item.details?.find(
+                    const itemRemark = getItemRemark(item);
+                    const tabName = item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "";
+                    const sectionName = item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "";
+                    const isCustom = !item.inventoryItemId;
+
+                    const assetFields = (item.details || [])
+                      .filter((d) => {
+                        const k = String(d.key || "").toLowerCase();
+                        if (d.value == null || String(d.value).trim() === "" || String(d.value) === "[object Object]") return false;
+                        const blockedKeys = new Set(["quantity", "id", "section_id", "created_at", "updated_at", "sort_order", "data", "remark", "condition"]);
+                        if (blockedKeys.has(k)) return false;
+                        if (k.endsWith("_id")) return false;
+                        if (k.startsWith("_")) return false;
+                        return true;
+                      })
+                      .map((d) => ({
+                        key: d.key,
+                        label: d.label || formatFieldLabel(d.key),
+                        value: String(d.value),
+                      }));
+
+                    const detailKeys = new Set((item.details || []).map((d) => String(d.key || "").toLowerCase()));
+                    const fallbackFields = [];
+                    if (assetFields.length === 0 && item.details?.length === 0) {
+                      const displayableKeys = [
+                        "computer_number", "computerNumber",
+                        "brand", "model", "serial_number", "serialNumber",
+                        "type", "description", "name", "item_name", "asset_name",
+                        "acquisition_date", "acquisitionDate", "date_acquired",
+                        "color", "size", "capacity", "processor", "ram", "storage",
+                      ];
+                      for (const key of displayableKeys) {
+                        const val = item[key];
+                        if (val != null && String(val).trim() !== "") {
+                          fallbackFields.push({ key, label: formatFieldLabel(key), value: String(val) });
+                        }
+                      }
+                    }
+
+                    const displayFields = assetFields.length > 0 ? assetFields : fallbackFields;
+                    const quantityDetail = (item.details || []).find(
                       (d) => String(d.key || "").toLowerCase() === "quantity"
                     );
                     const displayQty = quantityDetail?.value || borrowedQty || "—";
@@ -2673,76 +2757,63 @@ export default function Borrowing() {
                     return (
                       <div
                         key={`${selectedRecord.id}-${item.id}-detail`}
-                        className="rounded-lg border border-slate-200 bg-white p-4"
+                        className="rounded-xl border border-slate-200 bg-white overflow-hidden"
                       >
-                        {/* Item title row */}
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-slate-800">{item.label}</p>
-                            {item.inventoryItemId ? (
-                              <p className="mt-0.5 text-xs text-slate-400">
-                                {item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / {item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}
-                              </p>
-                            ) : (
-                              <p className="mt-0.5 text-xs text-slate-400">Custom Item (Outside Inventory)</p>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                              Qty: {displayQty}
-                            </span>
-                            <span className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${condition === "defective"
-                              ? "bg-rose-100 text-rose-700 border-rose-200"
-                              : "bg-emerald-100 text-emerald-700 border-emerald-200"
-                              }`}>
-                              {returnConditionLabel}
-                            </span>
+                        {/* ── Item Header Strip ─────────────────────────────────── */}
+                        <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-slate-800 leading-tight">{item.label}</p>
+                              {isCustom ? (
+                                <p className="mt-0.5 text-[11px] text-slate-400">Custom Item (Outside Inventory)</p>
+                              ) : (
+                                <p className="mt-0.5 text-[11px] text-slate-400">
+                                  {tabName || "Inventory"}{tabName && sectionName ? " / " : ""}{sectionName || ""}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="rounded-md bg-slate-200/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-600">
+                                Qty: {displayQty}
+                              </span>
+                              {itemRemark && (
+                                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemRemark.toLowerCase().includes("defect") ? "bg-rose-50 text-rose-600 border-rose-200" : itemRemark.toLowerCase().includes("repair") || itemRemark.toLowerCase().includes("quarantine") ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-emerald-50 text-emerald-600 border-emerald-200"}`}>
+                                  {itemRemark}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
 
-                        {/* Granular specification fields */}
-                        {itemDetails.length > 0 && (
-                          <div className="mt-3 border-t border-slate-100 pt-3">
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              {itemDetails.map((detail) => (
-                                <div key={`${item.id}-${detail.key}`} className="flex items-baseline gap-2">
-                                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    {detail.label}:
+                        {/* ── Return Condition Badge ──────────────────────────── */}
+                        <div className="px-4 pt-3 pb-1">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${returnConditionLabel.toLowerCase().includes("defect") ? "bg-rose-50 text-rose-600 border-rose-200" : returnConditionLabel.toLowerCase().includes("repair") || returnConditionLabel.toLowerCase().includes("quarantine") ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-emerald-50 text-emerald-600 border-emerald-200"}`}>
+                            <span className={`inline-block h-1.5 w-1.5 rounded-full ${returnConditionLabel.toLowerCase().includes("defect") ? "bg-rose-500" : returnConditionLabel.toLowerCase().includes("repair") || returnConditionLabel.toLowerCase().includes("quarantine") ? "bg-amber-500" : "bg-emerald-500"}`} />
+                            {returnConditionLabel}
+                          </span>
+                        </div>
+
+                        {/* ── Asset Attributes Grid ───────────────────────────── */}
+                        {displayFields.length > 0 && (
+                          <div className="px-4 pt-2 pb-3">
+                            <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
+                              {displayFields.map((field) => (
+                                <div key={`${item.id}-${field.key}`} className="flex items-baseline gap-1.5 min-w-0">
+                                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                    {field.label}:
                                   </span>
-                                  <span className="text-xs text-slate-700">{detail.value}</span>
+                                  <span className="truncate text-xs font-medium text-slate-700">{field.value}</span>
                                 </div>
                               ))}
                             </div>
                           </div>
                         )}
 
-                        {/* Inventory-specific IDs */}
-                        {item.inventoryItemId && (
-                          <div className="mt-3 flex flex-wrap gap-3 border-t border-slate-100 pt-3">
-                            <div>
-                              <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Inventory ID</span>
-                              <p className="text-xs font-mono text-slate-500">{item.inventoryItemId}</p>
-                            </div>
-                            {item.inventoryTabId && (
-                              <div>
-                                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Tab ID</span>
-                                <p className="text-xs font-mono text-slate-500">{item.inventoryTabId}</p>
-                              </div>
-                            )}
-                            {item.inventorySectionId && (
-                              <div>
-                                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Section ID</span>
-                                <p className="text-xs font-mono text-slate-500">{item.inventorySectionId}</p>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Return remarks per item */}
+                        {/* ── Return Remarks ──────────────────────────────────── */}
                         {item.returnRemarks?.trim() && (
-                          <div className="mt-3 border-t border-slate-100 pt-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Return Remarks</p>
-                            <p className="mt-1 text-xs text-slate-600">{item.returnRemarks}</p>
+                          <div className="border-t border-slate-100 bg-slate-300/10 px-4 py-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
+                            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{item.returnRemarks}</p>
                           </div>
                         )}
                       </div>

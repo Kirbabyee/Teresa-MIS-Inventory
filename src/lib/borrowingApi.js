@@ -352,16 +352,16 @@ export const returnBorrowingRecord = async (id, returnRemarks = {}) => {
 };
 
 /**
- * Update per-item return status on a borrowing record.
- * Writes a jsonb map at borrowing_items.{itemId}.return_status so the
- * record can render "Returned" / "Still Borrowed" per line item.
+ * Update per-item returned quantity on a borrowing record.
+ * Increments _returned_qty inside the item_details JSONB array
+ * (no dedicated column needed).
  */
 export const updateBorrowingItemsStatus = async (recordId, itemStatusMap = {}) => {
   if (!recordId) throw new Error("Borrowing record is required.");
 
   const { data: currentItems, error: fetchError } = await supabase
     .from("borrowing_items")
-    .select("id, inventory_item_id")
+    .select("id, inventory_item_id, item_details")
     .eq("borrowing_record_id", recordId);
 
   if (fetchError) throw fetchError;
@@ -371,7 +371,7 @@ export const updateBorrowingItemsStatus = async (recordId, itemStatusMap = {}) =
     return acc;
   }, {});
 
-  const updates = Object.entries(itemStatusMap).map(([itemId, status]) => {
+  const updates = Object.entries(itemStatusMap).map(([itemId, newlyReturned]) => {
     const targetItem =
       currentItemsById[itemId] ||
       (currentItems || []).find(
@@ -380,9 +380,22 @@ export const updateBorrowingItemsStatus = async (recordId, itemStatusMap = {}) =
 
     if (!targetItem?.id) return Promise.resolve({ error: null });
 
+    const details = Array.isArray(targetItem.item_details) ? [...targetItem.item_details] : [];
+
+    // Increment _returned_qty in item_details
+    const returnedQtyIdx = details.findIndex((d) => d.key === "_returned_qty");
+    const currentReturned = returnedQtyIdx >= 0 ? Number(details[returnedQtyIdx].value) || 0 : 0;
+    const nextReturned = currentReturned + (Number(newlyReturned) || 0);
+
+    if (returnedQtyIdx >= 0) {
+      details[returnedQtyIdx] = { key: "_returned_qty", label: "Returned Qty", value: String(nextReturned) };
+    } else {
+      details.push({ key: "_returned_qty", label: "Returned Qty", value: String(nextReturned) });
+    }
+
     return supabase
       .from("borrowing_items")
-      .update({ return_status: status || null })
+      .update({ item_details: details })
       .eq("id", targetItem.id);
   });
 
