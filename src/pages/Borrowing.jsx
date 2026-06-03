@@ -78,6 +78,33 @@ const hiddenItemDetailKeys = new Set([
   "data",
   "_returned_qty",
   "_return_status",
+  "tab_id",
+  "section_id",
+  "inventory_tab_id",
+  "inventory_section_id",
+  "inventory_item_id",
+  "borrowing_record_id",
+  "inventory_table_name",
+  "tabName",
+  "sectionName",
+  "tableName",
+  "tabId",
+  "sectionId",
+  "inventoryTabId",
+  "inventorySectionId",
+  "inventoryItemId",
+  "borrowingRecordId",
+  "inventoryTableName",
+  "computer_number",
+  "computerNumber",
+  "name",
+  "item_name",
+  "asset_name",
+  "itemName",
+  "assetName",
+  "label",
+  "item_label",
+  "itemLabel",
 ]);
 
 const fieldLabels = {
@@ -243,46 +270,69 @@ const getReturnWorkingQuantity = (item = {}) => {
   return Number.isFinite(quantity) && quantity > 0 ? quantity : 0;
 };
 
-const getReturnConditionLabel = (item = {}) => {
+const getReturnConditionLabel = (item = {}, operationalLabel = "Working", quarantineLabel = "Defective") => {
   const borrowedQuantity = getBorrowedQuantity(item);
   const defectiveQuantity = getReturnDefectiveQuantity(item);
   const workingQuantity = getReturnWorkingQuantity(item);
-  const condition = getBorrowingItemCondition(item);
 
-  if (defectiveQuantity > 0) {
-    if (workingQuantity > 0) {
-      return `Defective: ${defectiveQuantity} / Working: ${workingQuantity}`;
-    }
-
-    if (defectiveQuantity < borrowedQuantity) {
-      return `Defective: ${defectiveQuantity} / Working: ${borrowedQuantity - defectiveQuantity}`;
-    }
-
-    return `Defective: ${defectiveQuantity}`;
+  // If there are per-remark return quantities, show the split
+  if (defectiveQuantity > 0 || workingQuantity > 0) {
+    const parts = [];
+    if (defectiveQuantity > 0) parts.push(`${quarantineLabel || "Defective"}: ${defectiveQuantity}`);
+    if (workingQuantity > 0) parts.push(`${operationalLabel || "Working"}: ${workingQuantity}`);
+    if (parts.length > 0) return parts.join(" / ");
   }
 
-  return condition === "defective" ? "Defective" : "Working";
+  // Otherwise show the item's actual condition/remarks value
+  const rawCondition = getItemConditionRaw(item);
+  if (rawCondition) return rawCondition;
+
+  return operationalLabel || "Working";
 };
 
-const getBorrowingItemCondition = (item = {}) => {
-  const explicitCondition = String(item.returnCondition || "").trim();
-  if (explicitCondition) return explicitCondition.toLowerCase();
+/**
+ * Extract the raw condition/remarks string from an item.
+ * Checks explicit returnCondition, then item_details for condition/status/remarks keys.
+ * Returns the original (non-lowercased) value for display.
+ */
+const getItemConditionRaw = (item = {}) => {
+  const explicit = String(item.returnCondition || "").trim();
+  if (explicit) return explicit;
 
-  const detailCondition = (item.details || []).find((detail) => {
-    const key = String(detail.key || "").toLowerCase();
-    const label = String(detail.label || "").toLowerCase();
-    return (
-      key === "condition" ||
-      key === "status" ||
-      key === "remarks" ||
-      label === "condition" ||
-      label === "status" ||
-      label === "remarks"
-    );
+  const detail = (item.details || []).find((d) => {
+    const k = String(d.key || "").toLowerCase();
+    const l = String(d.label || "").toLowerCase();
+    return k === "condition" || k === "status" || k === "remarks"
+      || l === "condition" || l === "status" || l === "remarks";
   });
+  if (detail?.value) return String(detail.value).trim();
 
-  const condition = String(detailCondition?.value || "").trim().toLowerCase();
-  return condition.includes("defect") ? "defective" : "working";
+  return null;
+};
+
+/**
+ * Classify an item's condition as "working" (operational) or "defective" (non-operational)
+ * by comparing its raw condition value against the dynamic operational label.
+ * Any condition that doesn't match the operational label is treated as non-operational.
+ */
+const getBorrowingItemCondition = (item = {}, quarantineLabel = "Defective", operationalLabel = "Working") => {
+  const raw = getItemConditionRaw(item);
+  if (!raw) return "working";
+
+  const condition = raw.toLowerCase();
+  const ol = String(operationalLabel || "Working").toLowerCase();
+  const ql = String(quarantineLabel || "Defective").toLowerCase();
+
+  // Exact match against operational = working
+  if (condition === ol) return "working";
+  // Exact match against quarantine = defective
+  if (condition === ql) return "defective";
+  // Contains "defect" = defective
+  if (condition.includes("defect")) return "defective";
+  // Contains "repair" or "quarantine" = defective
+  if (condition.includes("repair") || condition.includes("quarantine")) return "defective";
+  // Anything else that doesn't match operational = defective (catch-all for dynamic conditions)
+  return "defective";
 };
 
 /**
@@ -2413,7 +2463,7 @@ export default function Borrowing() {
                       <tr>
                         {[
                           "Borrower",
-                          "Borrowed",
+                          "Borrowed At",
                           "Status",
                           "Items",
                           "Quantity",
@@ -2506,14 +2556,17 @@ export default function Borrowing() {
                             {(record.items || []).length > 1 ? (
                               <ul className="space-y-1">
                                 {(record.items || []).map((item) => {
-                                  const condition = getBorrowingItemCondition(item);
-                                  const label = getReturnConditionLabel(item);
+                                  const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
+                                  const opLabel = tabMeta.operational || "Working";
+                                  const qLabel = tabMeta.quarantine || "Defective";
+                                  const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
+                                  const label = getReturnConditionLabel(item, opLabel, qLabel);
                                   return (
                                     <li key={`${record.id}-${item.id}-condition`}>
                                       <span
-                                        className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${condition === "defective"
-                                          ? "bg-rose-100 text-rose-700 border-rose-200"
-                                          : "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                        className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${isOperational
+                                          ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                          : "bg-rose-100 text-rose-700 border-rose-200"
                                           }`}
                                       >
                                         {label}
@@ -2525,13 +2578,16 @@ export default function Borrowing() {
                             ) : (record.items || []).length === 1 ? (
                               (() => {
                                 const item = (record.items || [])[0];
-                                const condition = getBorrowingItemCondition(item);
-                                const label = getReturnConditionLabel(item);
+                                const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
+                                const opLabel = tabMeta.operational || "Working";
+                                const qLabel = tabMeta.quarantine || "Defective";
+                                const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
+                                const label = getReturnConditionLabel(item, opLabel, qLabel);
                                 return (
                                   <span
-                                    className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${condition === "defective"
-                                      ? "bg-rose-100 text-rose-700 border-rose-200"
-                                      : "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                    className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${isOperational
+                                      ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                      : "bg-rose-100 text-rose-700 border-rose-200"
                                       }`}
                                   >
                                     {label}
@@ -2708,20 +2764,90 @@ export default function Borrowing() {
                 <div className="space-y-4">
                   {(selectedRecord.items || []).map((item, idx) => {
                     const borrowedQty = getBorrowedQuantity(item);
-                    const returnConditionLabel = getReturnConditionLabel(item);
+                    const returnedQty = getReturnedQuantity(item);
+                    const defectiveReturned = getReturnDefectiveQuantity(item);
+                    const workingReturned = getReturnWorkingQuantity(item);
                     const itemRemark = getItemRemark(item);
                     const tabName = item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "";
                     const sectionName = item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "";
                     const isCustom = !item.inventoryItemId;
 
+                    // ── Unroll units: one entry per physical unit ──
+                    // Each unit gets a 0-based index, a status, and an optional return remark.
+                    // For structured items: distribute returned units by stored per-remark qty.
+                    // For custom items: fall back to hardcoded string checks on returnCondition.
+                    const units = [];
+                    if (isCustom) {
+                      // Custom/ad-hoc: determine a single return remark from condition/remarks
+                      const rc = String(item.returnCondition || "").trim().toLowerCase();
+                      const rr = String(item.returnRemarks || "").trim().toLowerCase();
+                      let customRemark = "Returned";
+                      if (rc === "defective" || rr.includes("defect")) customRemark = "Defective";
+                      else if (rc === "working" || rr.includes("working")) customRemark = "Working";
+                      for (let i = 0; i < borrowedQty; i++) {
+                        const isOut = i >= returnedQty;
+                        units.push({
+                          index: i,
+                          status: isOut ? "Active / Borrowed" : "Returned",
+                          remark: isOut ? null : customRemark,
+                        });
+                      }
+                    } else {
+                      // Structured: assign per-remark statuses to individual unit indices
+                      // First N units = Defective, next M units = Working, rest = Active
+                      let unitCursor = 0;
+                      for (let i = 0; i < defectiveReturned; i += 1) {
+                        units.push({ index: unitCursor, status: "Returned", remark: "Defective" });
+                        unitCursor += 1;
+                      }
+                      for (let i = 0; i < workingReturned; i += 1) {
+                        units.push({ index: unitCursor, status: "Returned", remark: "Working" });
+                        unitCursor += 1;
+                      }
+                      // Handle unclassified returns (returnedQty > accounted-for per-remark split)
+                      const accountedFor = defectiveReturned + workingReturned;
+                      const unclassified = Math.max(0, returnedQty - accountedFor);
+                      for (let i = 0; i < unclassified; i += 1) {
+                        units.push({ index: unitCursor, status: "Returned", remark: "Returned" });
+                        unitCursor += 1;
+                      }
+                      // Remaining units are still out
+                      while (unitCursor < borrowedQty) {
+                        units.push({ index: unitCursor, status: "Active / Borrowed", remark: null });
+                        unitCursor += 1;
+                      }
+                      // Nothing returned at all
+                      if (units.length === 0) {
+                        for (let i = 0; i < borrowedQty; i += 1) {
+                          units.push({ index: i, status: "Active / Borrowed", remark: null });
+                        }
+                      }
+                    }
+
+                    // ── Asset attribute key-value pairs (no raw DB IDs) ──
                     const assetFields = (item.details || [])
                       .filter((d) => {
                         const k = String(d.key || "").toLowerCase();
                         if (d.value == null || String(d.value).trim() === "" || String(d.value) === "[object Object]") return false;
-                        const blockedKeys = new Set(["quantity", "id", "section_id", "created_at", "updated_at", "sort_order", "data", "remark", "condition"]);
+                        const blockedKeys = new Set([
+                          "quantity", "id", "section_id", "created_at", "updated_at",
+                          "sort_order", "data", "remark", "condition",
+                          "return_defective_quantity", "return_working_quantity",
+                          "tab_id", "section_id", "inventory_tab_id", "inventory_section_id",
+                          "inventory_item_id", "borrowing_record_id", "inventory_table_name",
+                          "computer_number", "computerNumber", "item_number", "itemNumber",
+                          "tab_name", "section_name", "tabName", "sectionName",
+                          "tableName", "table_name", "inventoryTableName",
+                          "tabId", "sectionId", "inventoryTabId", "inventorySectionId",
+                          "inventoryItemId", "borrowingRecordId", "inventoryTableName",
+                          "name", "item_name", "asset_name", "itemName", "assetName",
+                          "label", "item_label", "itemLabel",
+                        ]);
                         if (blockedKeys.has(k)) return false;
                         if (k.endsWith("_id")) return false;
                         if (k.startsWith("_")) return false;
+                        // Block any key containing tab/section/table as a substring
+                        if (k.includes("tab") || k.includes("section") || k.includes("table")) return false;
                         return true;
                       })
                       .map((d) => ({
@@ -2730,13 +2856,12 @@ export default function Borrowing() {
                         value: String(d.value),
                       }));
 
-                    const detailKeys = new Set((item.details || []).map((d) => String(d.key || "").toLowerCase()));
+                    // Fallback for items with empty details array
                     const fallbackFields = [];
-                    if (assetFields.length === 0 && item.details?.length === 0) {
+                    if (assetFields.length === 0 && (item.details || []).length === 0) {
                       const displayableKeys = [
-                        "computer_number", "computerNumber",
                         "brand", "model", "serial_number", "serialNumber",
-                        "type", "description", "name", "item_name", "asset_name",
+                        "type", "description",
                         "acquisition_date", "acquisitionDate", "date_acquired",
                         "color", "size", "capacity", "processor", "ram", "storage",
                       ];
@@ -2749,10 +2874,8 @@ export default function Borrowing() {
                     }
 
                     const displayFields = assetFields.length > 0 ? assetFields : fallbackFields;
-                    const quantityDetail = (item.details || []).find(
-                      (d) => String(d.key || "").toLowerCase() === "quantity"
-                    );
-                    const displayQty = quantityDetail?.value || borrowedQty || "—";
+
+                    const allDisplayFields = displayFields;
 
                     return (
                       <div
@@ -2772,32 +2895,62 @@ export default function Borrowing() {
                                 </p>
                               )}
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
+                            <div className="shrink-0">
                               <span className="rounded-md bg-slate-200/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-600">
-                                Qty: {displayQty}
+                                Qty: {borrowedQty}
                               </span>
-                              {itemRemark && (
-                                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemRemark.toLowerCase().includes("defect") ? "bg-rose-50 text-rose-600 border-rose-200" : itemRemark.toLowerCase().includes("repair") || itemRemark.toLowerCase().includes("quarantine") ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-emerald-50 text-emerald-600 border-emerald-200"}`}>
-                                  {itemRemark}
-                                </span>
-                              )}
                             </div>
                           </div>
                         </div>
 
-                        {/* ── Return Condition Badge ──────────────────────────── */}
-                        <div className="px-4 pt-3 pb-1">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${returnConditionLabel.toLowerCase().includes("defect") ? "bg-rose-50 text-rose-600 border-rose-200" : returnConditionLabel.toLowerCase().includes("repair") || returnConditionLabel.toLowerCase().includes("quarantine") ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-emerald-50 text-emerald-600 border-emerald-200"}`}>
-                            <span className={`inline-block h-1.5 w-1.5 rounded-full ${returnConditionLabel.toLowerCase().includes("defect") ? "bg-rose-500" : returnConditionLabel.toLowerCase().includes("repair") || returnConditionLabel.toLowerCase().includes("quarantine") ? "bg-amber-500" : "bg-emerald-500"}`} />
-                            {returnConditionLabel}
-                          </span>
-                        </div>
+                        {/* ── Unit Status (unrolled per-unit rows) ─────────────── */}
+                        {units.length > 0 && (
+                          <div className={`px-4 ${units.length > 1 ? "pt-3 pb-2" : "pt-3 pb-2"}`}>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                              {units.length > 1 ? "Unit Status" : "Status"}
+                            </p>
+                            <div className={units.length > 1 ? "space-y-0" : ""}>
+                              {units.map((unit, uIdx) => {
+                                const isActive = unit.status === "Active / Borrowed";
+                                const dotColor = isActive
+                                  ? "bg-sky-500"
+                                  : unit.remark === "Defective"
+                                    ? "bg-rose-500"
+                                    : unit.remark === "Working"
+                                      ? "bg-emerald-500"
+                                      : "bg-slate-400";
+                                return (
+                                  <div
+                                    key={`${item.id}-unit-${unit.index}`}
+                                    className={`flex items-center gap-2 text-xs py-1 ${units.length > 1 && uIdx < units.length - 1 ? "border-b border-slate-100/80" : ""}`}
+                                  >
+                                    <span className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${dotColor}`} />
+                                    {units.length > 1 && (
+                                      <span className="font-medium text-slate-400 w-10 shrink-0 tabular-nums">
+                                        Unit {unit.index + 1}:
+                                      </span>
+                                    )}
+                                    <span className={`font-medium ${isActive ? "text-sky-700" : "text-slate-600"}`}>
+                                      {unit.status}
+                                    </span>
+                                    {!isActive && unit.remark && unit.remark !== "Returned" && (
+                                      <span className="text-slate-400">— {unit.remark}</span>
+                                    )}
+                                    {isActive && (
+                                      <span className="text-[10px] text-slate-400 italic">still out</span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
 
                         {/* ── Asset Attributes Grid ───────────────────────────── */}
-                        {displayFields.length > 0 && (
-                          <div className="px-4 pt-2 pb-3">
+                        {allDisplayFields.length > 0 && (
+                          <div className={`px-4 ${units.length > 1 ? "pt-1" : "pt-2"} pb-3`}>
                             <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
-                              {displayFields.map((field) => (
+                              {allDisplayFields.map((field) => (
                                 <div key={`${item.id}-${field.key}`} className="flex items-baseline gap-1.5 min-w-0">
                                   <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                                     {field.label}:
@@ -2809,7 +2962,7 @@ export default function Borrowing() {
                           </div>
                         )}
 
-                        {/* ── Return Remarks ──────────────────────────────────── */}
+                        {/* ── Freetext Return Remarks ─────────────────────────── */}
                         {item.returnRemarks?.trim() && (
                           <div className="border-t border-slate-100 bg-slate-300/10 px-4 py-3">
                             <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
