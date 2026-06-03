@@ -1374,10 +1374,9 @@ export default function Borrowing() {
 
             if (targetRow) {
               // ── MERGE INTO EXISTING ROW (source or sibling) ──────
+              // Inventory was already decremented at borrow time, so
+              // returns are purely additive — never subtract from source.
               addDelta(targetRow.id, qty);
-              if (String(targetRow.id) !== String(sourceItemId)) {
-                addDelta(sourceItemId, -qty);
-              }
             } else {
               // ── CREATE NEW ROW (or merge into pending insert) ────
               // If a row with the same targetRemark was already queued
@@ -1398,7 +1397,6 @@ export default function Borrowing() {
                 if (remarkKey) newRow[remarkKey] = targetRemark;
                 rowsToInsert.push(newRow);
               }
-              addDelta(sourceItemId, -qty);
             }
           }
         }
@@ -2648,60 +2646,11 @@ export default function Borrowing() {
                 </h3>
                 <div className="space-y-4">
                   {(selectedRecord.items || []).map((item, idx) => {
+                    const condition = getBorrowingItemCondition(item);
                     const borrowedQty = getBorrowedQuantity(item);
                     const returnConditionLabel = getReturnConditionLabel(item);
-                    const itemRemark = getItemRemark(item);
-                    const tabName = item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "";
-                    const sectionName = item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "";
-                    const isCustom = !item.inventoryItemId;
-
-                    // Build clean asset attribute grid from item.details (the stored
-                    // inventory record fields) — never from the raw item object keys.
-                    const assetFields = (item.details || [])
-                      .filter((d) => {
-                        const k = String(d.key || "").toLowerCase();
-                        // Skip system/meta keys that are not user-facing attributes
-                        return (
-                          k !== "quantity" &&
-                          k !== "id" &&
-                          k !== "section_id" &&
-                          k !== "created_at" &&
-                          k !== "updated_at" &&
-                          k !== "sort_order" &&
-                          k !== "data" &&
-                          d.value != null &&
-                          String(d.value).trim() !== "" &&
-                          String(d.value) !== "[object Object]"
-                        );
-                      })
-                      .map((d) => ({
-                        key: d.key,
-                        label: d.label || formatFieldLabel(d.key),
-                        value: String(d.value),
-                      }));
-
-                    // Fallback: if item.details is empty, extract from top-level
-                    // item record columns (but only known displayable fields)
-                    const detailKeys = new Set((item.details || []).map((d) => String(d.key || "").toLowerCase()));
-                    const fallbackFields = [];
-                    if (assetFields.length === 0 && item.details?.length === 0) {
-                      const displayableKeys = [
-                        "computer_number", "computerNumber",
-                        "brand", "model", "serial_number", "serialNumber",
-                        "type", "description", "name", "item_name", "asset_name",
-                        "acquisition_date", "acquisitionDate", "date_acquired",
-                        "color", "size", "capacity", "processor", "ram", "storage",
-                      ];
-                      for (const key of displayableKeys) {
-                        const val = item[key];
-                        if (val != null && String(val).trim() !== "") {
-                          fallbackFields.push({ key, label: formatFieldLabel(key), value: String(val) });
-                        }
-                      }
-                    }
-
-                    const displayFields = assetFields.length > 0 ? assetFields : fallbackFields;
-                    const quantityDetail = (item.details || []).find(
+                    const itemDetails = getItemDetails(item);
+                    const quantityDetail = item.details?.find(
                       (d) => String(d.key || "").toLowerCase() === "quantity"
                     );
                     const displayQty = quantityDetail?.value || borrowedQty || "—";
@@ -2709,63 +2658,76 @@ export default function Borrowing() {
                     return (
                       <div
                         key={`${selectedRecord.id}-${item.id}-detail`}
-                        className="rounded-xl border border-slate-200 bg-white overflow-hidden"
+                        className="rounded-lg border border-slate-200 bg-white p-4"
                       >
-                        {/* ── Item Header Strip ─────────────────────────────────── */}
-                        <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-slate-800 leading-tight">{item.label}</p>
-                              {isCustom ? (
-                                <p className="mt-0.5 text-[11px] text-slate-400">Custom Item (Outside Inventory)</p>
-                              ) : (
-                                <p className="mt-0.5 text-[11px] text-slate-400">
-                                  {tabName || "Inventory"}{tabName && sectionName ? " / " : ""}{sectionName || ""}
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="rounded-md bg-slate-200/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-600">
-                                Qty: {displayQty}
-                              </span>
-                              {itemRemark && (
-                                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${itemRemark.toLowerCase().includes("defect") ? "bg-rose-50 text-rose-600 border-rose-200" : itemRemark.toLowerCase().includes("repair") || itemRemark.toLowerCase().includes("quarantine") ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-emerald-50 text-emerald-600 border-emerald-200"}`}>
-                                  {itemRemark}
-                                </span>
-                              )}
-                            </div>
+                        {/* Item title row */}
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-slate-800">{item.label}</p>
+                            {item.inventoryItemId ? (
+                              <p className="mt-0.5 text-xs text-slate-400">
+                                {item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "Inventory"} / {item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "Section"}
+                              </p>
+                            ) : (
+                              <p className="mt-0.5 text-xs text-slate-400">Custom Item (Outside Inventory)</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                              Qty: {displayQty}
+                            </span>
+                            <span className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${condition === "defective"
+                              ? "bg-rose-100 text-rose-700 border-rose-200"
+                              : "bg-emerald-100 text-emerald-700 border-emerald-200"
+                              }`}>
+                              {returnConditionLabel}
+                            </span>
                           </div>
                         </div>
 
-                        {/* ── Return Condition Badge ──────────────────────────── */}
-                        <div className="px-4 pt-3 pb-1">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${returnConditionLabel.toLowerCase().includes("defect") ? "bg-rose-50 text-rose-600 border-rose-200" : returnConditionLabel.toLowerCase().includes("repair") || returnConditionLabel.toLowerCase().includes("quarantine") ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-emerald-50 text-emerald-600 border-emerald-200"}`}>
-                            <span className={`inline-block h-1.5 w-1.5 rounded-full ${returnConditionLabel.toLowerCase().includes("defect") ? "bg-rose-500" : returnConditionLabel.toLowerCase().includes("repair") || returnConditionLabel.toLowerCase().includes("quarantine") ? "bg-amber-500" : "bg-emerald-500"}`} />
-                            {returnConditionLabel}
-                          </span>
-                        </div>
-
-                        {/* ── Asset Attributes Grid ───────────────────────────── */}
-                        {displayFields.length > 0 && (
-                          <div className="px-4 pt-2 pb-3">
-                            <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
-                              {displayFields.map((field) => (
-                                <div key={`${item.id}-${field.key}`} className="flex items-baseline gap-1.5 min-w-0">
-                                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                                    {field.label}:
+                        {/* Granular specification fields */}
+                        {itemDetails.length > 0 && (
+                          <div className="mt-3 border-t border-slate-100 pt-3">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {itemDetails.map((detail) => (
+                                <div key={`${item.id}-${detail.key}`} className="flex items-baseline gap-2">
+                                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {detail.label}:
                                   </span>
-                                  <span className="truncate text-xs font-medium text-slate-700">{field.value}</span>
+                                  <span className="text-xs text-slate-700">{detail.value}</span>
                                 </div>
                               ))}
                             </div>
                           </div>
                         )}
 
-                        {/* ── Return Remarks ──────────────────────────────────── */}
+                        {/* Inventory-specific IDs */}
+                        {item.inventoryItemId && (
+                          <div className="mt-3 flex flex-wrap gap-3 border-t border-slate-100 pt-3">
+                            <div>
+                              <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Inventory ID</span>
+                              <p className="text-xs font-mono text-slate-500">{item.inventoryItemId}</p>
+                            </div>
+                            {item.inventoryTabId && (
+                              <div>
+                                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Tab ID</span>
+                                <p className="text-xs font-mono text-slate-500">{item.inventoryTabId}</p>
+                              </div>
+                            )}
+                            {item.inventorySectionId && (
+                              <div>
+                                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Section ID</span>
+                                <p className="text-xs font-mono text-slate-500">{item.inventorySectionId}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Return remarks per item */}
                         {item.returnRemarks?.trim() && (
-                          <div className="border-t border-slate-100 bg-slate-300/10 px-4 py-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
-                            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{item.returnRemarks}</p>
+                          <div className="mt-3 border-t border-slate-100 pt-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Return Remarks</p>
+                            <p className="mt-1 text-xs text-slate-600">{item.returnRemarks}</p>
                           </div>
                         )}
                       </div>
