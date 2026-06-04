@@ -53,6 +53,7 @@ const mapBorrowingRecord = (record = {}) => ({
     returnRemarks: item.return_remarks || "",
     returnDefectiveQuantity: getDetailValue(item.item_details, "return_defective_quantity") || "",
     returnWorkingQuantity: getDetailValue(item.item_details, "return_working_quantity") || "",
+    itemReturnedAt: item.item_returned_at || null,
     tab: "",
     section: "",
     tableName: item.inventory_table_name || "",
@@ -337,9 +338,11 @@ export const returnBorrowingRecord = async (id, returnRemarks = {}) => {
             return_condition: String(remark.condition || "working").toLowerCase(),
             return_remarks: remark.remarks ? String(remark.remarks).trim() : null,
             item_details: mergeReturnDetails(targetItem.item_details, remark),
+            item_returned_at: new Date().toISOString(),
           }
         : {
             return_remarks: remark || null,
+            item_returned_at: new Date().toISOString(),
           };
 
     return supabase.from("borrowing_items").update(updatePayload).eq("id", targetItem.id);
@@ -361,7 +364,7 @@ export const updateBorrowingItemsStatus = async (recordId, itemStatusMap = {}) =
 
   const { data: currentItems, error: fetchError } = await supabase
     .from("borrowing_items")
-    .select("id, inventory_item_id, item_details")
+    .select("id, inventory_item_id, item_details, item_returned_at")
     .eq("borrowing_record_id", recordId);
 
   if (fetchError) throw fetchError;
@@ -393,9 +396,15 @@ export const updateBorrowingItemsStatus = async (recordId, itemStatusMap = {}) =
       details.push({ key: "_returned_qty", label: "Returned Qty", value: String(nextReturned) });
     }
 
+    const statusPayload = { item_details: details };
+    // Set item_returned_at only on the first partial return for this item
+    if (!targetItem.item_returned_at) {
+      statusPayload.item_returned_at = new Date().toISOString();
+    }
+
     return supabase
       .from("borrowing_items")
-      .update({ item_details: details })
+      .update(statusPayload)
       .eq("id", targetItem.id);
   });
 
@@ -414,7 +423,7 @@ export const updateBorrowingItemsRemarks = async (recordId, remarksMap = {}) => 
 
   const { data: currentItems, error: fetchError } = await supabase
     .from("borrowing_items")
-    .select("id, inventory_item_id, return_remarks")
+    .select("id, inventory_item_id, return_remarks, item_returned_at")
     .eq("borrowing_record_id", recordId);
 
   if (fetchError) throw fetchError;
@@ -448,6 +457,10 @@ export const updateBorrowingItemsRemarks = async (recordId, remarksMap = {}) => 
 
     const updatePayload = { return_remarks: nextRemarks || null };
     if (conditionText) updatePayload.return_condition = conditionText;
+    // Set item_returned_at only if not already set by a prior partial return
+    if (!targetItem.item_returned_at) {
+      updatePayload.item_returned_at = new Date().toISOString();
+    }
 
     return supabase.from("borrowing_items").update(updatePayload).eq("id", targetItem.id);
   });

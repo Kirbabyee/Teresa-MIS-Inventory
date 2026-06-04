@@ -92,7 +92,7 @@ const INVENTORY_TEMPLATES = [
       { key: "processor", label: "Processor", data_type: "text" },
       { key: "ram", label: "RAM", data_type: "text" },
       { key: "storage", label: "Storage", data_type: "text" },
-      { key: "status", label: "Status", data_type: "text", options: ["Working", "Defective", "For Repair", "Disposed"] },
+      { key: "status", label: "Status", data_type: "text", options: ["Working", "Defective", "Missing"] },
     ],
   },
   {

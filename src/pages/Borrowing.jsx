@@ -412,7 +412,7 @@ const formatBorrowingStatus = (status = "borrowed") => {
   const normalizedStatus = String(status || "borrowed").toLowerCase();
   if (normalizedStatus === "returned") return "Returned";
   if (normalizedStatus === "returned_late") return "Returned Late";
-  if (normalizedStatus === "not_returned") return "Not Returned";
+  if (normalizedStatus === "not_returned") return "Unreturned";
   return "Borrowed";
 };
 
@@ -436,17 +436,17 @@ const formatExportDate = (value) => {
 };
 
 const formatExportTime = (value) => {
-	  if (!value) return "";
-	  const date = new Date(value);
-	  if (Number.isNaN(date.getTime())) return "";
-	  return new Intl.DateTimeFormat("en-US", {
-	    hour: "2-digit",
-	    minute: "2-digit",
-	    hour12: true,
-	  }).format(date);
-	};
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+};
 
-	const getColumnLetter = (columnNumber) => {
+const getColumnLetter = (columnNumber) => {
   let value = columnNumber;
   let letters = "";
   while (value > 0) {
@@ -780,13 +780,13 @@ export default function Borrowing() {
       const visibleRecords =
         statusFilter === "all"
           ? records.filter((record) => {
-              const rs = deriveReturningStatus(record);
-              return rs === "partially returned" || rs === "fully returned";
-            })
+            const rs = deriveReturningStatus(record);
+            return rs === "partially returned" || rs === "fully returned";
+          })
           : records.filter((record) => {
-              const rs = deriveReturningStatus(record);
-              return rs === "not fully returned" || rs === "partially returned";
-            });
+            const rs = deriveReturningStatus(record);
+            return rs === "not fully returned" || rs === "partially returned";
+          });
       if (!cancelToken.current) {
         setData(visibleRecords);
       }
@@ -1516,12 +1516,12 @@ export default function Borrowing() {
 
           const matchKeys = sourceRowData
             ? Object.keys(sourceRowData).filter((k) => {
-                const nk = String(k).trim().toLowerCase();
-                if (["id", "created_at", "updated_at", "sort_order"].includes(nk)) return false;
-                if (nk === String(quantityKey || "").toLowerCase()) return false;
-                if (nk === String(remarkKey || "").trim().toLowerCase()) return false;
-                return sourceRowData[k] != null && String(sourceRowData[k]).trim() !== "";
-              })
+              const nk = String(k).trim().toLowerCase();
+              if (["id", "created_at", "updated_at", "sort_order"].includes(nk)) return false;
+              if (nk === String(quantityKey || "").toLowerCase()) return false;
+              if (nk === String(remarkKey || "").trim().toLowerCase()) return false;
+              return sourceRowData[k] != null && String(sourceRowData[k]).trim() !== "";
+            })
             : [];
 
           // Process each distinct return-remark group for this item
@@ -2615,164 +2615,163 @@ export default function Borrowing() {
                           return returned < total;
                         });
                         return (
-                        <tr
-                          key={record.id}
-                          onClick={() => setSelectedRecord(record)}
-                          className={`cursor-pointer transition-colors hover:bg-slate-200/80 ${
-                            rowIndex % 2 === 0 ? "bg-white" : "bg-slate-100/90"
-                          }`}
-                        >
-                          {/* Borrower */}
-                          <td className="px-4 py-3">
-                            <p className="text-sm font-medium text-slate-900">{record.name}</p>
-                          </td>
+                          <tr
+                            key={record.id}
+                            onClick={() => setSelectedRecord(record)}
+                            className={`cursor-pointer transition-colors hover:bg-slate-200/80 ${rowIndex % 2 === 0 ? "bg-white" : "bg-slate-100/90"
+                              }`}
+                          >
+                            {/* Borrower */}
+                            <td className="px-4 py-3">
+                              <p className="text-sm font-medium text-slate-900">{record.name}</p>
+                            </td>
 
-                          {/* Borrowed */}
-                          <td className="px-4 py-3 text-sm text-slate-600">
-                            <div>{formatExportDate(record.date)}</div>
-                            <div className="text-xs text-slate-400">{formatExportTime(record.date)}</div>
-                          </td>
-
-                          {/* Returned At (history view only) */}
-                          {statusFilter === "all" && (
+                            {/* Borrowed */}
                             <td className="px-4 py-3 text-sm text-slate-600">
-                              {record.returnedAt
-                                ? <div>
+                              <div>{formatExportDate(record.date)}</div>
+                              <div className="text-xs text-slate-400">{formatExportTime(record.date)}</div>
+                            </td>
+
+                            {/* Returned At (history view only) */}
+                            {statusFilter === "all" && (
+                              <td className="px-4 py-3 text-sm text-slate-600">
+                                {record.returnedAt
+                                  ? <div>
                                     <div>{formatExportDate(record.returnedAt)}</div>
                                     <div className="text-xs text-slate-400">{formatExportTime(record.returnedAt)}</div>
                                   </div>
-                                : <span className="text-xs text-amber-600">Partially returned</span>
-                              }
-                            </td>
-                          )}
-
-                          {/* Status (borrowed view only) */}
-                          {statusFilter !== "all" && (
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-1 text-xs font-medium ${getBorrowingStatusClass(record.status)}`}
-                            >
-                              {formatBorrowingStatus(record.status)}
-                            </span>
-                          </td>
-                          )}
-
-                          {/* Items — bulleted list for multiple */}
-                          <td className="px-4 py-3 text-sm text-slate-600">
-                            {activeItems.length > 1 ? (
-                              <ul className="list-disc list-inside space-y-0.5">
-                                {activeItems.map((item) => (
-                                  <li key={`${record.id}-${item.id}`}>{item.label}</li>
-                                ))}
-                              </ul>
-                            ) : activeItems.length === 1 ? (
-                              <span>{activeItems[0].label}</span>
-                            ) : (
-                              "—"
+                                  : <span className="text-xs text-amber-600">Partially returned</span>
+                                }
+                              </td>
                             )}
-                          </td>
 
-                          {/* Quantity — borrowed tab: remaining; history tab: returned */}
-                          <td className="px-4 py-3 text-sm text-slate-600">
-                            {activeItems.length > 1 ? (
-                              <ul className="list-disc list-inside space-y-0.5">
-                                {activeItems.map((item) => {
+                            {/* Status (borrowed view only) */}
+                            {statusFilter !== "all" && (
+                              <td className="px-4 py-3">
+                                <span
+                                  className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-1 text-xs font-medium ${getBorrowingStatusClass(record.status)}`}
+                                >
+                                  {formatBorrowingStatus(record.status)}
+                                </span>
+                              </td>
+                            )}
+
+                            {/* Items — bulleted list for multiple */}
+                            <td className="px-4 py-3 text-sm text-slate-600">
+                              {activeItems.length > 1 ? (
+                                <ul className="list-disc list-inside space-y-0.5">
+                                  {activeItems.map((item) => (
+                                    <li key={`${record.id}-${item.id}`}>{item.label}</li>
+                                  ))}
+                                </ul>
+                              ) : activeItems.length === 1 ? (
+                                <span>{activeItems[0].label}</span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+
+                            {/* Quantity — borrowed tab: remaining; history tab: returned */}
+                            <td className="px-4 py-3 text-sm text-slate-600">
+                              {activeItems.length > 1 ? (
+                                <ul className="list-disc list-inside space-y-0.5">
+                                  {activeItems.map((item) => {
+                                    const total = getBorrowedQuantity(item);
+                                    const returned = getReturnedQuantity(item);
+                                    const displayQty = statusFilter === "all"
+                                      ? returned
+                                      : Math.max(0, total - returned);
+                                    const isZero = displayQty === 0 || (statusFilter !== "all" && item.inventoryItemId && depletedItems.has(item.inventoryItemId));
+                                    return (
+                                      <li key={`${record.id}-${item.id}-qty`} className={isZero ? "text-slate-600 font-semibold" : ""}>
+                                        {displayQty || "—"}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              ) : activeItems.length === 1 ? (
+                                (() => {
+                                  const item = activeItems[0];
                                   const total = getBorrowedQuantity(item);
                                   const returned = getReturnedQuantity(item);
                                   const displayQty = statusFilter === "all"
                                     ? returned
                                     : Math.max(0, total - returned);
                                   const isZero = displayQty === 0 || (statusFilter !== "all" && item.inventoryItemId && depletedItems.has(item.inventoryItemId));
-                                  return (
-                                    <li key={`${record.id}-${item.id}-qty`} className={isZero ? "text-slate-600 font-semibold" : ""}>
-                                      {displayQty || "—"}
-                                    </li>
-                                  );
-                                })}
-                              </ul>
-                            ) : activeItems.length === 1 ? (
-                              (() => {
-                                const item = activeItems[0];
-                                const total = getBorrowedQuantity(item);
-                                const returned = getReturnedQuantity(item);
-                                const displayQty = statusFilter === "all"
-                                  ? returned
-                                  : Math.max(0, total - returned);
-                                const isZero = displayQty === 0 || (statusFilter !== "all" && item.inventoryItemId && depletedItems.has(item.inventoryItemId));
-                                return <span className={isZero ? "text-rose-700 font-semibold" : ""}>{displayQty || "—"}</span>;
-                              })()
-                            ) : (
-                              "—"
-                            )}
-                          </td>
+                                  return <span className={isZero ? "text-rose-700 font-semibold" : ""}>{displayQty || "—"}</span>;
+                                })()
+                              ) : (
+                                "—"
+                              )}
+                            </td>
 
-                          {/* Condition */}
-                          <td className="px-4 py-3">
-                            {activeItems.length > 1 ? (
-                              <ul className="space-y-1">
-                                {activeItems.map((item) => {
+                            {/* Condition */}
+                            <td className="px-4 py-3">
+                              {activeItems.length > 1 ? (
+                                <ul className="space-y-1">
+                                  {activeItems.map((item) => {
+                                    const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
+                                    const opLabel = tabMeta.operational || "Working";
+                                    const qLabel = tabMeta.quarantine || "Defective";
+                                    const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
+                                    const label = getReturnConditionLabel(item, opLabel, qLabel);
+                                    return (
+                                      <li key={`${record.id}-${item.id}-condition`}>
+                                        <span
+                                          className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${isOperational
+                                            ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                            : "bg-rose-100 text-rose-700 border-rose-200"
+                                            }`}
+                                        >
+                                          {label}
+                                        </span>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              ) : activeItems.length === 1 ? (
+                                (() => {
+                                  const item = activeItems[0];
                                   const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
                                   const opLabel = tabMeta.operational || "Working";
                                   const qLabel = tabMeta.quarantine || "Defective";
                                   const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
                                   const label = getReturnConditionLabel(item, opLabel, qLabel);
                                   return (
-                                    <li key={`${record.id}-${item.id}-condition`}>
-                                      <span
-                                        className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${isOperational
-                                          ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                                          : "bg-rose-100 text-rose-700 border-rose-200"
-                                          }`}
-                                      >
-                                        {label}
-                                      </span>
-                                    </li>
+                                    <span
+                                      className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${isOperational
+                                        ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                        : "bg-rose-100 text-rose-700 border-rose-200"
+                                        }`}
+                                    >
+                                      {label}
+                                    </span>
                                   );
-                                })}
-                              </ul>
-                            ) : activeItems.length === 1 ? (
-                              (() => {
-                                const item = activeItems[0];
-                                const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
-                                const opLabel = tabMeta.operational || "Working";
-                                const qLabel = tabMeta.quarantine || "Defective";
-                                const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
-                                const label = getReturnConditionLabel(item, opLabel, qLabel);
-                                return (
-                                  <span
-                                    className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${isOperational
-                                      ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                                      : "bg-rose-100 text-rose-700 border-rose-200"
-                                      }`}
-                                  >
-                                    {label}
-                                  </span>
-                                );
-                              })()
-                            ) : (
-                              "—"
-                            )}
-                          </td>
-
-                          {/* Action (active view only) */}
-                          {statusFilter === "borrowed" && (
-                            <td className="px-4 py-3">
-                              <div className="flex justify-end">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    requestReturn(record);
-                                  }}
-                                  className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                                >
-                                  Return
-                                </button>
-                              </div>
+                                })()
+                              ) : (
+                                "—"
+                              )}
                             </td>
-                          )}
-                        </tr>
-                      );
+
+                            {/* Action (active view only) */}
+                            {statusFilter === "borrowed" && (
+                              <td className="px-4 py-3">
+                                <div className="flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      requestReturn(record);
+                                    }}
+                                    className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                                  >
+                                    Return
+                                  </button>
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        );
                       })}
                     </tbody>
                   </table>
@@ -2883,41 +2882,25 @@ export default function Borrowing() {
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Returned At</p>
                       <div className="mt-1">
-                      <p className="text-sm text-slate-700">{formatExportDate(selectedRecord.returnedAt)}</p>
-                      <p className="text-xs text-slate-400">{formatExportTime(selectedRecord.returnedAt)}</p>
-                    </div>
+                        <p className="text-sm text-slate-700">{formatExportDate(selectedRecord.returnedAt)}</p>
+                        <p className="text-xs text-slate-400">{formatExportTime(selectedRecord.returnedAt)}</p>
+                      </div>
                     </div>
                   )}
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Status</p>
-                    <p className="mt-1">
-                      <span className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-semibold ${getBorrowingStatusClass(selectedRecord.status)}`}>
-                        {formatBorrowingStatus(selectedRecord.status)}
-                      </span>
+                    <p className="mt-1 text-sm font-medium text-slate-700">
+                      {formatBorrowingStatus(selectedRecord.status)}
                     </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Return Progress</p>
-                    <p className="mt-1">
-                      {(() => {
-                        const rs = deriveReturningStatus(selectedRecord);
-                        const badgeClass = rs === "fully returned"
-                          ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                          : rs === "partially returned"
-                            ? "bg-amber-100 text-amber-700 border-amber-200"
-                            : "bg-sky-100 text-sky-700 border-sky-200";
-                        const label = rs === "fully returned"
-                          ? "Fully Returned"
-                          : rs === "partially returned"
-                            ? "Partially Returned"
-                            : "Not Fully Returned";
-                        return (
-                          <span className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-semibold ${badgeClass}`}>
-                            {label}
-                          </span>
-                        );
-                      })()}
-                    </p>
+                    {(() => {
+                      const rs = deriveReturningStatus(selectedRecord);
+                      if (rs === "fully returned") return null;
+                      const progressLabel = rs === "partially returned" ? "Partially returned" : "No items returned";
+                      const progressClass = rs === "partially returned" ? "text-amber-600" : "text-slate-400";
+                      return (
+                        <p className={`mt-0.5 text-xs ${progressClass}`}>{progressLabel}</p>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -2953,804 +2936,819 @@ export default function Borrowing() {
                 const hasSegregation = borrowedItems.length > 0 && returnedItems.length > 0;
 
                 return (
-                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      {statusFilter === "all" && returningStatus === "partially returned"
-                        ? `Returned Items · ${visibleItems.length} of ${allItems.length} ${allItems.length === 1 ? "item" : "items"}`
-                        : returningStatus === "partially returned"
-                          ? `Items · ${allItems.length} ${allItems.length === 1 ? "item" : "items"} · ${totalReturnedQty} of ${totalBorrowedQty} units returned`
-                          : `Items · ${allItems.length} ${allItems.length === 1 ? "item" : "items"}`
-                      }
-                    </h3>
-                   
-                  </div>
-                  <div className="space-y-4">
-                    {/* ════════════════════════════════════════════════════════════
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        {statusFilter === "all" && returningStatus === "partially returned"
+                          ? `Returned Items · ${visibleItems.length} of ${allItems.length} ${allItems.length === 1 ? "item" : "items"}`
+                          : returningStatus === "partially returned"
+                            ? `Items · ${allItems.length} ${allItems.length === 1 ? "item" : "items"} · ${totalReturnedQty} of ${totalBorrowedQty} units returned`
+                            : `Items · ${allItems.length} ${allItems.length === 1 ? "item" : "items"}`
+                        }
+                      </h3>
+
+                    </div>
+                    <div className="space-y-4">
+                      {/* ════════════════════════════════════════════════════════════
                         STILL BORROWED items (borrowed view only)
                         ════════════════════════════════════════════════════════════ */}
-                    {hasSegregation && borrowedItems.length > 0 && (
-                      <div>
-                        <div className="flex items-center gap-2.5 mb-3 px-1">
-                          <span className="inline-block h-2 w-2 rounded-full bg-sky-500" />
-                          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                            Still Borrowed
-                          </p>
-                          <span className="text-[10px] text-slate-400">· {borrowedItems.length} {borrowedItems.length === 1 ? "item" : "items"}</span>
-                        </div>
-                        <div className="space-y-3">
-                          {borrowedItems.map((item, idx) => {
-                      const borrowedQty = getBorrowedQuantity(item);
-                      const returnedQty = getReturnedQuantity(item);
-                      const defectiveReturned = getReturnDefectiveQuantity(item);
-                      const workingReturned = getReturnWorkingQuantity(item);
-                      const itemRemark = getItemRemark(item);
-                      const tabName = item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "";
-                      const sectionName = item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "";
-                      const isCustom = !item.inventoryItemId;
-
-                      // ── Get dynamic condition labels for this item's tab ──
-                      const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
-                      const opLabel = tabMeta.operational || "Working";
-                      const qLabel = tabMeta.quarantine || "Defective";
-
-                      // ── Unroll units: one entry per physical unit ──
-                      const units = [];
-                      if (isCustom) {
-                        // Custom/ad-hoc: determine return remark from condition/remarks
-                        const rc = String(item.returnCondition || "").trim().toLowerCase();
-                        const rr = String(item.returnRemarks || "").trim().toLowerCase();
-                        let customRemark = "Returned";
-                        if (rc === "defective" || rr.includes("defect")) customRemark = qLabel;
-                        else if (rc === "working" || rr.includes("working")) customRemark = opLabel;
-                        for (let i = 0; i < borrowedQty; i++) {
-                          const isOut = i >= returnedQty;
-                          units.push({
-                            index: i,
-                            status: isOut ? "Active / Borrowed" : "Returned",
-                            remark: isOut ? null : customRemark,
-                            returnRemarkText: isOut ? null : (item.returnRemarks || ""),
-                          });
-                        }
-                      } else {
-                        // Structured: assign per-remark statuses to individual unit indices
-                        let unitCursor = 0;
-                        for (let i = 0; i < defectiveReturned; i += 1) {
-                          units.push({ index: unitCursor, status: "Returned", remark: qLabel, returnRemarkText: item.returnRemarks || "" });
-                          unitCursor += 1;
-                        }
-                        for (let i = 0; i < workingReturned; i += 1) {
-                          units.push({ index: unitCursor, status: "Returned", remark: opLabel, returnRemarkText: item.returnRemarks || "" });
-                          unitCursor += 1;
-                        }
-                        // Handle unclassified returns
-                        const accountedFor = defectiveReturned + workingReturned;
-                        const unclassified = Math.max(0, returnedQty - accountedFor);
-                        for (let i = 0; i < unclassified; i += 1) {
-                          units.push({ index: unitCursor, status: "Returned", remark: "Returned", returnRemarkText: item.returnRemarks || "" });
-                          unitCursor += 1;
-                        }
-                        // Remaining units are still out
-                        while (unitCursor < borrowedQty) {
-                          units.push({ index: unitCursor, status: "Active / Borrowed", remark: null, returnRemarkText: null });
-                          unitCursor += 1;
-                        }
-                        // Nothing returned at all
-                        if (units.length === 0) {
-                          for (let i = 0; i < borrowedQty; i += 1) {
-                            units.push({ index: i, status: "Active / Borrowed", remark: null, returnRemarkText: null });
-                          }
-                        }
-                      }
-
-                      // ── Still Borrowed section: show ALL units ──
-                      const displayUnits = units;
-
-                      // ── Determine the return condition badge for this item ──
-                      const returnConditionLabel = getReturnConditionLabel(item, opLabel, qLabel);
-                      const isOperationalReturn = (() => {
-                        // Check if the dominant return remark matches operational
-                        const rc = String(item.returnCondition || "").trim().toLowerCase();
-                        if (rc === "working" || rc === opLabel.toLowerCase()) return true;
-                        if (rc === "defective" || rc === qLabel.toLowerCase()) return false;
-                        // Fallback: check if workingReturned > defectiveReturned
-                        return workingReturned >= defectiveReturned;
-                      })();
-
-                      // ── Asset attribute key-value pairs (no raw DB IDs) ──
-                      const assetFields = (item.details || [])
-                        .filter((d) => {
-                          const k = String(d.key || "").toLowerCase();
-                          if (d.value == null || String(d.value).trim() === "" || String(d.value) === "[object Object]") return false;
-                          const blockedKeys = new Set([
-                            "quantity", "id", "section_id", "created_at", "updated_at",
-                            "sort_order", "data", "remark", "condition",
-                            "return_defective_quantity", "return_working_quantity",
-                            "tab_id", "section_id", "inventory_tab_id", "inventory_section_id",
-                            "inventory_item_id", "borrowing_record_id", "inventory_table_name",
-                            "computer_number", "computerNumber", "item_number", "itemNumber",
-                            "tab_name", "section_name", "tabName", "sectionName",
-                            "tableName", "table_name", "inventoryTableName",
-                            "tabId", "sectionId", "inventoryTabId", "inventorySectionId",
-                            "inventoryItemId", "borrowingRecordId",
-                            "name", "item_name", "asset_name", "itemName", "assetName",
-                            "label", "item_label", "itemLabel",
-                          ]);
-                          if (blockedKeys.has(k)) return false;
-                          if (k.endsWith("_id")) return false;
-                          if (k.startsWith("_")) return false;
-                          if (k.includes("tab") || k.includes("section") || k.includes("table")) return false;
-                          return true;
-                        })
-                        .map((d) => ({
-                          key: d.key,
-                          label: d.label || formatFieldLabel(d.key),
-                          value: String(d.value),
-                        }));
-
-                      // Fallback for items with empty details array
-                      const fallbackFields = [];
-                      if (assetFields.length === 0 && (item.details || []).length === 0) {
-                        const displayableKeys = [
-                          "brand", "model", "serial_number", "serialNumber",
-                          "type", "description",
-                          "acquisition_date", "acquisitionDate", "date_acquired",
-                          "color", "size", "capacity", "processor", "ram", "storage",
-                        ];
-                        for (const key of displayableKeys) {
-                          const val = item[key];
-                          if (val != null && String(val).trim() !== "") {
-                            fallbackFields.push({ key, label: formatFieldLabel(key), value: String(val) });
-                          }
-                        }
-                      }
-
-                      const displayFields = assetFields.length > 0 ? assetFields : fallbackFields;
-
-                      // ── Original checkout remark ──
-                      const originalRemark = getItemConditionRaw(item) || getItemRemark(item) || opLabel;
-
-                      return (
-                        <div
-                          key={`${selectedRecord.id}-${item.id}-detail`}
-                          className="rounded-xl border border-slate-200 bg-white overflow-hidden"
-                        >
-                          {/* ── Item Header Strip ─────────────────────────────────── */}
-                          <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3">
-                            <div className="flex flex-wrap items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-slate-800 leading-tight">{item.label}</p>
-                                {isCustom ? (
-                                  <p className="mt-0.5 text-[11px] text-slate-400">Custom Item (Outside Inventory)</p>
-                                ) : (
-                                  <p className="mt-0.5 text-[11px] text-slate-400">
-                                    {tabName || "Inventory"}{tabName && sectionName ? " / " : ""}{sectionName || ""}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="shrink-0 flex items-center gap-2">
-                                {/* Return condition badge */}
-                                {returningStatus !== "not fully returned" && (
-                                  <></>
-                                )}
-                                <span className="rounded-md bg-slate-200/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-600">
-                                  Qty: {borrowedQty}
-                                </span>
-                              </div>
-                            </div>
+                      {hasSegregation && borrowedItems.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-2.5 mb-3 px-1">
+                            <span className="inline-block h-2 w-2 rounded-full bg-sky-500" />
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                              Still Borrowed
+                            </p>
+                            <span className="text-[10px] text-slate-400">· {borrowedItems.length} {borrowedItems.length === 1 ? "item" : "items"}</span>
                           </div>
+                          <div className="space-y-3">
+                            {borrowedItems.map((item, idx) => {
+                              const borrowedQty = getBorrowedQuantity(item);
+                              const returnedQty = getReturnedQuantity(item);
+                              const defectiveReturned = getReturnDefectiveQuantity(item);
+                              const workingReturned = getReturnWorkingQuantity(item);
+                              const itemRemark = getItemRemark(item);
+                              const tabName = item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "";
+                              const sectionName = item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "";
+                              const isCustom = !item.inventoryItemId;
 
-                          {/* ── Return Summary Row (for returned items) ──────────── */}
-                          {returningStatus !== "not fully returned" && returnedQty > 0 && (
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 px-4 py-3 bg-slate-50/40 border-b border-slate-100">
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Qty Returned</p>
-                                <p className="mt-0.5 text-xs font-semibold text-slate-700">{returnedQty} / {borrowedQty}</p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Original Remark</p>
-                                <p className="mt-0.5 text-xs font-semibold text-slate-700">{originalRemark}</p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Return Condition</p>
-                                 <p className="mt-0.5 text-xs font-semibold text-slate-700">
-                                  
-                                    {returnConditionLabel}
-                                 
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Return Remark</p>
-                                <p className="mt-0.5 text-xs text-slate-600 truncate">
-                                  {item.returnRemarks?.trim() || "—"}
-                                </p>
-                              </div>
-                            </div>
-                          )}
+                              // ── Get dynamic condition labels for this item's tab ──
+                              const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
+                              const opLabel = tabMeta.operational || "Working";
+                              const qLabel = tabMeta.quarantine || "Defective";
 
-                          {/* ── Unit Status (unrolled per-unit rows) ─────────────── */}
-                          {displayUnits.length > 0 && (
-                            <div className={`px-4 ${displayUnits.length > 1 ? "pt-3 pb-2" : "pt-3 pb-2"}`}>
-                              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                                {displayUnits.length > 1 ? "Unit Status" : "Status"}
-                              </p>
-                              <div className={displayUnits.length > 1 ? "space-y-0" : ""}>
-                                {displayUnits.map((unit, uIdx) => {
-                                  const isActive = unit.status === "Active / Borrowed";
-                                  const dotColor = isActive
-                                    ? "bg-sky-500"
-                                    : unit.remark === qLabel || (unit.remark && unit.remark.toLowerCase().includes("defect"))
-                                      ? "bg-rose-500"
-                                      : unit.remark === opLabel || (unit.remark && unit.remark.toLowerCase() === "working")
-                                        ? "bg-emerald-500"
-                                        : "bg-slate-400";
-                                  return (
-                                    <div
-                                      key={`${item.id}-unit-${unit.index}`}
-                                      className={`flex items-center gap-2 text-xs py-1 ${displayUnits.length > 1 && uIdx < displayUnits.length - 1 ? "border-b border-slate-100/80" : ""}`}
-                                    >
-                                      <span className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${dotColor}`} />
-                                      {displayUnits.length > 1 && (
-                                        <span className="font-medium text-slate-400 w-10 shrink-0 tabular-nums">
-                                          Unit {unit.index + 1}:
-                                        </span>
+                              // ── Unroll units: one entry per physical unit ──
+                              const units = [];
+                              if (isCustom) {
+                                // Custom/ad-hoc: determine return remark from condition/remarks
+                                const rc = String(item.returnCondition || "").trim().toLowerCase();
+                                const rr = String(item.returnRemarks || "").trim().toLowerCase();
+                                let customRemark = "Returned";
+                                if (rc === "defective" || rr.includes("defect")) customRemark = qLabel;
+                                else if (rc === "working" || rr.includes("working")) customRemark = opLabel;
+                                for (let i = 0; i < borrowedQty; i++) {
+                                  const isOut = i >= returnedQty;
+                                  units.push({
+                                    index: i,
+                                    status: isOut ? "Active / Borrowed" : "Returned",
+                                    remark: isOut ? null : customRemark,
+                                    returnRemarkText: isOut ? null : (item.returnRemarks || ""),
+                                  });
+                                }
+                              } else {
+                                // Structured: assign per-remark statuses to individual unit indices
+                                let unitCursor = 0;
+                                for (let i = 0; i < defectiveReturned; i += 1) {
+                                  units.push({ index: unitCursor, status: "Returned", remark: qLabel, returnRemarkText: item.returnRemarks || "" });
+                                  unitCursor += 1;
+                                }
+                                for (let i = 0; i < workingReturned; i += 1) {
+                                  units.push({ index: unitCursor, status: "Returned", remark: opLabel, returnRemarkText: item.returnRemarks || "" });
+                                  unitCursor += 1;
+                                }
+                                // Handle unclassified returns
+                                const accountedFor = defectiveReturned + workingReturned;
+                                const unclassified = Math.max(0, returnedQty - accountedFor);
+                                for (let i = 0; i < unclassified; i += 1) {
+                                  units.push({ index: unitCursor, status: "Returned", remark: "Returned", returnRemarkText: item.returnRemarks || "" });
+                                  unitCursor += 1;
+                                }
+                                // Remaining units are still out
+                                while (unitCursor < borrowedQty) {
+                                  units.push({ index: unitCursor, status: "Active / Borrowed", remark: null, returnRemarkText: null });
+                                  unitCursor += 1;
+                                }
+                                // Nothing returned at all
+                                if (units.length === 0) {
+                                  for (let i = 0; i < borrowedQty; i += 1) {
+                                    units.push({ index: i, status: "Active / Borrowed", remark: null, returnRemarkText: null });
+                                  }
+                                }
+                              }
+
+                              // ── Still Borrowed section: show ALL units ──
+                              const displayUnits = units;
+
+                              // ── Determine the return condition badge for this item ──
+                              const returnConditionLabel = getReturnConditionLabel(item, opLabel, qLabel);
+                              const isOperationalReturn = (() => {
+                                // Check if the dominant return remark matches operational
+                                const rc = String(item.returnCondition || "").trim().toLowerCase();
+                                if (rc === "working" || rc === opLabel.toLowerCase()) return true;
+                                if (rc === "defective" || rc === qLabel.toLowerCase()) return false;
+                                // Fallback: check if workingReturned > defectiveReturned
+                                return workingReturned >= defectiveReturned;
+                              })();
+
+                              // ── Asset attribute key-value pairs (no raw DB IDs) ──
+                              const assetFields = (item.details || [])
+                                .filter((d) => {
+                                  const k = String(d.key || "").toLowerCase();
+                                  if (d.value == null || String(d.value).trim() === "" || String(d.value) === "[object Object]") return false;
+                                  const blockedKeys = new Set([
+                                    "quantity", "id", "section_id", "created_at", "updated_at",
+                                    "sort_order", "data", "remark", "condition",
+                                    "return_defective_quantity", "return_working_quantity",
+                                    "tab_id", "section_id", "inventory_tab_id", "inventory_section_id",
+                                    "inventory_item_id", "borrowing_record_id", "inventory_table_name",
+                                    "computer_number", "computerNumber", "item_number", "itemNumber",
+                                    "tab_name", "section_name", "tabName", "sectionName",
+                                    "tableName", "table_name", "inventoryTableName",
+                                    "tabId", "sectionId", "inventoryTabId", "inventorySectionId",
+                                    "inventoryItemId", "borrowingRecordId",
+                                    "name", "item_name", "asset_name", "itemName", "assetName",
+                                    "label", "item_label", "itemLabel",
+                                  ]);
+                                  if (blockedKeys.has(k)) return false;
+                                  if (k.endsWith("_id")) return false;
+                                  if (k.startsWith("_")) return false;
+                                  if (k.includes("tab") || k.includes("section") || k.includes("table")) return false;
+                                  return true;
+                                })
+                                .map((d) => ({
+                                  key: d.key,
+                                  label: d.label || formatFieldLabel(d.key),
+                                  value: String(d.value),
+                                }));
+
+                              // Fallback for items with empty details array
+                              const fallbackFields = [];
+                              if (assetFields.length === 0 && (item.details || []).length === 0) {
+                                const displayableKeys = [
+                                  "brand", "model", "serial_number", "serialNumber",
+                                  "type", "description",
+                                  "acquisition_date", "acquisitionDate", "date_acquired",
+                                  "color", "size", "capacity", "processor", "ram", "storage",
+                                ];
+                                for (const key of displayableKeys) {
+                                  const val = item[key];
+                                  if (val != null && String(val).trim() !== "") {
+                                    fallbackFields.push({ key, label: formatFieldLabel(key), value: String(val) });
+                                  }
+                                }
+                              }
+
+                              const displayFields = assetFields.length > 0 ? assetFields : fallbackFields;
+
+                              // ── Original checkout remark ──
+                              const originalRemark = getItemConditionRaw(item) || getItemRemark(item) || opLabel;
+
+                              return (
+                                <div
+                                  key={`${selectedRecord.id}-${item.id}-detail`}
+                                  className="rounded-xl border border-slate-200 bg-white overflow-hidden"
+                                >
+                                  {/* ── Item Header Strip ─────────────────────────────────── */}
+                                  <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3">
+                                    <p className="text-sm font-semibold text-slate-800 leading-tight">{item.label}</p>
+                                    {isCustom ? (
+                                      <p className="mt-0.5 text-[11px] text-slate-400">Custom Item (Outside Inventory)</p>
+                                    ) : (
+                                      <p className="mt-0.5 text-[11px] text-slate-400">
+                                        {tabName || "Inventory"}{tabName && sectionName ? " / " : ""}{sectionName || ""}
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  {/* ── 2-Column Body: Left = item data | Right = return info + timestamps ── */}
+                                  <div className="flex flex-col sm:flex-row">
+                                    {/* LEFT: Asset attributes + unit status */}
+                                    <div className="flex-1 min-w-0 border-r border-slate-100">
+                                      {/* Asset Attributes Grid */}
+                                      {displayFields.length > 0 && (
+                                        <div className="px-4 pt-3 pb-2">
+                                          <div className="flex flex-col gap-y-1.5">
+                                            {displayFields.map((field) => (
+                                              <div key={`${item.id}-${field.key}`} className="flex items-start gap-2 min-w-0">
+                                                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                                  {field.label}:
+                                                </span>
+                                                <span className="break-words text-xs font-medium text-slate-700">{field.value}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
                                       )}
-                                      <span className={`font-medium ${isActive ? "text-sky-700" : "text-slate-600"}`}>
-                                        {unit.status}
-                                      </span>
-                                      {!isActive && unit.remark && unit.remark !== "Returned" && (
-                                        <span className="text-slate-400">— {unit.remark}</span>
+
+                                      {/* Unit Status */}
+                                      {displayUnits.length > 0 && (
+                                        <div className={`px-4 ${displayFields.length > 0 ? "pt-1" : "pt-3"} pb-3`}>
+                                          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                                            {displayUnits.length > 1 ? "Unit Status" : "Status"}
+                                          </p>
+                                          <div className={displayUnits.length > 1 ? "space-y-0" : ""}>
+                                            {displayUnits.map((unit, uIdx) => {
+                                              const isActive = unit.status === "Active / Borrowed";
+                                              const dotColor = isActive
+                                                ? "bg-sky-500"
+                                                : unit.remark === qLabel || (unit.remark && unit.remark.toLowerCase().includes("defect"))
+                                                  ? "bg-rose-500"
+                                                  : unit.remark === opLabel || (unit.remark && unit.remark.toLowerCase() === "working")
+                                                    ? "bg-emerald-500"
+                                                    : "bg-slate-400";
+                                              return (
+                                                <div
+                                                  key={`${item.id}-unit-${unit.index}`}
+                                                  className={`flex items-center gap-2 text-xs py-1 ${displayUnits.length > 1 && uIdx < displayUnits.length - 1 ? "border-b border-slate-100/80" : ""}`}
+                                                >
+                                                  <span className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${dotColor}`} />
+                                                  {displayUnits.length > 1 && (
+                                                    <span className="font-medium text-slate-400 w-10 shrink-0 tabular-nums">
+                                                      Unit {unit.index + 1}:
+                                                    </span>
+                                                  )}
+                                                  <span className={`font-medium ${isActive ? "text-sky-700" : "text-slate-600"}`}>
+                                                    {unit.status}
+                                                  </span>
+                                                  {!isActive && unit.remark && unit.remark !== "Returned" && (
+                                                    <span className="text-slate-400">— {unit.remark}</span>
+                                                  )}
+                                                  {isActive && (
+                                                    <span className="text-[10px] text-slate-400 italic">still out</span>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
                                       )}
-                                      {isActive && (
-                                        <span className="text-[10px] text-slate-400 italic">still out</span>
+
+                                      {/* Freetext Return Remarks */}
+                                      {item.returnRemarks?.trim() && (
+                                        <div className="border-t border-slate-100 bg-slate-300/10 px-4 py-3">
+                                          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
+                                          <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{item.returnRemarks}</p>
+                                        </div>
                                       )}
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
 
-                          {/* ── Asset Attributes Grid ───────────────────────────── */}
-                          {displayFields.length > 0 && (
-                            <div className={`px-4 ${displayUnits.length > 0 ? "pt-1" : "pt-2"} pb-3`}>
-                              <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
-                                {displayFields.map((field) => (
-                                  <div key={`${item.id}-${field.key}`} className="flex items-baseline gap-1.5 min-w-0">
-                                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                                      {field.label}:
-                                    </span>
-                                    <span className="truncate text-xs font-medium text-slate-700">{field.value}</span>
+                                    {/* RIGHT: Return info + timestamps */}
+                                    <div className="shrink-0 sm:w-56 bg-slate-50/60 border-t sm:border-t-0 border-slate-100 px-4 py-3 space-y-3">
+                                      <div>
+                                        <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Qty Returned</p>
+                                        <p className="mt-0.5 text-xs font-semibold text-slate-700">{returnedQty} / {borrowedQty}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Original Remark</p>
+                                        <p className="mt-0.5 text-xs font-semibold text-slate-700">{originalRemark}</p>
+                                      </div>
+                                      {returnedQty > 0 && (
+                                        <div>
+                                          <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Return Condition</p>
+                                          <p className="mt-0.5 text-xs font-semibold text-slate-700">{returnConditionLabel}</p>
+                                        </div>
+                                      )}
+                                      <div>
+                                        <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Borrowed At</p>
+                                        <p className="mt-0.5 text-xs font-semibold text-slate-700">{formatExportDate(selectedRecord.date)}</p>
+                                        <p className="text-[11px] text-slate-400">{formatExportTime(selectedRecord.date)}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Returned At</p>
+                                        {item.itemReturnedAt ? (
+                                          <>
+                                            <p className="mt-0.5 text-xs font-semibold text-slate-700">{formatExportDate(item.itemReturnedAt)}</p>
+                                            <p className="text-[11px] text-slate-400">{formatExportTime(item.itemReturnedAt)}</p>
+                                          </>
+                                        ) : (
+                                          <p className="mt-0.5 text-xs text-slate-400 italic">Not yet returned</p>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                        {/* ── Freetext Return Remarks ─────────────────────────── */}
-                        {item.returnRemarks?.trim() && (
-                          <div className="border-t border-slate-100 bg-slate-300/10 px-4 py-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
-                            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{item.returnRemarks}</p>
+                                </div>
+                              );
+                            })}
                           </div>
-                        )}
-                      </div>
-                    );
-                    })}
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {/* ════════════════════════════════════════════════════════════
+                      {/* ════════════════════════════════════════════════════════════
                         RETURNED items (borrowed view only)
                         ════════════════════════════════════════════════════════════ */}
-                    {hasSegregation && returnedItems.length > 0 && (
-                      <div>
-                        <div className="flex items-center gap-2.5 mb-3 px-1">
-                          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                            Returned
-                          </p>
-                          <span className="text-[10px] text-slate-400">· {returnedItems.length} {returnedItems.length === 1 ? "item" : "items"}</span>
-                        </div>
-                        <div className="space-y-3">
-                          {returnedItems.map((item, idx) => {
-                      const borrowedQty = getBorrowedQuantity(item);
-                      const returnedQty = getReturnedQuantity(item);
-                      const defectiveReturned = getReturnDefectiveQuantity(item);
-                      const workingReturned = getReturnWorkingQuantity(item);
-                      const itemRemark = getItemRemark(item);
-                      const tabName = item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "";
-                      const sectionName = item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "";
-                      const isCustom = !item.inventoryItemId;
-
-                      // ── Get dynamic condition labels for this item's tab ──
-                      const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
-                      const opLabel = tabMeta.operational || "Working";
-                      const qLabel = tabMeta.quarantine || "Defective";
-
-                      // ── Unroll units: one entry per physical unit ──
-                      const units = [];
-                      if (isCustom) {
-                        const rc = String(item.returnCondition || "").trim().toLowerCase();
-                        const rr = String(item.returnRemarks || "").trim().toLowerCase();
-                        let customRemark = "Returned";
-                        if (rc === "defective" || rr.includes("defect")) customRemark = qLabel;
-                        else if (rc === "working" || rr.includes("working")) customRemark = opLabel;
-                        for (let i = 0; i < borrowedQty; i++) {
-                          const isOut = i >= returnedQty;
-                          units.push({
-                            index: i,
-                            status: isOut ? "Active / Borrowed" : "Returned",
-                            remark: isOut ? null : customRemark,
-                            returnRemarkText: isOut ? null : (item.returnRemarks || ""),
-                          });
-                        }
-                      } else {
-                        let unitCursor = 0;
-                        for (let i = 0; i < defectiveReturned; i += 1) {
-                          units.push({ index: unitCursor, status: "Returned", remark: qLabel, returnRemarkText: item.returnRemarks || "" });
-                          unitCursor += 1;
-                        }
-                        for (let i = 0; i < workingReturned; i += 1) {
-                          units.push({ index: unitCursor, status: "Returned", remark: opLabel, returnRemarkText: item.returnRemarks || "" });
-                          unitCursor += 1;
-                        }
-                        const accountedFor = defectiveReturned + workingReturned;
-                        const unclassified = Math.max(0, returnedQty - accountedFor);
-                        for (let i = 0; i < unclassified; i += 1) {
-                          units.push({ index: unitCursor, status: "Returned", remark: "Returned", returnRemarkText: item.returnRemarks || "" });
-                          unitCursor += 1;
-                        }
-                        while (unitCursor < borrowedQty) {
-                          units.push({ index: unitCursor, status: "Active / Borrowed", remark: null, returnRemarkText: null });
-                          unitCursor += 1;
-                        }
-                        if (units.length === 0) {
-                          for (let i = 0; i < borrowedQty; i += 1) {
-                            units.push({ index: i, status: "Active / Borrowed", remark: null, returnRemarkText: null });
-                          }
-                        }
-                      }
-
-                      // ── For returned section: only show returned units ──
-                      const displayUnits = units.filter((u) => u.status === "Returned");
-
-                      // ── Determine the return condition badge for this item ──
-                      const returnConditionLabel = getReturnConditionLabel(item, opLabel, qLabel);
-                      const isOperationalReturn = (() => {
-                        const rc = String(item.returnCondition || "").trim().toLowerCase();
-                        if (rc === "working" || rc === opLabel.toLowerCase()) return true;
-                        if (rc === "defective" || rc === qLabel.toLowerCase()) return false;
-                        return workingReturned >= defectiveReturned;
-                      })();
-
-                      // ── Asset attribute key-value pairs (no raw DB IDs) ──
-                      const assetFields = (item.details || [])
-                        .filter((d) => {
-                          const k = String(d.key || "").toLowerCase();
-                          if (d.value == null || String(d.value).trim() === "" || String(d.value) === "[object Object]") return false;
-                          const blockedKeys = new Set([
-                            "quantity", "id", "section_id", "created_at", "updated_at",
-                            "sort_order", "data", "remark", "condition",
-                            "return_defective_quantity", "return_working_quantity",
-                            "tab_id", "section_id", "inventory_tab_id", "inventory_section_id",
-                            "inventory_item_id", "borrowing_record_id", "inventory_table_name",
-                            "computer_number", "computerNumber", "item_number", "itemNumber",
-                            "tab_name", "section_name", "tabName", "sectionName",
-                            "tableName", "table_name", "inventoryTableName",
-                            "tabId", "sectionId", "inventoryTabId", "inventorySectionId",
-                            "inventoryItemId", "borrowingRecordId",
-                            "name", "item_name", "asset_name", "itemName", "assetName",
-                            "label", "item_label", "itemLabel",
-                          ]);
-                          if (blockedKeys.has(k)) return false;
-                          if (k.endsWith("_id")) return false;
-                          if (k.startsWith("_")) return false;
-                          if (k.includes("tab") || k.includes("section") || k.includes("table")) return false;
-                          return true;
-                        })
-                        .map((d) => ({
-                          key: d.key,
-                          label: d.label || formatFieldLabel(d.key),
-                          value: String(d.value),
-                        }));
-
-                      // Fallback for items with empty details array
-                      const fallbackFields = [];
-                      if (assetFields.length === 0 && (item.details || []).length === 0) {
-                        const displayableKeys = [
-                          "brand", "model", "serial_number", "serialNumber",
-                          "type", "description",
-                          "acquisition_date", "acquisitionDate", "date_acquired",
-                          "color", "size", "capacity", "processor", "ram", "storage",
-                        ];
-                        for (const key of displayableKeys) {
-                          const val = item[key];
-                          if (val != null && String(val).trim() !== "") {
-                            fallbackFields.push({ key, label: formatFieldLabel(key), value: String(val) });
-                          }
-                        }
-                      }
-
-                      const displayFields = assetFields.length > 0 ? assetFields : fallbackFields;
-
-                      // ── Original checkout remark ──
-                      const originalRemark = getItemConditionRaw(item) || getItemRemark(item) || opLabel;
-
-                      return (
-                        <div
-                          key={`${selectedRecord.id}-${item.id}-detail-returned`}
-                          className="rounded-xl border border-slate-200 bg-white overflow-hidden"
-                        >
-                          {/* ── Item Header Strip ─────────────────────────────────── */}
-                          <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3">
-                            <div className="flex flex-wrap items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-slate-800 leading-tight">{item.label}</p>
-                                {isCustom ? (
-                                  <p className="mt-0.5 text-[11px] text-slate-400">Custom Item (Outside Inventory)</p>
-                                ) : (
-                                  <p className="mt-0.5 text-[11px] text-slate-400">
-                                    {tabName || "Inventory"}{tabName && sectionName ? " / " : ""}{sectionName || ""}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="shrink-0 flex items-center gap-2">
-                                <span className="rounded-md bg-slate-200/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-600">
-                                  Qty: {borrowedQty}
-                                </span>
-                              </div>
-                            </div>
+                      {hasSegregation && returnedItems.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-2.5 mb-3 px-1">
+                            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                              Returned
+                            </p>
+                            <span className="text-[10px] text-slate-400">· {returnedItems.length} {returnedItems.length === 1 ? "item" : "items"}</span>
                           </div>
+                          <div className="space-y-3">
+                            {returnedItems.map((item, idx) => {
+                              const borrowedQty = getBorrowedQuantity(item);
+                              const returnedQty = getReturnedQuantity(item);
+                              const defectiveReturned = getReturnDefectiveQuantity(item);
+                              const workingReturned = getReturnWorkingQuantity(item);
+                              const itemRemark = getItemRemark(item);
+                              const tabName = item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "";
+                              const sectionName = item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "";
+                              const isCustom = !item.inventoryItemId;
 
-                          {/* ── Return Summary Row ───────────────────────────────── */}
-                          {returnedQty > 0 && (
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 px-4 py-3 bg-slate-50/40 border-b border-slate-100">
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Qty Returned</p>
-                                <p className="mt-0.5 text-xs font-semibold text-slate-700">{returnedQty} / {borrowedQty}</p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Original Remark</p>
-                                <p className="mt-0.5 text-xs font-semibold text-slate-700">{originalRemark}</p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Return Condition</p>
-                                <p className="mt-0.5 text-xs font-semibold text-slate-700">
-                                  
-                                    {returnConditionLabel}
-                                  
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Return Remark</p>
-                                <p className="mt-0.5 text-xs text-slate-600 truncate">
-                                  {item.returnRemarks?.trim() || "—"}
-                                </p>
-                              </div>
-                            </div>
-                          )}
+                              // ── Get dynamic condition labels for this item's tab ──
+                              const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
+                              const opLabel = tabMeta.operational || "Working";
+                              const qLabel = tabMeta.quarantine || "Defective";
 
-                          {/* ── Unit Status (returned units only) ───────────────── */}
-                          {displayUnits.length > 0 && (
-                            <div className={`px-4 ${displayUnits.length > 1 ? "pt-3 pb-2" : "pt-3 pb-2"}`}>
-                              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                                {displayUnits.length > 1 ? "Unit Status" : "Status"}
-                              </p>
-                              <div className={displayUnits.length > 1 ? "space-y-0" : ""}>
-                                {displayUnits.map((unit, uIdx) => {
-                                  const dotColor =
-                                    unit.remark === qLabel || (unit.remark && unit.remark.toLowerCase().includes("defect"))
-                                      ? "bg-rose-500"
-                                      : unit.remark === opLabel || (unit.remark && unit.remark.toLowerCase() === "working")
-                                        ? "bg-emerald-500"
-                                        : "bg-slate-400";
-                                  return (
-                                    <div
-                                      key={`${item.id}-unit-${unit.index}`}
-                                      className={`flex items-center gap-2 text-xs py-1 ${displayUnits.length > 1 && uIdx < displayUnits.length - 1 ? "border-b border-slate-100/80" : ""}`}
-                                    >
-                                      <span className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${dotColor}`} />
-                                      {displayUnits.length > 1 && (
-                                        <span className="font-medium text-slate-400 w-10 shrink-0 tabular-nums">
-                                          Unit {unit.index + 1}:
+                              // ── Unroll units: one entry per physical unit ──
+                              const units = [];
+                              if (isCustom) {
+                                const rc = String(item.returnCondition || "").trim().toLowerCase();
+                                const rr = String(item.returnRemarks || "").trim().toLowerCase();
+                                let customRemark = "Returned";
+                                if (rc === "defective" || rr.includes("defect")) customRemark = qLabel;
+                                else if (rc === "working" || rr.includes("working")) customRemark = opLabel;
+                                for (let i = 0; i < borrowedQty; i++) {
+                                  const isOut = i >= returnedQty;
+                                  units.push({
+                                    index: i,
+                                    status: isOut ? "Active / Borrowed" : "Returned",
+                                    remark: isOut ? null : customRemark,
+                                    returnRemarkText: isOut ? null : (item.returnRemarks || ""),
+                                  });
+                                }
+                              } else {
+                                let unitCursor = 0;
+                                for (let i = 0; i < defectiveReturned; i += 1) {
+                                  units.push({ index: unitCursor, status: "Returned", remark: qLabel, returnRemarkText: item.returnRemarks || "" });
+                                  unitCursor += 1;
+                                }
+                                for (let i = 0; i < workingReturned; i += 1) {
+                                  units.push({ index: unitCursor, status: "Returned", remark: opLabel, returnRemarkText: item.returnRemarks || "" });
+                                  unitCursor += 1;
+                                }
+                                const accountedFor = defectiveReturned + workingReturned;
+                                const unclassified = Math.max(0, returnedQty - accountedFor);
+                                for (let i = 0; i < unclassified; i += 1) {
+                                  units.push({ index: unitCursor, status: "Returned", remark: "Returned", returnRemarkText: item.returnRemarks || "" });
+                                  unitCursor += 1;
+                                }
+                                while (unitCursor < borrowedQty) {
+                                  units.push({ index: unitCursor, status: "Active / Borrowed", remark: null, returnRemarkText: null });
+                                  unitCursor += 1;
+                                }
+                                if (units.length === 0) {
+                                  for (let i = 0; i < borrowedQty; i += 1) {
+                                    units.push({ index: i, status: "Active / Borrowed", remark: null, returnRemarkText: null });
+                                  }
+                                }
+                              }
+
+                              // ── For returned section: only show returned units ──
+                              const displayUnits = units.filter((u) => u.status === "Returned");
+
+                              // ── Determine the return condition badge for this item ──
+                              const returnConditionLabel = getReturnConditionLabel(item, opLabel, qLabel);
+                              const isOperationalReturn = (() => {
+                                const rc = String(item.returnCondition || "").trim().toLowerCase();
+                                if (rc === "working" || rc === opLabel.toLowerCase()) return true;
+                                if (rc === "defective" || rc === qLabel.toLowerCase()) return false;
+                                return workingReturned >= defectiveReturned;
+                              })();
+
+                              // ── Asset attribute key-value pairs (no raw DB IDs) ──
+                              const assetFields = (item.details || [])
+                                .filter((d) => {
+                                  const k = String(d.key || "").toLowerCase();
+                                  if (d.value == null || String(d.value).trim() === "" || String(d.value) === "[object Object]") return false;
+                                  const blockedKeys = new Set([
+                                    "quantity", "id", "section_id", "created_at", "updated_at",
+                                    "sort_order", "data", "remark", "condition",
+                                    "return_defective_quantity", "return_working_quantity",
+                                    "tab_id", "section_id", "inventory_tab_id", "inventory_section_id",
+                                    "inventory_item_id", "borrowing_record_id", "inventory_table_name",
+                                    "computer_number", "computerNumber", "item_number", "itemNumber",
+                                    "tab_name", "section_name", "tabName", "sectionName",
+                                    "tableName", "table_name", "inventoryTableName",
+                                    "tabId", "sectionId", "inventoryTabId", "inventorySectionId",
+                                    "inventoryItemId", "borrowingRecordId",
+                                    "name", "item_name", "asset_name", "itemName", "assetName",
+                                    "label", "item_label", "itemLabel",
+                                  ]);
+                                  if (blockedKeys.has(k)) return false;
+                                  if (k.endsWith("_id")) return false;
+                                  if (k.startsWith("_")) return false;
+                                  if (k.includes("tab") || k.includes("section") || k.includes("table")) return false;
+                                  return true;
+                                })
+                                .map((d) => ({
+                                  key: d.key,
+                                  label: d.label || formatFieldLabel(d.key),
+                                  value: String(d.value),
+                                }));
+
+                              // Fallback for items with empty details array
+                              const fallbackFields = [];
+                              if (assetFields.length === 0 && (item.details || []).length === 0) {
+                                const displayableKeys = [
+                                  "brand", "model", "serial_number", "serialNumber",
+                                  "type", "description",
+                                  "acquisition_date", "acquisitionDate", "date_acquired",
+                                  "color", "size", "capacity", "processor", "ram", "storage",
+                                ];
+                                for (const key of displayableKeys) {
+                                  const val = item[key];
+                                  if (val != null && String(val).trim() !== "") {
+                                    fallbackFields.push({ key, label: formatFieldLabel(key), value: String(val) });
+                                  }
+                                }
+                              }
+
+                              const displayFields = assetFields.length > 0 ? assetFields : fallbackFields;
+
+                              // ── Original checkout remark ──
+                              const originalRemark = getItemConditionRaw(item) || getItemRemark(item) || opLabel;
+
+                              return (
+                                <div
+                                  key={`${selectedRecord.id}-${item.id}-detail-returned`}
+                                  className="rounded-xl border border-slate-200 bg-white overflow-hidden"
+                                >
+                                  {/* ── Item Header Strip ─────────────────────────────────── */}
+                                  <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3">
+                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-semibold text-slate-800 leading-tight">{item.label}</p>
+                                        {isCustom ? (
+                                          <p className="mt-0.5 text-[11px] text-slate-400">Custom Item (Outside Inventory)</p>
+                                        ) : (
+                                          <p className="mt-0.5 text-[11px] text-slate-400">
+                                            {tabName || "Inventory"}{tabName && sectionName ? " / " : ""}{sectionName || ""}
+                                          </p>
+                                        )}
+                                      </div>
+                                      <div className="shrink-0 flex items-center gap-2">
+                                        <span className="rounded-md bg-slate-200/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-600">
+                                          Qty: {borrowedQty}
                                         </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* ── 2-Column Body: Left = item data | Right = return info + timestamps ── */}
+                                  <div className="flex flex-col sm:flex-row">
+                                    <div className="flex-1 min-w-0 border-r border-slate-100">
+                                      {displayFields.length > 0 && (
+                                        <div className="px-4 pt-3 pb-2">
+                                          <div className="flex flex-col gap-y-1.5">
+                                            {displayFields.map((field) => (
+                                              <div key={`${item.id}-${field.key}`} className="flex items-baseline gap-1.5 min-w-0">
+                                                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                                  {field.label}:
+                                                </span>
+                                                <span className="truncate text-xs font-medium text-slate-700">{field.value}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
                                       )}
-                                      <span className="font-medium text-slate-600">
-                                        {unit.status}
-                                      </span>
-                                      {unit.remark && unit.remark !== "Returned" && (
-                                        <span className="text-slate-400">— {unit.remark}</span>
+
+                                      {/* Unit Status */}
+                                      {displayUnits.length > 0 && (
+                                        <div className={`px-4 ${displayFields.length > 0 ? "pt-1" : "pt-3"} pb-3`}>
+                                          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                                            {displayUnits.length > 1 ? "Unit Status" : "Status"}
+                                          </p>
+                                          <div className={displayUnits.length > 1 ? "space-y-0" : ""}>
+                                            {displayUnits.map((unit, uIdx) => {
+                                              const dotColor =
+                                                unit.remark === qLabel || (unit.remark && unit.remark.toLowerCase().includes("defect"))
+                                                  ? "bg-rose-500"
+                                                  : unit.remark === opLabel || (unit.remark && unit.remark.toLowerCase() === "working")
+                                                    ? "bg-emerald-500"
+                                                    : "bg-slate-400";
+                                              return (
+                                                <div
+                                                  key={`${item.id}-unit-${unit.index}`}
+                                                  className={`flex items-center gap-2 text-xs py-1 ${displayUnits.length > 1 && uIdx < displayUnits.length - 1 ? "border-b border-slate-100/80" : ""}`}
+                                                >
+                                                  <span className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${dotColor}`} />
+                                                  {displayUnits.length > 1 && (
+                                                    <span className="font-medium text-slate-400 w-10 shrink-0 tabular-nums">
+                                                      Unit {unit.index + 1}:
+                                                    </span>
+                                                  )}
+                                                  <span className="font-medium text-slate-600">
+                                                    {unit.status}
+                                                  </span>
+                                                  {unit.remark && unit.remark !== "Returned" && (
+                                                    <span className="text-slate-400">— {unit.remark}</span>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {item.returnRemarks?.trim() && (
+                                        <div className="border-t border-slate-100 bg-slate-300/10 px-4 py-3">
+                                          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
+                                          <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{item.returnRemarks}</p>
+                                        </div>
                                       )}
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
 
-                          {/* ── Asset Attributes Grid ───────────────────────────── */}
-                          {displayFields.length > 0 && (
-                            <div className={`px-4 ${displayUnits.length > 0 ? "pt-1" : "pt-2"} pb-3`}>
-                              <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
-                                {displayFields.map((field) => (
-                                  <div key={`${item.id}-${field.key}`} className="flex items-baseline gap-1.5 min-w-0">
-                                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                                      {field.label}:
-                                    </span>
-                                    <span className="truncate text-xs font-medium text-slate-700">{field.value}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                        {/* ── Freetext Return Remarks ─────────────────────────── */}
-                        {item.returnRemarks?.trim() && (
-                          <div className="border-t border-slate-100 bg-slate-300/10 px-4 py-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
-                            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{item.returnRemarks}</p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                    })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ── Non-segregated: single list (no split needed) ──────── */}
-                    {!hasSegregation && visibleItems.map((item, idx) => {
-                      const borrowedQty = getBorrowedQuantity(item);
-                      const returnedQty = getReturnedQuantity(item);
-                      const defectiveReturned = getReturnDefectiveQuantity(item);
-                      const workingReturned = getReturnWorkingQuantity(item);
-                      const itemRemark = getItemRemark(item);
-                      const tabName = item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "";
-                      const sectionName = item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "";
-                      const isCustom = !item.inventoryItemId;
-
-                      // ── Get dynamic condition labels for this item's tab ──
-                      const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
-                      const opLabel = tabMeta.operational || "Working";
-                      const qLabel = tabMeta.quarantine || "Defective";
-
-                      // ── Unroll units: one entry per physical unit ──
-                      const units = [];
-                      if (isCustom) {
-                        const rc = String(item.returnCondition || "").trim().toLowerCase();
-                        const rr = String(item.returnRemarks || "").trim().toLowerCase();
-                        let customRemark = "Returned";
-                        if (rc === "defective" || rr.includes("defect")) customRemark = qLabel;
-                        else if (rc === "working" || rr.includes("working")) customRemark = opLabel;
-                        for (let i = 0; i < borrowedQty; i++) {
-                          const isOut = i >= returnedQty;
-                          units.push({
-                            index: i,
-                            status: isOut ? "Active / Borrowed" : "Returned",
-                            remark: isOut ? null : customRemark,
-                            returnRemarkText: isOut ? null : (item.returnRemarks || ""),
-                          });
-                        }
-                      } else {
-                        let unitCursor = 0;
-                        for (let i = 0; i < defectiveReturned; i += 1) {
-                          units.push({ index: unitCursor, status: "Returned", remark: qLabel, returnRemarkText: item.returnRemarks || "" });
-                          unitCursor += 1;
-                        }
-                        for (let i = 0; i < workingReturned; i += 1) {
-                          units.push({ index: unitCursor, status: "Returned", remark: opLabel, returnRemarkText: item.returnRemarks || "" });
-                          unitCursor += 1;
-                        }
-                        const accountedFor = defectiveReturned + workingReturned;
-                        const unclassified = Math.max(0, returnedQty - accountedFor);
-                        for (let i = 0; i < unclassified; i += 1) {
-                          units.push({ index: unitCursor, status: "Returned", remark: "Returned", returnRemarkText: item.returnRemarks || "" });
-                          unitCursor += 1;
-                        }
-                        while (unitCursor < borrowedQty) {
-                          units.push({ index: unitCursor, status: "Active / Borrowed", remark: null, returnRemarkText: null });
-                          unitCursor += 1;
-                        }
-                        if (units.length === 0) {
-                          for (let i = 0; i < borrowedQty; i += 1) {
-                            units.push({ index: i, status: "Active / Borrowed", remark: null, returnRemarkText: null });
-                          }
-                        }
-                      }
-
-                      const displayUnits = units;
-
-                      // ── Determine the return condition badge for this item ──
-                      const returnConditionLabel = getReturnConditionLabel(item, opLabel, qLabel);
-                      const isOperationalReturn = (() => {
-                        const rc = String(item.returnCondition || "").trim().toLowerCase();
-                        if (rc === "working" || rc === opLabel.toLowerCase()) return true;
-                        if (rc === "defective" || rc === qLabel.toLowerCase()) return false;
-                        return workingReturned >= defectiveReturned;
-                      })();
-
-                      // ── Asset attribute key-value pairs (no raw DB IDs) ──
-                      const assetFields = (item.details || [])
-                        .filter((d) => {
-                          const k = String(d.key || "").toLowerCase();
-                          if (d.value == null || String(d.value).trim() === "" || String(d.value) === "[object Object]") return false;
-                          const blockedKeys = new Set([
-                            "quantity", "id", "section_id", "created_at", "updated_at",
-                            "sort_order", "data", "remark", "condition",
-                            "return_defective_quantity", "return_working_quantity",
-                            "tab_id", "section_id", "inventory_tab_id", "inventory_section_id",
-                            "inventory_item_id", "borrowing_record_id", "inventory_table_name",
-                            "computer_number", "computerNumber", "item_number", "itemNumber",
-                            "tab_name", "section_name", "tabName", "sectionName",
-                            "tableName", "table_name", "inventoryTableName",
-                            "tabId", "sectionId", "inventoryTabId", "inventorySectionId",
-                            "inventoryItemId", "borrowingRecordId",
-                            "name", "item_name", "asset_name", "itemName", "assetName",
-                            "label", "item_label", "itemLabel",
-                          ]);
-                          if (blockedKeys.has(k)) return false;
-                          if (k.endsWith("_id")) return false;
-                          if (k.startsWith("_")) return false;
-                          if (k.includes("tab") || k.includes("section") || k.includes("table")) return false;
-                          return true;
-                        })
-                        .map((d) => ({
-                          key: d.key,
-                          label: d.label || formatFieldLabel(d.key),
-                          value: String(d.value),
-                        }));
-
-                      const fallbackFields = [];
-                      if (assetFields.length === 0 && (item.details || []).length === 0) {
-                        const displayableKeys = [
-                          "brand", "model", "serial_number", "serialNumber",
-                          "type", "description",
-                          "acquisition_date", "acquisitionDate", "date_acquired",
-                          "color", "size", "capacity", "processor", "ram", "storage",
-                        ];
-                        for (const key of displayableKeys) {
-                          const val = item[key];
-                          if (val != null && String(val).trim() !== "") {
-                            fallbackFields.push({ key, label: formatFieldLabel(key), value: String(val) });
-                          }
-                        }
-                      }
-
-                      const displayFields = assetFields.length > 0 ? assetFields : fallbackFields;
-
-                      const originalRemark = getItemConditionRaw(item) || getItemRemark(item) || opLabel;
-
-                      return (
-                        <div
-                          key={`${selectedRecord.id}-${item.id}-detail`}
-                          className="rounded-xl border border-slate-200 bg-white overflow-hidden"
-                        >
-                          {/* ── Item Header Strip ─────────────────────────────────── */}
-                          <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3">
-                            <div className="flex flex-wrap items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-slate-800 leading-tight">{item.label}</p>
-                                {isCustom ? (
-                                  <p className="mt-0.5 text-[11px] text-slate-400">Custom Item (Outside Inventory)</p>
-                                ) : (
-                                  <p className="mt-0.5 text-[11px] text-slate-400">
-                                    {tabName || "Inventory"}{tabName && sectionName ? " / " : ""}{sectionName || ""}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="shrink-0 flex items-center gap-2">
-                                {returningStatus !== "not fully returned" && (
-                                  <></>
-                                )}
-                                <span className="rounded-md bg-slate-200/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-600">
-                                  Qty: {borrowedQty}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* ── Return Summary Row (for returned items) ──────────── */}
-                          {returningStatus !== "not fully returned" && returnedQty > 0 && (
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 px-4 py-3 bg-slate-50/40 border-b border-slate-100">
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Qty Returned</p>
-                                <p className="mt-0.5 text-xs font-semibold text-slate-700">{returnedQty} / {borrowedQty}</p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Original Remark</p>
-                                <p className="mt-0.5 text-xs font-semibold text-slate-700">{originalRemark}</p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Return Condition</p>
-                                <p className="mt-0.5 text-xs font-semibold text-slate-700">
-                                 
-                                    {returnConditionLabel}
-                                 
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Return Remark</p>
-                                <p className="mt-0.5 text-xs text-slate-600 truncate">
-                                  {item.returnRemarks?.trim() || "—"}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* ── Unit Status (unrolled per-unit rows) ─────────────── */}
-                          {displayUnits.length > 0 && (
-                            <div className={`px-4 ${displayUnits.length > 1 ? "pt-3 pb-2" : "pt-3 pb-2"}`}>
-                              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                                {displayUnits.length > 1 ? "Unit Status" : "Status"}
-                              </p>
-                              <div className={displayUnits.length > 1 ? "space-y-0" : ""}>
-                                {displayUnits.map((unit, uIdx) => {
-                                  const isActive = unit.status === "Active / Borrowed";
-                                  const dotColor = isActive
-                                    ? "bg-sky-500"
-                                    : unit.remark === qLabel || (unit.remark && unit.remark.toLowerCase().includes("defect"))
-                                      ? "bg-rose-500"
-                                      : unit.remark === opLabel || (unit.remark && unit.remark.toLowerCase() === "working")
-                                        ? "bg-emerald-500"
-                                        : "bg-slate-400";
-                                  return (
-                                    <div
-                                      key={`${item.id}-unit-${unit.index}`}
-                                      className={`flex items-center gap-2 text-xs py-1 ${displayUnits.length > 1 && uIdx < displayUnits.length - 1 ? "border-b border-slate-100/80" : ""}`}
-                                    >
-                                      <span className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${dotColor}`} />
-                                      {displayUnits.length > 1 && (
-                                        <span className="font-medium text-slate-400 w-10 shrink-0 tabular-nums">
-                                          Unit {unit.index + 1}:
-                                        </span>
+                                    {/* RIGHT: Return info + timestamps */}
+                                    <div className="shrink-0 sm:w-56 bg-slate-50/60 border-t sm:border-t-0 border-slate-100 px-4 py-3 space-y-3">
+                                      <div>
+                                        <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Qty Returned</p>
+                                        <p className="mt-0.5 text-xs font-semibold text-slate-700">{returnedQty} / {borrowedQty}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Original Remark</p>
+                                        <p className="mt-0.5 text-xs font-semibold text-slate-700">{originalRemark}</p>
+                                      </div>
+                                      {returnedQty > 0 && (
+                                        <div>
+                                          <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Return Condition</p>
+                                          <p className="mt-0.5 text-xs font-semibold text-slate-700">{returnConditionLabel}</p>
+                                        </div>
                                       )}
-                                      <span className={`font-medium ${isActive ? "text-sky-700" : "text-slate-600"}`}>
-                                        {unit.status}
-                                      </span>
-                                      {!isActive && unit.remark && unit.remark !== "Returned" && (
-                                        <span className="text-slate-400">— {unit.remark}</span>
-                                      )}
-                                      {isActive && (
-                                        <span className="text-[10px] text-slate-400 italic">still out</span>
-                                      )}
+                                      <div>
+                                        <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Borrowed At</p>
+                                        <p className="mt-0.5 text-xs font-semibold text-slate-700">{formatExportDate(selectedRecord.date)}</p>
+                                        <p className="text-[11px] text-slate-400">{formatExportTime(selectedRecord.date)}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Returned At</p>
+                                        {item.itemReturnedAt ? (
+                                          <>
+                                            <p className="mt-0.5 text-xs font-semibold text-slate-700">{formatExportDate(item.itemReturnedAt)}</p>
+                                            <p className="text-[11px] text-slate-400">{formatExportTime(item.itemReturnedAt)}</p>
+                                          </>
+                                        ) : (
+                                          <p className="mt-0.5 text-xs text-slate-400 italic">Not yet returned</p>
+                                        )}
+                                      </div>
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* ── Asset Attributes Grid ───────────────────────────── */}
-                          {displayFields.length > 0 && (
-                            <div className={`px-4 ${displayUnits.length > 0 ? "pt-1" : "pt-2"} pb-3`}>
-                              <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
-                                {displayFields.map((field) => (
-                                  <div key={`${item.id}-${field.key}`} className="flex items-baseline gap-1.5 min-w-0">
-                                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                                      {field.label}:
-                                    </span>
-                                    <span className="truncate text-xs font-medium text-slate-700">{field.value}</span>
                                   </div>
-                                ))}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── Non-segregated: single list (no split needed) ──────── */}
+                      {!hasSegregation && visibleItems.map((item, idx) => {
+                        const borrowedQty = getBorrowedQuantity(item);
+                        const returnedQty = getReturnedQuantity(item);
+                        const defectiveReturned = getReturnDefectiveQuantity(item);
+                        const workingReturned = getReturnWorkingQuantity(item);
+                        const itemRemark = getItemRemark(item);
+                        const tabName = item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "";
+                        const sectionName = item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "";
+                        const isCustom = !item.inventoryItemId;
+
+                        // ── Get dynamic condition labels for this item's tab ──
+                        const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
+                        const opLabel = tabMeta.operational || "Working";
+                        const qLabel = tabMeta.quarantine || "Defective";
+
+                        // ── Unroll units: one entry per physical unit ──
+                        const units = [];
+                        if (isCustom) {
+                          const rc = String(item.returnCondition || "").trim().toLowerCase();
+                          const rr = String(item.returnRemarks || "").trim().toLowerCase();
+                          let customRemark = "Returned";
+                          if (rc === "defective" || rr.includes("defect")) customRemark = qLabel;
+                          else if (rc === "working" || rr.includes("working")) customRemark = opLabel;
+                          for (let i = 0; i < borrowedQty; i++) {
+                            const isOut = i >= returnedQty;
+                            units.push({
+                              index: i,
+                              status: isOut ? "Active / Borrowed" : "Returned",
+                              remark: isOut ? null : customRemark,
+                              returnRemarkText: isOut ? null : (item.returnRemarks || ""),
+                            });
+                          }
+                        } else {
+                          let unitCursor = 0;
+                          for (let i = 0; i < defectiveReturned; i += 1) {
+                            units.push({ index: unitCursor, status: "Returned", remark: qLabel, returnRemarkText: item.returnRemarks || "" });
+                            unitCursor += 1;
+                          }
+                          for (let i = 0; i < workingReturned; i += 1) {
+                            units.push({ index: unitCursor, status: "Returned", remark: opLabel, returnRemarkText: item.returnRemarks || "" });
+                            unitCursor += 1;
+                          }
+                          const accountedFor = defectiveReturned + workingReturned;
+                          const unclassified = Math.max(0, returnedQty - accountedFor);
+                          for (let i = 0; i < unclassified; i += 1) {
+                            units.push({ index: unitCursor, status: "Returned", remark: "Returned", returnRemarkText: item.returnRemarks || "" });
+                            unitCursor += 1;
+                          }
+                          while (unitCursor < borrowedQty) {
+                            units.push({ index: unitCursor, status: "Active / Borrowed", remark: null, returnRemarkText: null });
+                            unitCursor += 1;
+                          }
+                          if (units.length === 0) {
+                            for (let i = 0; i < borrowedQty; i += 1) {
+                              units.push({ index: i, status: "Active / Borrowed", remark: null, returnRemarkText: null });
+                            }
+                          }
+                        }
+
+                        const displayUnits = units;
+
+                        // ── Determine the return condition badge for this item ──
+                        const returnConditionLabel = getReturnConditionLabel(item, opLabel, qLabel);
+                        const isOperationalReturn = (() => {
+                          const rc = String(item.returnCondition || "").trim().toLowerCase();
+                          if (rc === "working" || rc === opLabel.toLowerCase()) return true;
+                          if (rc === "defective" || rc === qLabel.toLowerCase()) return false;
+                          return workingReturned >= defectiveReturned;
+                        })();
+
+                        // ── Asset attribute key-value pairs (no raw DB IDs) ──
+                        const assetFields = (item.details || [])
+                          .filter((d) => {
+                            const k = String(d.key || "").toLowerCase();
+                            if (d.value == null || String(d.value).trim() === "" || String(d.value) === "[object Object]") return false;
+                            const blockedKeys = new Set([
+                              "quantity", "id", "section_id", "created_at", "updated_at",
+                              "sort_order", "data", "remark", "condition",
+                              "return_defective_quantity", "return_working_quantity",
+                              "tab_id", "section_id", "inventory_tab_id", "inventory_section_id",
+                              "inventory_item_id", "borrowing_record_id", "inventory_table_name",
+                              "computer_number", "computerNumber", "item_number", "itemNumber",
+                              "tab_name", "section_name", "tabName", "sectionName",
+                              "tableName", "table_name", "inventoryTableName",
+                              "tabId", "sectionId", "inventoryTabId", "inventorySectionId",
+                              "inventoryItemId", "borrowingRecordId",
+                              "name", "item_name", "asset_name", "itemName", "assetName",
+                              "label", "item_label", "itemLabel",
+                            ]);
+                            if (blockedKeys.has(k)) return false;
+                            if (k.endsWith("_id")) return false;
+                            if (k.startsWith("_")) return false;
+                            if (k.includes("tab") || k.includes("section") || k.includes("table")) return false;
+                            return true;
+                          })
+                          .map((d) => ({
+                            key: d.key,
+                            label: d.label || formatFieldLabel(d.key),
+                            value: String(d.value),
+                          }));
+
+                        const fallbackFields = [];
+                        if (assetFields.length === 0 && (item.details || []).length === 0) {
+                          const displayableKeys = [
+                            "brand", "model", "serial_number", "serialNumber",
+                            "type", "description",
+                            "acquisition_date", "acquisitionDate", "date_acquired",
+                            "color", "size", "capacity", "processor", "ram", "storage",
+                          ];
+                          for (const key of displayableKeys) {
+                            const val = item[key];
+                            if (val != null && String(val).trim() !== "") {
+                              fallbackFields.push({ key, label: formatFieldLabel(key), value: String(val) });
+                            }
+                          }
+                        }
+
+                        const displayFields = assetFields.length > 0 ? assetFields : fallbackFields;
+
+                        const originalRemark = getItemConditionRaw(item) || getItemRemark(item) || opLabel;
+
+                        return (
+                          <div
+                            key={`${selectedRecord.id}-${item.id}-detail`}
+                            className="rounded-xl border border-slate-200 bg-white overflow-hidden"
+                          >
+                            {/* ── Item Header Strip ─────────────────────────────────── */}
+                            <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold text-slate-800 leading-tight">{item.label}</p>
+                                  {isCustom ? (
+                                    <p className="mt-0.5 text-[11px] text-slate-400">Custom Item (Outside Inventory)</p>
+                                  ) : (
+                                    <p className="mt-0.5 text-[11px] text-slate-400">
+                                      {tabName || "Inventory"}{tabName && sectionName ? " / " : ""}{sectionName || ""}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="shrink-0 flex items-center gap-2">
+                                  {returningStatus !== "not fully returned" && (
+                                    <></>
+                                  )}
+                                  <span className="rounded-md bg-slate-200/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-600">
+                                    Qty: {borrowedQty}
+                                  </span>
+                                </div>
                               </div>
                             </div>
-                          )}
 
-                        {/* ── Freetext Return Remarks ─────────────────────────── */}
-                        {item.returnRemarks?.trim() && (
-                          <div className="border-t border-slate-100 bg-slate-300/10 px-4 py-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
-                            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{item.returnRemarks}</p>
+                            {/* ── 2-Column Body: Left = item data | Right = return info + timestamps ── */}
+                            <div className="flex flex-col sm:flex-row">
+                              <div className="flex-1 min-w-0 border-r border-slate-100">
+                                {displayFields.length > 0 && (
+                                  <div className="px-4 pt-3 pb-2">
+                                    <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
+                                      {displayFields.map((field) => (
+                                        <div key={`${item.id}-${field.key}`} className="flex items-baseline gap-1.5 min-w-0">
+                                          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                            {field.label}:
+                                          </span>
+                                          <span className="truncate text-xs font-medium text-slate-700">{field.value}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {displayUnits.length > 0 && (
+                                  <div className={`px-4 ${displayFields.length > 0 ? "pt-1" : "pt-3"} pb-3`}>
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                                      {displayUnits.length > 1 ? "Unit Status" : "Status"}
+                                    </p>
+                                    <div className={displayUnits.length > 1 ? "space-y-0" : ""}>
+                                      {displayUnits.map((unit, uIdx) => {
+                                        const isActive = unit.status === "Active / Borrowed";
+                                        const dotColor = isActive
+                                          ? "bg-sky-500"
+                                          : unit.remark === qLabel || (unit.remark && unit.remark.toLowerCase().includes("defect"))
+                                            ? "bg-rose-500"
+                                            : unit.remark === opLabel || (unit.remark && unit.remark.toLowerCase() === "working")
+                                              ? "bg-emerald-500"
+                                              : "bg-slate-400";
+                                        return (
+                                          <div
+                                            key={`${item.id}-unit-${unit.index}`}
+                                            className={`flex items-center gap-2 text-xs py-1 ${displayUnits.length > 1 && uIdx < displayUnits.length - 1 ? "border-b border-slate-100/80" : ""}`}
+                                          >
+                                            <span className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${dotColor}`} />
+                                            {displayUnits.length > 1 && (
+                                              <span className="font-medium text-slate-400 w-10 shrink-0 tabular-nums">
+                                                Unit {unit.index + 1}:
+                                              </span>
+                                            )}
+                                            <span className={`font-medium ${isActive ? "text-sky-700" : "text-slate-600"}`}>
+                                              {unit.status}
+                                            </span>
+                                            {!isActive && unit.remark && unit.remark !== "Returned" && (
+                                              <span className="text-slate-400">— {unit.remark}</span>
+                                            )}
+                                            {isActive && (
+                                              <span className="text-[10px] text-slate-400 italic">still out</span>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {item.returnRemarks?.trim() && (
+                                  <div className="border-t border-slate-100 bg-slate-300/10 px-4 py-3">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
+                                    <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{item.returnRemarks}</p>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="shrink-0 sm:w-56 bg-slate-50/60 border-t sm:border-t-0 border-slate-100 px-4 py-3 space-y-3">
+                                <div>
+                                  <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Qty Returned</p>
+                                  <p className="mt-0.5 text-xs font-semibold text-slate-700">{returnedQty} / {borrowedQty}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Original Remark</p>
+                                  <p className="mt-0.5 text-xs font-semibold text-slate-700">{originalRemark}</p>
+                                </div>
+                                {returnedQty > 0 && (
+                                  <div>
+                                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Return Condition</p>
+                                    <p className="mt-0.5 text-xs font-semibold text-slate-700">{returnConditionLabel}</p>
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Borrowed At</p>
+                                  <p className="mt-0.5 text-xs font-semibold text-slate-700">{formatExportDate(selectedRecord.date)}</p>
+                                  <p className="text-[11px] text-slate-400">{formatExportTime(selectedRecord.date)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Returned At</p>
+                                  {item.itemReturnedAt ? (
+                                    <>
+                                      <p className="mt-0.5 text-xs font-semibold text-slate-700">{formatExportDate(item.itemReturnedAt)}</p>
+                                      <p className="text-[11px] text-slate-400">{formatExportTime(item.itemReturnedAt)}</p>
+                                    </>
+                                  ) : (
+                                    <p className="mt-0.5 text-xs text-slate-400 italic">Not yet returned</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              );
+                );
               })()}
 
             </div>
@@ -4759,11 +4757,10 @@ export default function Borrowing() {
                                       }))
                                     }
                                     disabled={!sel.checked}
-                                    className={`h-8 rounded-lg border px-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111] ${
-                                      sel.checked
+                                    className={`h-8 rounded-lg border px-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111] ${sel.checked
                                         ? "border-slate-200 bg-white text-slate-700"
                                         : "border-slate-100 bg-slate-50 text-slate-400"
-                                    }`}
+                                      }`}
                                   >
                                     {allOptions.map((opt) => (
                                       <option key={opt} value={opt}>{opt}</option>
