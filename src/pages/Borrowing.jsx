@@ -747,34 +747,54 @@ const ItemCard = ({
   const renderRightPanel = (groupRemark, groupUnits) => {
     const groupCount = groupUnits.length;
     const groupCondition = groupRemark && groupRemark !== "Returned" ? groupRemark : returnConditionLabel;
+    // Per-unit data from returned_item_details JSONB (one entry per returned unit)
+    const retDetails = item.returnedItemDetails;
+    const hasJsonbData = Array.isArray(retDetails) && retDetails.length > 0;
     return (
       <div className="shrink-0 sm:w-56 bg-slate-50/60 border-t sm:border-t-0 border-slate-100 px-4 py-3 space-y-3">
         <div>
-          <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Qty Returned</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Qty Returned</p>
           <p className="mt-0.5 text-xs font-semibold text-slate-700">{returnedQty} / {borrowedQty}</p>
         </div>
         <div>
-          <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Original Remark</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Original Condition</p>
           <p className="mt-0.5 text-xs font-semibold text-slate-700">{originalRemark}</p>
         </div>
         {returnedQty > 0 && (
           <div>
-            <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
-              {needsCarousel ? "Return Condition (this panel)" : "Return Condition"}
-            </p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Condition</p>
             <div className="mt-0.5 flex items-center gap-1.5">
               <span className="text-xs font-semibold text-slate-700">{groupCondition}</span>
             </div>
           </div>
         )}
         <div>
-          <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Borrowed At</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Borrowed At</p>
           <p className="mt-0.5 text-xs font-semibold text-slate-700">{formatExportDate(borrowDate)}</p>
           <p className="text-[11px] text-slate-400">{formatExportTime(borrowDate)}</p>
         </div>
+        {/* ── Returned At: one entry per unit ── */}
         <div>
-          <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Returned At</p>
-          {item.itemReturnedAt ? (
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Returned At</p>
+          {hasJsonbData ? (
+            <div className="mt-1 space-y-1.5">
+              {retDetails.map((entry, i) => (
+                <div key={i}>
+                  <p className="text-xs">
+                    <span className="font-semibold text-slate-700">
+                      {entry.returnedAt ? formatExportDate(entry.returnedAt) : <span className="italic text-slate-400">pending</span>}
+                    </span>
+                    {retDetails.length > 1 && (
+                      <span className="font-normal text-slate-400"> — Unit {i + 1}</span>
+                    )}
+                  </p>
+                  {entry.returnedAt && (
+                    <p className="text-[11px] text-slate-400">{formatExportTime(entry.returnedAt)}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : item.itemReturnedAt ? (
             <>
               <p className="mt-0.5 text-xs font-semibold text-slate-700">{formatExportDate(item.itemReturnedAt)}</p>
               <p className="text-[11px] text-slate-400">{formatExportTime(item.itemReturnedAt)}</p>
@@ -783,12 +803,40 @@ const ItemCard = ({
             <p className="mt-0.5 text-xs text-slate-400 italic">Not yet returned</p>
           )}
         </div>
-        {item.returnRemarks?.trim() && (
-          <div>
-            <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
-            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{item.returnRemarks}</p>
-          </div>
-        )}
+        {/* ── Return Remarks: one entry per unit ── */}
+        {(() => {
+          if (hasJsonbData) {
+            const entriesWithRemarks = retDetails.filter((e) => e.remarks?.trim());
+            if (entriesWithRemarks.length > 0) {
+              return (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
+                  <div className="mt-1 space-y-1">
+                    {entriesWithRemarks.map((entry, i) => {
+                      const unitIdx = retDetails.indexOf(entry) + 1;
+                      return (
+                        <p key={i} className="text-xs">
+                          <span className="text-slate-600">{entry.remarks}</span>
+                          {retDetails.length > 1 && (
+                            <span className="text-slate-400"> — Unit {unitIdx}</span>
+                          )}
+                        </p>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
+          } else if (item.returnRemarks?.trim()) {
+            return (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{item.returnRemarks}</p>
+              </div>
+            );
+          }
+          return null;
+        })()}
       </div>
     );
   };
@@ -866,8 +914,8 @@ const ItemCard = ({
             <ChevronLeft className="h-4 w-4" />
           </button>
           <div className="text-center min-w-0 flex-1 mx-1">
-            <p className="text-[10px] font-bold text-slate-700 truncate">{groupCondition}</p>
-            <p className="text-[9px] text-slate-400">
+            <p className="text-[11px] font-bold text-slate-700 truncate">{groupCondition}</p>
+            <p className="text-[10px] text-slate-400">
               {carouselIdx + 1} / {remarkGroups.length}
             </p>
           </div>
@@ -883,62 +931,60 @@ const ItemCard = ({
         {/* Panel content */}
         <div className="px-4 pb-3 space-y-3">
           <div>
-            <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Units</p>
-            <p className="mt-0.5 text-xs font-semibold text-slate-700">{groupCount} unit{groupCount !== 1 ? "s" : ""}</p>
-          </div>
-          <div>
-            <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Original Remark</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Original Condition</p>
             <p className="mt-0.5 text-xs font-semibold text-slate-700">{originalRemark}</p>
           </div>
           <div>
-            <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Return Condition</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Condition</p>
             <div className="mt-0.5 flex items-center gap-1.5">
               <span className={`inline-block h-2 w-2 rounded-full ${dotColorFor(groupRemark)}`} />
               <span className="text-xs font-semibold text-slate-700">{groupCondition}</span>
             </div>
           </div>
           <div>
-            <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Borrowed At</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Borrowed At</p>
             <p className="mt-0.5 text-xs font-semibold text-slate-700">{formatExportDate(borrowDate)}</p>
             <p className="text-[11px] text-slate-400">{formatExportTime(borrowDate)}</p>
           </div>
+          {/* ── Returned At: one entry per unit ── */}
           <div>
-            <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Returned At</p>
-            {(() => {
-              // Collect distinct returnedAt timestamps from the JSONB entries for this panel
-              const timestamps = (groupUnits || [])
-                .map((u) => u.returnedAt)
-                .filter(Boolean);
-              const uniqueTs = [...new Set(timestamps)];
-              if (uniqueTs.length === 0) {
-                return <p className="mt-0.5 text-xs text-slate-400 italic">Not yet returned</p>;
-              }
-              return uniqueTs.map((ts, i) => (
-                <div key={i} className={i > 0 ? "mt-1" : ""}>
-                  <p className="mt-0.5 text-xs font-semibold text-slate-700">{formatExportDate(ts)}</p>
-                  <p className="text-[11px] text-slate-400">{formatExportTime(ts)}</p>
-                  {uniqueTs.length > 1 && (
-                    <p className="text-[9px] text-slate-400">Batch {i + 1}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Returned At</p>
+            <div className="mt-1 space-y-1.5">
+              {(groupUnits || []).map((unit, ui) => (
+                <div key={ui}>
+                  <p className="text-xs">
+                    <span className="font-semibold text-slate-700">
+                      {unit.returnedAt ? formatExportDate(unit.returnedAt) : <span className="italic text-slate-400">pending</span>}
+                    </span>
+                    {groupCount > 1 && (
+                      <span className="font-normal text-slate-400"> — Unit {unit.index + 1}</span>
+                    )}
+                  </p>
+                  {unit.returnedAt && (
+                    <p className="text-[11px] text-slate-400">{formatExportTime(unit.returnedAt)}</p>
                   )}
                 </div>
-              ));
-            })()}
+              ))}
+            </div>
           </div>
-          {/* Per-panel remarks from returned_item_details (not the merged column) */}
-          {(() => {
-            const panelRemarks = (groupUnits || [])
-              .map((u) => String(u.remarks || "").trim())
-              .filter(Boolean);
-            const uniqueRemarks = [...new Set(panelRemarks)];
-            return uniqueRemarks.length > 0 ? (
-              <div>
-                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
-                {uniqueRemarks.map((r, i) => (
-                  <p key={i} className="mt-0.5 text-xs leading-relaxed text-slate-600">{r}</p>
+          {/* ── Return Remarks: one entry per unit ── */}
+          {(groupUnits || []).some((u) => u.remarks?.trim()) && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
+              <div className="mt-1 space-y-1">
+                {(groupUnits || []).map((unit, ui) => (
+                  unit.remarks?.trim() ? (
+                    <p key={ui} className="text-xs">
+                      <span className="text-slate-600">{unit.remarks}</span>
+                      {groupCount > 1 && (
+                        <span className="text-slate-400"> — Unit {unit.index + 1}</span>
+                      )}
+                    </p>
+                  ) : null
                 ))}
               </div>
-            ) : null;
-          })()}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -3337,7 +3383,7 @@ export default function Borrowing() {
                               // ── Still Borrowed section: show ALL units ──
                               const displayUnits = units;
 
-                              // ── Build return groups: merge units with same remark into one panel ──
+                              // ── Build return groups: merge units with same remark ──
                               const returnedUnits = units.filter((u) => u.status === "Returned");
                               const remarkGroups = [];
                               const seenRemarks = new Map();
@@ -3426,7 +3472,7 @@ export default function Borrowing() {
                               // ── Returned section: only show returned units ──
                               const displayUnits = units.filter((u) => u.status === "Returned");
 
-                              // ── Build return groups ──
+                              // ── Build return groups: merge units with same remark ──
                               const returnedUnits = displayUnits;
                               const remarkGroups = [];
                               const seenRemarks = new Map();

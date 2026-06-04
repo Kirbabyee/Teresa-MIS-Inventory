@@ -111,7 +111,7 @@ const INVENTORY_TEMPLATES = [
       { key: "brand", label: "Brand", data_type: "text" },
       { key: "description", label: "Description", data_type: "text" },
       { key: "quantity", label: "Quantity", data_type: "int" },
-      { key: "remarks", label: "Remarks", data_type: "text", fieldType: "dropdown", options: ["Working", "Defective", "For Repair", "Disposed"] },
+      { key: "remarks", label: "Remarks", data_type: "text", fieldType: "dropdown", options: ["Working", "Defective", "Missing"] },
       { key: "location", label: "Location", data_type: "text" },
     ],
   },
@@ -132,7 +132,7 @@ const INVENTORY_TEMPLATES = [
       { key: "model", label: "Model", data_type: "text" },
       { key: "serial_number", label: "Serial Number", data_type: "text" },
       { key: "quantity", label: "Quantity", data_type: "int" },
-      { key: "remarks", label: "Remarks", data_type: "text", fieldType: "dropdown", options: ["Working", "Defective", "For Repair", "Disposed"] },
+      { key: "remarks", label: "Remarks", data_type: "text", fieldType: "dropdown", options: ["Working", "Defective", "Missing"] },
       { key: "acquisition_date", label: "Acquisition Date", data_type: "date" },
     ],
   },
@@ -2015,10 +2015,7 @@ export default function Inventory() {
           .replace(/[^a-z0-9_]+/g, "_")
           .replace(/^_+|_+$/g, "")}`;
         const userColumns = (form.columns || []).filter((it) => it && it.key);
-        const instanceCols = INSTANCE_COLUMNS.filter(
-          (ic) => !userColumns.some((uc) => uc.key === ic.key)
-        );
-        const cols = [...userColumns, ...instanceCols].map((it) => normalizeColumnConfig(it));
+        const cols = userColumns.map((it) => normalizeColumnConfig(it));
 
         if (!cols || cols.length === 0) {
           throw new Error("No valid columns provided for table creation.");
