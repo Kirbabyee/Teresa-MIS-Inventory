@@ -447,6 +447,21 @@ const getItemConditionRaw = (item = {}) => {
 };
 
 /**
+ * Extract the original condition/remarks from item_details JSONB only.
+ * Does NOT check the returnCondition column — this is the borrow-time snapshot.
+ */
+const getOriginalConditionFromDetails = (item = {}) => {
+  const detail = (item.details || []).find((d) => {
+    const k = String(d.key || "").toLowerCase();
+    const l = String(d.label || "").toLowerCase();
+    return k === "condition" || k === "status" || k === "remarks"
+      || l === "condition" || l === "status" || l === "remarks";
+  });
+  if (detail?.value) return String(detail.value).trim();
+  return null;
+};
+
+/**
  * Classify an item's condition as "working" (operational) or "defective" (non-operational)
  * by comparing its raw condition value against the dynamic operational label.
  * Any condition that doesn't match the operational label is treated as non-operational.
@@ -3413,7 +3428,7 @@ export default function Borrowing() {
                                 }
                               }
                               const displayFields = assetFields.length > 0 ? assetFields : fbFields;
-                              const originalRemark = getItemConditionRaw(item) || getItemRemark(item) || opLabel;
+                              const originalRemark = getOriginalConditionFromDetails(item) || getItemRemark(item) || opLabel;
 
                               return (
                                 <ItemCard
@@ -3502,7 +3517,7 @@ export default function Borrowing() {
                                 }
                               }
                               const displayFields = assetFields.length > 0 ? assetFields : fbFields;
-                              const originalRemark = getItemConditionRaw(item) || getItemRemark(item) || opLabel;
+                              const originalRemark = getOriginalConditionFromDetails(item) || getItemRemark(item) || opLabel;
 
                               return (
                                 <ItemCard
@@ -3582,7 +3597,7 @@ export default function Borrowing() {
                           }
                         }
                         const displayFields = assetFields.length > 0 ? assetFields : fbFields;
-                        const originalRemark = getItemConditionRaw(item) || getItemRemark(item) || opLabel;
+                        const originalRemark = getOriginalConditionFromDetails(item) || getItemRemark(item) || opLabel;
 
                         return (
                           <ItemCard
