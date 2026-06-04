@@ -62,6 +62,7 @@ import {
   getInventoryLogsTableEndpoint,
   getInventoryDropLogsTableEndpoint,
 } from "@/lib/inventoryApi";
+import { fetchBorrowingRecords } from "@/lib/borrowingApi";
 
 // Utility functions
 const normalizeSubColumns = (subColumns = [], parentKey = "") => {
@@ -342,6 +343,29 @@ const getAllRemarkOptions = (items, remarkColumn) => {
     if (!all.includes(v)) all.push(v);
   }
   return all;
+};
+
+const getBorrowingDetailNumber = (item = {}, keys = []) => {
+  const detail = (item.details || []).find((currentDetail) => {
+    const detailKey = String(currentDetail?.key || "").toLowerCase();
+    const detailLabel = String(currentDetail?.label || "").toLowerCase();
+    return keys.some((key) => detailKey === key || detailLabel === key);
+  });
+  const directValue = keys
+    .flatMap((key) => [key, key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())])
+    .map((key) => item?.[key])
+    .find((value) => value !== null && value !== undefined && String(value).trim() !== "");
+  const rawValue = detail?.value ?? directValue;
+  const value = Number(rawValue);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+};
+
+const getActiveBorrowedQuantity = (item = {}) => {
+  const borrowedQuantity = getBorrowingDetailNumber(item, ["quantity"]) || 1;
+  const returnedQuantity =
+    getBorrowingDetailNumber(item, ["return_defective_quantity"]) +
+    getBorrowingDetailNumber(item, ["return_working_quantity"]);
+  return Math.max(0, borrowedQuantity - returnedQuantity);
 };
 
 const formatPickerLabel = (range) => {
@@ -1185,6 +1209,8 @@ export default function InventorySection() {
   const [items, setItems] = useState([]);
   const itemsRef = useRef([]);
   itemsRef.current = items;
+  const [activeBorrowedItemIds, setActiveBorrowedItemIds] = useState(() => new Set());
+  const [activeBorrowedItemQuantities, setActiveBorrowedItemQuantities] = useState({});
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsLoadedForSectionId, setItemsLoadedForSectionId] = useState(null);
   const [sectionsLoading, setSectionsLoading] = useState(true);
@@ -1824,6 +1850,65 @@ export default function InventorySection() {
   }, [selectedSection?.id, tabTableName, refreshKey, sectionsLoading]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadActiveBorrowedItems = async () => {
+      if (!selectedSection?.id) {
+        setActiveBorrowedItemIds(new Set());
+        setActiveBorrowedItemQuantities({});
+        return;
+      }
+
+      try {
+        const records = await fetchBorrowingRecords({ status: "borrowed" });
+        if (cancelled) return;
+
+        const borrowedIds = new Set();
+        const borrowedQuantities = {};
+        records.forEach((record) => {
+          (record.items || []).forEach((borrowedItem) => {
+            if (!borrowedItem?.inventoryItemId) return;
+            if (
+              borrowedItem.inventorySectionId &&
+              String(borrowedItem.inventorySectionId) !== String(selectedSection.id)
+            ) {
+              return;
+            }
+            if (
+              tabTableName &&
+              borrowedItem.tableName &&
+              String(borrowedItem.tableName) !== String(tabTableName)
+            ) {
+              return;
+            }
+            const activeQuantity = getActiveBorrowedQuantity(borrowedItem);
+            if (activeQuantity > 0) {
+              const itemId = String(borrowedItem.inventoryItemId);
+              borrowedIds.add(itemId);
+              borrowedQuantities[itemId] = (borrowedQuantities[itemId] || 0) + activeQuantity;
+            }
+          });
+        });
+
+        setActiveBorrowedItemIds(borrowedIds);
+        setActiveBorrowedItemQuantities(borrowedQuantities);
+      } catch (borrowError) {
+        console.error("Failed to load active borrowed items:", borrowError);
+        if (!cancelled) {
+          setActiveBorrowedItemIds(new Set());
+          setActiveBorrowedItemQuantities({});
+        }
+      }
+    };
+
+    loadActiveBorrowedItems();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSection?.id, tabTableName, refreshKey]);
+
+  useEffect(() => {
     if (page < 1) {
       setPage(1);
       return;
@@ -2296,6 +2381,23 @@ export default function InventorySection() {
           </div>
         )}
 
+        {!isHistoryOpen && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-600">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-4 w-1 rounded-full bg-blue-600" aria-hidden="true" />
+              Borrowed
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-4 w-1 rounded-full bg-rose-500" aria-hidden="true" />
+              Defective
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-4 w-1 rounded-full bg-amber-500" aria-hidden="true" />
+              Missing data
+            </span>
+          </div>
+        )}
+
         {isHistoryOpen && (
           <div className="relative z-20 mt-3 flex w-full flex-wrap items-center gap-3 overflow-visible">
             <div className="relative w-full sm:w-96">
@@ -2535,17 +2637,30 @@ export default function InventorySection() {
                     <tbody className="divide-y divide-slate-200 bg-white">
                       {paginatedItems.map((item, rowIndex) => {
                         const itemStatus = itemStatusMap[item.id] || { hasDefect: false, hasMissing: false };
-                        const rowIndicatorStyle = itemStatus.hasDefect && itemStatus.hasMissing
-                          ? { boxShadow: "inset 4px 0 0 #f43f5e, inset 8px 0 0 #f59e0b" }
-                          : itemStatus.hasDefect
-                            ? { boxShadow: "inset 4px 0 0 #f43f5e" }
-                            : itemStatus.hasMissing
-                              ? { boxShadow: "inset 4px 0 0 #f59e0b" }
-                              : undefined;
                         const remarkCol = findRemarkColumn(displayTemplateColumns);
                         const currentRemark = getItemRemark(item, remarkCol);
+                        const normalizedRemark = currentRemark.toLowerCase();
+                        const activeBorrowedQuantity = activeBorrowedItemQuantities[String(item.id)] || 0;
+                        const isBorrowed =
+                          activeBorrowedQuantity > 0 ||
+                          activeBorrowedItemIds.has(String(item.id)) ||
+                          normalizedRemark === "borrowed" ||
+                          normalizedRemark.includes("borrowed");
+                        const rowIndicatorColors = [
+                          ...(isBorrowed ? ["#2563eb"] : []),
+                          ...(itemStatus.hasDefect ? ["#f43f5e"] : []),
+                          ...(itemStatus.hasMissing ? ["#f59e0b"] : []),
+                        ];
+                        const rowIndicatorStyle = rowIndicatorColors.length
+                          ? {
+                              boxShadow: rowIndicatorColors
+                                .map((color, index) => `inset ${(index + 1) * 4}px 0 0 ${color}`)
+                                .join(", "),
+                            }
+                          : undefined;
                         const quantityKey = displayTemplateColumns.find((c) => c.key === "quantity")?.key || "quantity";
                         const itemQty = Number(item[quantityKey]) || 0;
+                        const totalItemQty = itemQty + activeBorrowedQuantity;
                         return (
                           <tr
                             key={item.id}
@@ -2559,6 +2674,11 @@ export default function InventorySection() {
                                 const columnValue = item?.[columnKey];
                                 const columnDraftKey = getCellDraftKey(item.id, columnKey);
                                 const columnDraftValue = cellDrafts[columnDraftKey] ?? normalizeCellValue(columnValue);
+                                const isQuantityColumn = columnKey === quantityKey;
+                                const quantityDisplayValue =
+                                  activeBorrowedQuantity > 0
+                                    ? `${itemQty}/${totalItemQty}`
+                                    : formatCellValue(columnValue);
 
                                 const isMissingColumn = (() => {
                                   if (column.subColumns && column.subColumns.length > 0) {
@@ -2727,7 +2847,7 @@ export default function InventorySection() {
                                       )
                                     ) : (
                                       <span className={String(columnValue || "").toUpperCase().includes("DEFECT") || String(columnValue || "").toUpperCase().includes("BROKEN") ? "text-red-600" : ""}>
-                                        {formatCellValue(columnValue)}
+                                        {isQuantityColumn ? quantityDisplayValue : formatCellValue(columnValue)}
                                       </span>
                                     )}
                                   </td>
