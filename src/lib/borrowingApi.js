@@ -54,6 +54,9 @@ const mapBorrowingRecord = (record = {}) => ({
     returnDefectiveQuantity: getDetailValue(item.item_details, "return_defective_quantity") || "",
     returnWorkingQuantity: getDetailValue(item.item_details, "return_working_quantity") || "",
     itemReturnedAt: item.item_returned_at || null,
+    returnedItemDetails: Array.isArray(item.returned_item_details)
+      ? item.returned_item_details
+      : [],
     tab: "",
     section: "",
     tableName: item.inventory_table_name || "",
@@ -313,7 +316,7 @@ export const returnBorrowingRecord = async (id, returnRemarks = {}) => {
 
   const { data: currentItems, error: currentItemsError } = await supabase
     .from("borrowing_items")
-    .select("id, inventory_item_id, item_details")
+    .select("id, inventory_item_id, item_details, returned_item_details")
     .eq("borrowing_record_id", id);
 
   if (currentItemsError) throw currentItemsError;
@@ -332,12 +335,108 @@ export const returnBorrowingRecord = async (id, returnRemarks = {}) => {
 
     if (!targetItem?.id) return Promise.resolve({ error: null });
 
+    const mergedDetails = remark && typeof remark === "object"
+      ? mergeReturnDetails(targetItem.item_details, remark)
+      : targetItem.item_details;
+
+    // Also set _returned_qty = defective + working qty so the detail modal
+    // history filter (getReturnedQuantity > 0) works for full returns
+    const nextDetails = Array.isArray(mergedDetails) ? [...mergedDetails] : [];
+    const getDetailVal = (details, key) => {
+      const entry = (Array.isArray(details) ? details : []).find(
+        (d) => String(d.key || "").toLowerCase() === key
+      );
+      const v = Number(entry?.value);
+      return Number.isFinite(v) && v > 0 ? v : 0;
+    };
+    let dQty = getDetailVal(nextDetails, "return_defective_quantity");
+    let wQty = getDetailVal(nextDetails, "return_working_quantity");
+    // Fallback: mergeReturnDetails doesn't understand conditionCounts,
+    // so extract dQty/wQty from remark.conditionCounts when item_details keys are absent
+    if (dQty === 0 && wQty === 0 && remark && typeof remark === "object" && remark.conditionCounts) {
+      const cc = remark.conditionCounts;
+      dQty = Number(cc["Defective"] || 0);
+      wQty = Number(cc["Working"] || 0);
+    }
+    const totalReturned = dQty + wQty;
+    if (totalReturned > 0) {
+      const retIdx = nextDetails.findIndex((d) => d.key === "_returned_qty");
+      const entry = { key: "_returned_qty", label: "Returned Qty", value: String(totalReturned) };
+      if (retIdx >= 0) nextDetails[retIdx] = { ...nextDetails[retIdx], ...entry };
+      else nextDetails.push(entry);
+    }
+
+    // Build returned_item_details: one entry per returned unit
+    const existingReturnEntries = Array.isArray(targetItem.returned_item_details)
+      ? targetItem.returned_item_details
+      : [];
+    const alreadyReturned = existingReturnEntries.length;
+    const borrowedQty = Number(getDetailVal(targetItem.item_details, "quantity") || 1);
+    const remainingToReturn = Math.max(0, borrowedQty - alreadyReturned);
+    const returnedAt = new Date().toISOString();
+
+    // Build returned_item_details entries using dynamic remark labels
+    // from conditionCounts (e.g. { "Working": 2, "Damaged": 1 })
+    // perConditionRemarks provides per-unit remark text per condition
+    const newReturnEntries = [];
+    const perCondRemarks = (remark && typeof remark === "object" && remark.perConditionRemarks)
+      ? remark.perConditionRemarks
+      : {};
+    if (remark && typeof remark === "object" && remark.conditionCounts) {
+      for (const [cond, count] of Object.entries(remark.conditionCounts)) {
+        const condTrimmed = String(cond).trim();
+        const condLower = condTrimmed.toLowerCase();
+        const isWorking = condLower === "working";
+        const entryRemark = condTrimmed;
+        const entryCondition = isWorking ? "working" : condLower;
+        const condRemarksArr = perCondRemarks[condTrimmed] || perCondRemarks[cond] || [];
+        for (let i = 0; i < count && newReturnEntries.length < remainingToReturn; i++) {
+          newReturnEntries.push({
+            remark: entryRemark,
+            condition: entryCondition,
+            remarks: String(condRemarksArr[i] || "").trim(),
+            returnedAt,
+          });
+        }
+      }
+    }
+    // Fallback: if no conditionCounts, use dQty/wQty with generic labels
+    if (newReturnEntries.length === 0) {
+      const fallbackRemarks = remark?.remarks ? String(remark.remarks).trim() : "";
+      for (let i = 0; i < dQty && newReturnEntries.length < remainingToReturn; i++) {
+        newReturnEntries.push({
+          remark: "Defective",
+          condition: "defective",
+          remarks: fallbackRemarks,
+          returnedAt,
+        });
+      }
+      for (let i = 0; i < wQty && newReturnEntries.length < remainingToReturn; i++) {
+        newReturnEntries.push({
+          remark: "Working",
+          condition: "working",
+          remarks: fallbackRemarks,
+          returnedAt,
+        });
+      }
+    }
+    // Final fallback: simple return with no breakdown
+    while (newReturnEntries.length < remainingToReturn) {
+      newReturnEntries.push({
+        remark: "Working",
+        condition: "working",
+        remarks: "",
+        returnedAt,
+      });
+    }
+
     const updatePayload =
       remark && typeof remark === "object"
         ? {
             return_condition: String(remark.condition || "working").toLowerCase(),
             return_remarks: remark.remarks ? String(remark.remarks).trim() : null,
-            item_details: mergeReturnDetails(targetItem.item_details, remark),
+            item_details: nextDetails,
+            returned_item_details: [...existingReturnEntries, ...newReturnEntries],
             item_returned_at: new Date().toISOString(),
           }
         : {
@@ -364,7 +463,7 @@ export const updateBorrowingItemsStatus = async (recordId, itemStatusMap = {}) =
 
   const { data: currentItems, error: fetchError } = await supabase
     .from("borrowing_items")
-    .select("id, inventory_item_id, item_details, item_returned_at")
+    .select("id, inventory_item_id, item_details, item_returned_at, returned_item_details")
     .eq("borrowing_record_id", recordId);
 
   if (fetchError) throw fetchError;
@@ -402,6 +501,26 @@ export const updateBorrowingItemsStatus = async (recordId, itemStatusMap = {}) =
       statusPayload.item_returned_at = new Date().toISOString();
     }
 
+    // Also append placeholder entries to returned_item_details
+    // (one per newly-returned unit; remarks will be updated by updateBorrowingItemsRemarks)
+    const existingEntries = Array.isArray(targetItem.returned_item_details)
+      ? targetItem.returned_item_details
+      : [];
+    const newReturnCount = Number(newlyReturned) || 0;
+    if (newReturnCount > 0) {
+      const returnedAt = new Date().toISOString();
+      const newEntries = [];
+      for (let i = 0; i < newReturnCount; i++) {
+        newEntries.push({
+          remark: "Working",
+          condition: "working",
+          remarks: "",
+          returnedAt,
+        });
+      }
+      statusPayload.returned_item_details = [...existingEntries, ...newEntries];
+    }
+
     return supabase
       .from("borrowing_items")
       .update(statusPayload)
@@ -423,7 +542,7 @@ export const updateBorrowingItemsRemarks = async (recordId, remarksMap = {}) => 
 
   const { data: currentItems, error: fetchError } = await supabase
     .from("borrowing_items")
-    .select("id, inventory_item_id, return_remarks, item_returned_at")
+    .select("id, inventory_item_id, return_remarks, item_returned_at, returned_item_details")
     .eq("borrowing_record_id", recordId);
 
   if (fetchError) throw fetchError;
@@ -460,6 +579,41 @@ export const updateBorrowingItemsRemarks = async (recordId, remarksMap = {}) => 
     // Set item_returned_at only if not already set by a prior partial return
     if (!targetItem.item_returned_at) {
       updatePayload.item_returned_at = new Date().toISOString();
+    }
+
+    // Rebuild returned_item_details: keep entries from previous batches,
+    // replace the current-batch placeholders (written by updateBorrowingItemsStatus)
+    // with correct condition/remark from conditionCounts.
+    const cc = remarkData && typeof remarkData === "object" ? remarkData.conditionCounts || {} : {};
+    const batchTotal = Object.values(cc).reduce((s, c) => s + (Number(c) || 0), 0);
+
+    if (batchTotal > 0) {
+      const existingEntries = Array.isArray(targetItem.returned_item_details)
+        ? [...targetItem.returned_item_details]
+        : [];
+      // Remove the last `batchTotal` entries (they are placeholders from updateBorrowingItemsStatus)
+      const prevEntries = existingEntries.slice(0, Math.max(0, existingEntries.length - batchTotal));
+      // Build correct entries for this batch — use per-unit remarks from perConditionRemarks
+      const returnedAt = new Date().toISOString();
+      const newEntries = [];
+      const perCondRemarks = remarkData && typeof remarkData === "object" ? remarkData.perConditionRemarks || {} : {};
+      for (const [cond, count] of Object.entries(cc)) {
+        const condTrimmed = String(cond).trim();
+        const condLower = condTrimmed.toLowerCase();
+        const isWorking = condLower === "working";
+        const entryRemark = condTrimmed;
+        const entryCondition = isWorking ? "working" : condLower;
+        const condRemarksArr = perCondRemarks[condTrimmed] || perCondRemarks[cond] || [];
+        for (let i = 0; i < count; i++) {
+          newEntries.push({
+            remark: entryRemark,
+            condition: entryCondition,
+            remarks: String(condRemarksArr[i] || "").trim(),
+            returnedAt,
+          });
+        }
+      }
+      updatePayload.returned_item_details = [...prevEntries, ...newEntries];
     }
 
     return supabase.from("borrowing_items").update(updatePayload).eq("id", targetItem.id);
