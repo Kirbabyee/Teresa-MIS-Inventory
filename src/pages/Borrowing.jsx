@@ -2658,6 +2658,31 @@ export default function Borrowing() {
           font-size: 0.75rem;
         }
 
+        .borrowing-table-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+        }
+
+        .borrowing-table-scroll::-webkit-scrollbar {
+          width: 7px;
+          height: 7px;
+        }
+
+        .borrowing-table-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        .borrowing-table-scroll::-webkit-scrollbar-thumb {
+          background-color: rgba(148, 163, 184, 0.55);
+          border-radius: 9999px;
+          border: 2px solid transparent;
+          background-clip: padding-box;
+        }
+
+        .borrowing-table-scroll::-webkit-scrollbar-thumb:hover {
+          background-color: rgba(100, 116, 139, 0.75);
+        }
+
       `}</style>
       <div className="w-full space-y-5">
 
@@ -2970,7 +2995,7 @@ export default function Borrowing() {
                   </div>
                 ) : !borrowingsLoading && (
                   <>
-                    <div className="max-h-[36rem] overflow-auto">
+                    <div className="borrowing-table-scroll max-h-[36rem] overflow-auto">
                       <table className="w-full min-w-[900px] border-separate border-spacing-0 transition-opacity duration-300">
                         <thead className="sticky top-0 z-10 bg-slate-50 shadow-[inset_0_-1px_0_rgb(226,232,240)]">
                           <tr>
@@ -3149,7 +3174,7 @@ export default function Borrowing() {
               </div>
             ) : !borrowingsLoading && (
               <>
-                <div className="max-h-[36rem] overflow-auto">
+                <div className="borrowing-table-scroll max-h-[36rem] overflow-auto">
                   <table className="w-full min-w-[900px] border-separate border-spacing-0 transition-opacity duration-300">
                     <thead className="sticky top-0 z-10 bg-slate-50 shadow-[inset_0_-1px_0_rgb(226,232,240)]">
                       <tr>
