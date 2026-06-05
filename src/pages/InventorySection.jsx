@@ -845,31 +845,24 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900">
-              {item ? "Edit item" : "Add item"}
-            </h3>
-            <p className="text-sm text-slate-500">
+    <>
+      <Dialog open onOpenChange={(open) => {
+        if (!open) requestClose();
+      }}>
+        <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden rounded-[28px] p-0">
+          <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
+            <DialogTitle className="text-lg font-semibold text-slate-900">
+              {item ? "Edit Item" : "Add Item"}
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-sm">
               {item
                 ? `Update this item in ${section?.name || "the selected section"}.`
                 : `Add a new item to ${section?.name || "the selected section"}.`}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={requestClose}
-            className={modalCloseButtonClass}
-            title="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="space-y-4 px-5 py-5">
+          <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-8">
+            <div className="space-y-4">
             {useTemplate ? (
               <div className="grid gap-4 md:grid-cols-2">
                 {orderedTemplateColumns.map((column) =>
@@ -1044,91 +1037,95 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
                 </div>
               </div>
             )}
+            </div>
           </div>
-        </div>
 
-        <div className="sticky bottom-0 z-10 flex justify-end gap-3 border-t border-slate-200 bg-white px-5 py-4">
-          <button
+          <DialogFooter className="flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={requestClose}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            className="rounded-lg"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
             onClick={requestSave}
-            className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#5a1717]"
+            className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
           >
             Save
-          </button>
-        </div>
-      </div>
+          </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {showDiscardConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
-            <h3 className="text-lg font-semibold text-slate-900">Discard changes?</h3>
-            <p className="mt-2 text-sm text-slate-600">
+      <AlertDialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
+        <AlertDialogContent className="rounded-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+            <AlertDialogDescription>
               You have unsaved changes. If you close now, those changes will be lost.
-            </p>
-            <div className="mt-4 flex justify-end gap-3">
-              <button type="button" onClick={cancelDiscard} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
-                Keep editing
-              </button>
-              <button type="button" onClick={confirmDiscard} className="rounded-md bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700">
-                Discard
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-3 sm:gap-4">
+            <AlertDialogCancel onClick={cancelDiscard} className="rounded-lg">
+              Keep editing
+            </AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={confirmDiscard}
+              className="rounded-lg bg-rose-600 px-6 text-white hover:bg-rose-700"
+            >
+              Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-      {showSaveConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
-            <h3 className="text-lg font-semibold text-slate-900">Save changes?</h3>
-            <p className="mt-2 text-sm text-slate-600">
+      <AlertDialog open={showSaveConfirm} onOpenChange={setShowSaveConfirm}>
+        <AlertDialogContent className="rounded-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save changes?</AlertDialogTitle>
+            <AlertDialogDescription>
               Are you sure you want to save these changes?
-            </p>
-            <div className="mt-4 flex justify-end gap-3">
-              <button type="button" onClick={cancelSave} className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100">
-                Cancel
-              </button>
-              <button type="button" onClick={confirmSave} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-3 sm:gap-4">
+            <AlertDialogCancel onClick={cancelSave} className="rounded-lg">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={confirmSave}
+              className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
+            >
+              Save
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Dialog
+        open={Boolean(duplicateMatch)}
+        onOpenChange={(open) => {
+          if (!open && duplicateAction === "") {
+            setDuplicateMatch(null);
+            setPendingRecordData(null);
+          }
+        }}
+      >
+        <DialogContent className="flex max-h-[85vh] max-w-lg flex-col gap-0 overflow-hidden rounded-[28px] p-0">
+          <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
+            <DialogTitle className="text-lg font-semibold text-slate-900">Item already exists</DialogTitle>
+            <DialogDescription className="mt-1 text-sm">
+              A matching item was found in {section?.name || "this section"}.
+            </DialogDescription>
+          </DialogHeader>
 
-      {duplicateMatch && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900">Item already exists</h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  A matching item was found in {section?.name || "this section"}.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setDuplicateMatch(null);
-                  setPendingRecordData(null);
-                }}
-                disabled={duplicateAction !== ""}
-                className={modalCloseButtonClass}
-                title="Close"
-                aria-label="Close duplicate item modal"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 px-5 py-5">
+          {duplicateMatch && (
+            <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5 sm:px-8">
               <p className="text-sm text-slate-600">
                 You can merge it by adding the typed quantity to the existing item, or keep it as a separate
                 inventory record.
@@ -1159,40 +1156,45 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
                 </div>
               )}
             </div>
+          )}
 
-            <div className="flex flex-wrap justify-end gap-3 border-t border-slate-200 bg-white px-5 py-4">
-              <button
+          <DialogFooter className="flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   setDuplicateMatch(null);
                   setPendingRecordData(null);
                 }}
                 disabled={duplicateAction !== ""}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg"
               >
                 Keep editing
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={addDuplicateSeparately}
                 disabled={duplicateAction !== ""}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg"
               >
                 {duplicateAction === "separate" ? "Adding..." : "Add separately"}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                size="sm"
                 onClick={mergeDuplicateItem}
                 disabled={!quantityFieldKey || duplicateAction !== ""}
-                className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
               >
                 {duplicateAction === "merge" ? "Merging..." : "Merge quantity"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+              </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -3148,33 +3150,38 @@ export default function InventorySection() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
-            <h3 className="text-lg font-semibold text-slate-900">Confirm delete</h3>
-            <p className="mt-2 text-sm text-slate-600">
+      <AlertDialog
+        open={showDeleteConfirm}
+        onOpenChange={(open) => {
+          if (!open && !deletingId) cancelDelete();
+        }}
+      >
+        <AlertDialogContent className="rounded-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm delete</AlertDialogTitle>
+            <AlertDialogDescription>
               Are you sure you want to delete this item? This action cannot be undone.
-            </p>
-            <div className="mt-4 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={cancelDelete}
-                className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmDelete}
-                disabled={!!deletingId}
-                className="rounded-md bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#5a1717] disabled:opacity-50"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-3 sm:gap-4">
+            <AlertDialogCancel
+              disabled={!!deletingId}
+              onClick={cancelDelete}
+              className="rounded-lg"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={confirmDelete}
+              disabled={!!deletingId}
+              className="rounded-lg bg-red-600 px-6 text-white hover:bg-red-700"
+            >
+              {deletingId ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ── Inline Remark Popover (qty === 1) ──────────────────────────────────── */}
       {remarkInlineEdit && remarkInlineEdit.targetEl && createPortal(
@@ -3203,126 +3210,129 @@ export default function InventorySection() {
       )}
 
       {/* ── Remark Change Modal ───────────────────────────────────────────────── */}
-      {remarkChangeModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-slate-900">Change Remark</h3>
-              <button
-                type="button"
-                onClick={() => { setRemarkChangeModal(null); setRemarkSaving(false); }}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      <Dialog
+        open={Boolean(remarkChangeModal)}
+        onOpenChange={(open) => {
+          if (!open && !remarkSaving) {
+            setRemarkChangeModal(null);
+            setRemarkSaving(false);
+          }
+        }}
+      >
+        <DialogContent className="flex max-h-[85vh] max-w-md flex-col gap-0 overflow-hidden rounded-[28px] p-0">
+          <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
+            <DialogTitle className="text-lg font-semibold text-slate-900">Change Remark</DialogTitle>
+            <DialogDescription className="mt-1 text-sm">
+              Move item quantity from the current remark to a new remark.
+            </DialogDescription>
+          </DialogHeader>
 
-            {/* Current remark info */}
-            <p className="mt-4 text-sm text-slate-500">
-              Changing <span className="font-medium text-slate-700">{remarkChangeModal.currentRemark}</span>
-              {" "}×{remarkChangeModal.itemQty}
-            </p>
-
-            {/* Target remark dropdown */}
-            <div className="mt-4">
-              <label className="text-sm font-medium text-slate-600">New Remark</label>
-              <select
-                value={remarkChangeModal.targetRemark}
-                onChange={(e) => setRemarkChangeModal((prev) => ({ ...prev, targetRemark: e.target.value }))}
-                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-              >
-                <option value="">Select new remark...</option>
-                {remarkChangeModal.allRemarkOptions
-                  .filter((o) => o !== remarkChangeModal.currentRemark)
-                  .map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-              </select>
-            </div>
+          {remarkChangeModal && (
+            <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5 sm:px-8">
+              <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3">
+                <p className="text-sm text-slate-500">Current remark</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {remarkChangeModal.currentRemark} x{remarkChangeModal.itemQty}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">New Remark</Label>
+                <Select
+                  value={remarkChangeModal.targetRemark || ""}
+                  onValueChange={(value) =>
+                    setRemarkChangeModal((prev) => ({ ...prev, targetRemark: value }))
+                  }
+                >
+                  <SelectTrigger className="focus:ring-[#4a1111]">
+                    <SelectValue placeholder="Select new remark..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {remarkChangeModal.allRemarkOptions
+                      .filter((option) => option !== remarkChangeModal.currentRemark)
+                      .map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
             {/* Quantity input — only when item has more than 1 */}
             {remarkChangeModal.itemQty > 1 && (
-              <div className="mt-4">
-                <label className="text-sm font-medium text-slate-600">
-                  How many items?
-                </label>
-                <input
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-slate-700">Quantity</Label>
+                <Input
                   type="number"
                   min={1}
                   max={remarkChangeModal.itemQty}
                   value={remarkChangeModal.quantity}
-                  onChange={(e) => {
+                  onChange={(event) => {
                     const max = remarkChangeModal.itemQty;
-                    const val = Math.max(1, Math.min(max, Math.floor(Number(e.target.value)) || 1));
-                    setRemarkChangeModal((prev) => ({ ...prev, quantity: val }));
+                    const value = Math.max(1, Math.min(max, Math.floor(Number(event.target.value)) || 1));
+                    setRemarkChangeModal((prev) => ({ ...prev, quantity: value }));
                   }}
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                  className="focus-visible:ring-[#4a1111]"
                 />
-                <p className="mt-1 text-xs text-slate-400">
-                  Max: {remarkChangeModal.itemQty}
-                </p>
+                <p className="text-xs text-slate-500">Max: {remarkChangeModal.itemQty}</p>
               </div>
             )}
 
-            {/* Actions */}
-            <div className="mt-5 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => { setRemarkChangeModal(null); setRemarkSaving(false); }}
-                disabled={remarkSaving}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleRemarkChange}
-                disabled={remarkSaving || !remarkChangeModal.targetRemark || Number(remarkChangeModal.quantity) < 1}
-                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:bg-slate-300"
-              >
-                {remarkSaving ? (
-                  <>
-                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                    Saving…
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-4 w-4" />
-                    Save
-                  </>
-                )}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+          )}
 
-      {confirmExitEditMode && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
-            <h3 className="text-lg font-semibold text-slate-900">Done Editing?</h3>
-            <p className="mt-2 text-sm text-slate-600">
+          <DialogFooter className="flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setRemarkChangeModal(null);
+                setRemarkSaving(false);
+              }}
+              disabled={remarkSaving}
+              className="rounded-lg"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleRemarkChange}
+              disabled={remarkSaving || !remarkChangeModal?.targetRemark || Number(remarkChangeModal?.quantity) < 1}
+              className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
+            >
+              {remarkSaving ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={confirmExitEditMode} onOpenChange={setConfirmExitEditMode}>
+        <AlertDialogContent className="rounded-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Done Editing?</AlertDialogTitle>
+            <AlertDialogDescription>
               You are about to exit edit mode. Are you done making changes?
-            </p>
-            <div className="mt-4 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={cancelExitEditing}
-                className="rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
-              >
-                Keep Editing
-              </button>
-              <button
-                type="button"
-                onClick={confirmExitEditing}
-                className="rounded-md bg-[#4a1111] px-3 py-2 text-sm font-medium text-white hover:bg-[#5a1717]"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-3 sm:gap-4">
+            <AlertDialogCancel
+              onClick={cancelExitEditing}
+              className="rounded-lg"
+            >
+              Keep Editing
+            </AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={confirmExitEditing}
+              className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
+            >
+              Done
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );
