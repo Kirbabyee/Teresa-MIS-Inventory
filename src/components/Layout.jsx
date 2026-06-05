@@ -201,13 +201,19 @@ export default function Layout() {
 
   const sectionTitleDisplay = useMemo(() => {
     const params = new URLSearchParams(location.search);
-    const isLogsView = params.get("view") === "logs";
+    const view = params.get("view");
+    const isLogsView = view === "logs";
+    const isHistoryView = view === "history";
+
+    if (location.pathname === "/borrowing" && (isHistoryView || isLogsView)) {
+      return "Borrowing - History";
+    }
 
     if (!isLogsView) return sectionTitle;
     if (/logs?$/i.test(sectionTitle)) return sectionTitle;
 
     return `${sectionTitle} - Logs`;
-  }, [location.search, sectionTitle]);
+  }, [location.pathname, location.search, sectionTitle]);
 
   const navItems = useMemo(() => {
     const inventoryChildren = inventoryTabs.map((tab) => ({

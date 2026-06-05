@@ -1038,7 +1038,7 @@ const ItemCard = ({
 };
 
 export default function Borrowing() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { tabs, loading: inventoryLoading, error: inventoryError } = useInventoryCatalog();
   const [search, setSearch] = useState("");
@@ -1068,6 +1068,24 @@ export default function Borrowing() {
   const [statusFilter, setStatusFilter] = useState(() =>
     ["logs", "history"].includes(searchParams.get("view")) ? "all" : "borrowed"
   );
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+
+    if (statusFilter === "all") {
+      nextParams.set("view", "history");
+    } else {
+      nextParams.delete("view");
+    }
+
+    const nextQuery = nextParams.toString();
+    const currentQuery = searchParams.toString();
+
+    if (nextQuery !== currentQuery) {
+      setSearchParams(nextQuery ? `?${nextQuery}` : "", { replace: true });
+    }
+  }, [searchParams, setSearchParams, statusFilter]);
+
   const [dateRange, setDateRange] = useState({ from: undefined, to: undefined });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const datePickerRef = useRef(null);
@@ -1098,7 +1116,6 @@ export default function Borrowing() {
   const [selectedExportColumns, setSelectedExportColumns] = useState([]);
   const [showColumnOptions, setShowColumnOptions] = useState(true);
   const [exportLogRefreshToken, setExportLogRefreshToken] = useState(0);
-  const [showExportLogs, setShowExportLogs] = useState(false);
 
   // ── 3-Step Wizard State ──────────────────────────────────────────────────
   const [activeStep, setActiveStep] = useState(1);
@@ -2645,15 +2662,7 @@ export default function Borrowing() {
       <div className="w-full space-y-5">
 
         {/* ── Page Header ─────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-slate-900">
-            {showExportLogs
-              ? "Export Logs"
-              : statusFilter === "all"
-                ? "Borrowing History"
-                : "Borrowed Items"}
-          </h1>
-        </div>
+        
 
         {/* ── Filters & Actions ────────────────────────────────────────────── */}
         <div className="relative z-20 flex w-full flex-col gap-3 overflow-visible xl:flex-row xl:items-center xl:justify-between">
@@ -2662,7 +2671,7 @@ export default function Borrowing() {
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder={showExportLogs ? "Search export logs..." : "Search borrower or item..."}
+                placeholder="Search borrower or item..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
@@ -2680,8 +2689,7 @@ export default function Borrowing() {
               )}
             </div>
 
-            {!showExportLogs && (
-              <div ref={datePickerRef} className="relative z-50">
+            <div ref={datePickerRef} className="relative z-50">
                 <button
                   type="button"
                   onClick={() => setShowDatePicker((current) => !current)}
@@ -2729,27 +2737,28 @@ export default function Borrowing() {
                   </div>
                 )}
               </div>
-            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                setShowModal(true);
-                setActiveStep(1);
-                setBorrowCart([]);
-                setGlobalSearch("");
-                setFormErrors({});
-                setFormError("");
-              }}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a1111] px-4 text-sm font-medium text-white transition hover:bg-[#5a1717]"
-              title="Open borrow modal"
-              aria-label="Open borrow modal"
-            >
-              <span className="text-base leading-none">+</span>
-              <span>Borrow</span>
-            </button>
+            {statusFilter !== "all" && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowModal(true);
+                  setActiveStep(1);
+                  setBorrowCart([]);
+                  setGlobalSearch("");
+                  setFormErrors({});
+                  setFormError("");
+                }}
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a1111] px-4 text-sm font-medium text-white transition hover:bg-[#5a1717]"
+                title="Open borrow modal"
+                aria-label="Open borrow modal"
+              >
+                <span className="text-base leading-none">+</span>
+                <span>Borrow</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -2764,44 +2773,20 @@ export default function Borrowing() {
 
             <button
               type="button"
-              onClick={() => {
-                setShowExportLogs((current) => !current);
-                setStatusFilter("borrowed");
-              }}
-              className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition ${showExportLogs
-                ? "bg-[#4a1111] text-white hover:bg-[#5a1717]"
-                : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-                }`}
-              title={showExportLogs ? "Return to borrowed items" : "Show export logs"}
-              aria-label={showExportLogs ? "Return to borrowed items" : "Show export logs"}
-            >
-              {showExportLogs ? (
-                <ChevronLeft className="h-4 w-4" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              <span>{showExportLogs ? "Return" : "Export Logs"}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setShowExportLogs(false);
-                setStatusFilter(statusFilter === "borrowed" ? "all" : "borrowed");
-              }}
-              className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition ${!showExportLogs && statusFilter === "all"
+              onClick={() => setStatusFilter(statusFilter === "borrowed" ? "all" : "borrowed")}
+              className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition ${statusFilter === "all"
                 ? "bg-[#4a1111] text-white hover:bg-[#5a1717]"
                 : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
                 }`}
               title={statusFilter === "borrowed" ? "Show borrowing history" : "Show current borrowed items"}
               aria-label={statusFilter === "borrowed" ? "Show borrowing history" : "Show current borrowed items"}
             >
-              {!showExportLogs && statusFilter === "all" ? (
+              {statusFilter === "all" ? (
                 <ChevronLeft className="h-4 w-4" />
               ) : (
                 <History className="h-4 w-4" />
               )}
-              <span>{!showExportLogs && statusFilter === "all" ? "Active Only" : "History"}</span>
+              <span>{statusFilter === "all" ? "Active Only" : "History"}</span>
             </button>
           </div>
         </div>
@@ -2970,12 +2955,187 @@ export default function Borrowing() {
           </AlertDialogContent>
         </AlertDialog>
 
-        {showExportLogs ? (
-          <ExportLogsPanel
-            searchQuery={search}
-            refreshToken={exportLogRefreshToken}
-            fileNamePrefix="borrowing-records"
-          />
+        {statusFilter === "all" ? (
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(440px,1fr)]">
+            <div className="min-w-0 w-full">
+              <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-opacity duration-300">
+                {borrowingsError && (
+                  <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    Error loading borrowings: {borrowingsError}
+                  </div>
+                )}
+                {!borrowingsLoading && filteredData.length === 0 ? (
+                  <div className="text-center py-16 text-slate-400">
+                    <p>No borrowing logs found.</p>
+                  </div>
+                ) : !borrowingsLoading && (
+                  <>
+                    <div className="max-h-[36rem] overflow-auto">
+                      <table className="w-full min-w-[900px] border-separate border-spacing-0 transition-opacity duration-300">
+                        <thead className="sticky top-0 z-10 bg-slate-50 shadow-[inset_0_-1px_0_rgb(226,232,240)]">
+                          <tr>
+                            {[
+                              "Borrower",
+                              "Borrowed At",
+                              "Returned At",
+                              "Items",
+                              "Quantity",
+                              //"Return Condition",
+                            ].map((h) => (
+                              <th
+                                key={h}
+                                className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
+                              >
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {currentPageData.map((record, rowIndex) => {
+                            const activeItems = (record.items || []).filter((item) => getReturnedQuantity(item) > 0);
+                            return (
+                              <tr
+                                key={record.id}
+                                onClick={() => setSelectedRecord(record)}
+                                className={`cursor-pointer transition-colors hover:bg-slate-200/80 ${rowIndex % 2 === 0 ? "bg-white" : "bg-slate-100/90"}`}
+                              >
+                                <td className="px-4 py-3">
+                                  <p className="text-sm font-medium text-slate-900">{record.name}</p>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  <div>{formatExportDate(record.date)}</div>
+                                  <div className="text-xs text-slate-400">{formatExportTime(record.date)}</div>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  {record.returnedAt ? (
+                                    <>
+                                      <div>{formatExportDate(record.returnedAt)}</div>
+                                      <div className="text-xs text-slate-400">{formatExportTime(record.returnedAt)}</div>
+                                    </>
+                                  ) : (
+                                    <span className="text-xs text-amber-600">Partially returned</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  {activeItems.length > 1 ? (
+                                    <ul className="list-disc list-inside space-y-0.5">
+                                      {activeItems.map((item) => (
+                                        <li key={`${record.id}-${item.id}`}>{item.label}</li>
+                                      ))}
+                                    </ul>
+                                  ) : activeItems.length === 1 ? (
+                                    <span>{activeItems[0].label}</span>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  {activeItems.length > 1 ? (
+                                    <ul className="list-disc list-inside space-y-0.5">
+                                      {activeItems.map((item) => {
+                                        const returned = getReturnedQuantity(item);
+                                        return <li key={`${record.id}-${item.id}-qty`}>{returned || "—"}</li>;
+                                      })}
+                                    </ul>
+                                  ) : activeItems.length === 1 ? (
+                                    <span>{getReturnedQuantity(activeItems[0]) || "—"}</span>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                {/*<td className="px-4 py-3">
+                                  {activeItems.length > 1 ? (
+                                    <ul className="space-y-1">
+                                      {activeItems.map((item) => {
+                                        const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
+                                        const opLabel = tabMeta.operational || "Working";
+                                        const qLabel = tabMeta.quarantine || "Defective";
+                                        const label = getReturnConditionLabel(item, opLabel, qLabel);
+                                        return (
+                                          <li key={`${record.id}-${item.id}-condition`}>
+                                            <span className="inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border border-rose-200 bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                                              {label}
+                                            </span>
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                  ) : activeItems.length === 1 ? (
+                                    (() => {
+                                      const item = activeItems[0];
+                                      const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
+                                      const opLabel = tabMeta.operational || "Working";
+                                      const qLabel = tabMeta.quarantine || "Defective";
+                                      return (
+                                        <span className="inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border border-rose-200 bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                                          {getReturnConditionLabel(item, opLabel, qLabel)}
+                                        </span>
+                                      );
+                                    })()
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td> */}
+                                
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {filteredData.length > 0 && (
+                      <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
+                        <div className="text-sm text-slate-500">
+                          Showing {Math.min(pageStartIndex + 1, filteredData.length)}–{Math.min(pageEndIndex, filteredData.length)} of {filteredData.length}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                            disabled={page === 1}
+                            className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                            aria-label="Previous page"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+                          {visiblePageNumbers.map((pageNumber) => {
+                            const isActive = page === pageNumber;
+                            return (
+                              <button
+                                key={pageNumber}
+                                type="button"
+                                onClick={() => setPage(pageNumber)}
+                                className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
+                              >
+                                {pageNumber}
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={page === totalPages || totalPages === 0}
+                            className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                            aria-label="Next page"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="min-w-0 w-full xl:min-w-[440px]">
+              <ExportLogsPanel
+                searchQuery={search}
+                refreshToken={exportLogRefreshToken}
+                fileNamePrefix="borrowing-records"
+              />
+            </div>
+          </div>
         ) : (
           <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-opacity duration-300">
             {borrowingsError && (
@@ -2985,7 +3145,7 @@ export default function Borrowing() {
             )}
             {!borrowingsLoading && filteredData.length === 0 ? (
               <div className="text-center py-16 text-slate-400">
-                <p>{statusFilter === "borrowed" ? "No borrowed items yet." : "No borrowing logs found."}</p>
+                <p>No borrowed items yet.</p>
               </div>
             ) : !borrowingsLoading && (
               <>
@@ -2996,11 +3156,10 @@ export default function Borrowing() {
                         {[
                           "Borrower",
                           "Borrowed At",
-                          ...(statusFilter === "all" ? ["Returned At"] : []),
-                          ...(statusFilter !== "all" ? ["Status"] : []),
+                          "Status",
                           "Items",
                           "Quantity",
-                          statusFilter === "all" ? "Return Condition" : "Condition",
+                          "Condition",
                         ].map((h) => (
                           <th
                             key={h}
@@ -3009,74 +3168,36 @@ export default function Borrowing() {
                             {h}
                           </th>
                         ))}
-                        {statusFilter === "borrowed" && (
-                          <th className="bg-slate-50 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            <span className="sr-only">Row actions</span>
-                          </th>
-                        )}
+                        <th className="bg-slate-50 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          <span className="sr-only">Row actions</span>
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {currentPageData.map((record, rowIndex) => {
-                        // Borrowed tab: show only items still out (not fully returned yet)
-                        // History tab: show only items that were returned
-                        const activeItems = (record.items || []).filter((item) => {
-                          const total = getBorrowedQuantity(item);
-                          const returned = getReturnedQuantity(item);
-                          if (statusFilter === "all") {
-                            return returned > 0;
-                          }
-                          return returned < total;
-                        });
+                        const activeItems = (record.items || []).filter((item) => getReturnedQuantity(item) < getBorrowedQuantity(item));
                         return (
                           <tr
                             key={record.id}
                             onClick={() => setSelectedRecord(record)}
-                            className={`cursor-pointer transition-colors hover:bg-slate-200/80 ${rowIndex % 2 === 0 ? "bg-white" : "bg-slate-100/90"
-                              }`}
+                            className={`cursor-pointer transition-colors hover:bg-slate-200/80 ${rowIndex % 2 === 0 ? "bg-white" : "bg-slate-100/90"}`}
                           >
-                            {/* Borrower */}
                             <td className="px-4 py-3">
                               <p className="text-sm font-medium text-slate-900">{record.name}</p>
                             </td>
-
-                            {/* Borrowed */}
                             <td className="px-4 py-3 text-sm text-slate-600">
                               <div>{formatExportDate(record.date)}</div>
                               <div className="text-xs text-slate-400">{formatExportTime(record.date)}</div>
                             </td>
-
-                            {/* Returned At (history view only) */}
-                            {statusFilter === "all" && (
-                              <td className="px-4 py-3 text-sm text-slate-600">
-                                {record.returnedAt
-                                  ? <div>
-                                    <div>{formatExportDate(record.returnedAt)}</div>
-                                    <div className="text-xs text-slate-400">{formatExportTime(record.returnedAt)}</div>
-                                  </div>
-                                  : <span className="text-xs text-amber-600">Partially returned</span>
-                                }
-                              </td>
-                            )}
-
-                            {/* Status (borrowed view only) */}
-                            {statusFilter !== "all" && (
-                              <td className="px-4 py-3">
-                                <span
-                                  className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-1 text-xs font-medium ${getBorrowingStatusClass(record.status)}`}
-                                >
-                                  {formatBorrowingStatus(record.status)}
-                                </span>
-                              </td>
-                            )}
-
-                            {/* Items — bulleted list for multiple */}
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-1 text-xs font-medium ${getBorrowingStatusClass(record.status)}`}>
+                                {formatBorrowingStatus(record.status)}
+                              </span>
+                            </td>
                             <td className="px-4 py-3 text-sm text-slate-600">
                               {activeItems.length > 1 ? (
                                 <ul className="list-disc list-inside space-y-0.5">
-                                  {activeItems.map((item) => (
-                                    <li key={`${record.id}-${item.id}`}>{item.label}</li>
-                                  ))}
+                                  {activeItems.map((item) => <li key={`${record.id}-${item.id}`}>{item.label}</li>)}
                                 </ul>
                               ) : activeItems.length === 1 ? (
                                 <span>{activeItems[0].label}</span>
@@ -3084,42 +3205,22 @@ export default function Borrowing() {
                                 "—"
                               )}
                             </td>
-
-                            {/* Quantity — borrowed tab: remaining; history tab: returned */}
                             <td className="px-4 py-3 text-sm text-slate-600">
                               {activeItems.length > 1 ? (
                                 <ul className="list-disc list-inside space-y-0.5">
                                   {activeItems.map((item) => {
                                     const total = getBorrowedQuantity(item);
                                     const returned = getReturnedQuantity(item);
-                                    const displayQty = statusFilter === "all"
-                                      ? returned
-                                      : Math.max(0, total - returned);
-                                    const isZero = displayQty === 0 || (statusFilter !== "all" && item.inventoryItemId && depletedItems.has(item.inventoryItemId));
-                                    return (
-                                      <li key={`${record.id}-${item.id}-qty`} className={isZero ? "text-slate-600 font-semibold" : ""}>
-                                        {displayQty || "—"}
-                                      </li>
-                                    );
+                                    const displayQty = Math.max(0, total - returned);
+                                    return <li key={`${record.id}-${item.id}-qty`}>{displayQty || "—"}</li>;
                                   })}
                                 </ul>
                               ) : activeItems.length === 1 ? (
-                                (() => {
-                                  const item = activeItems[0];
-                                  const total = getBorrowedQuantity(item);
-                                  const returned = getReturnedQuantity(item);
-                                  const displayQty = statusFilter === "all"
-                                    ? returned
-                                    : Math.max(0, total - returned);
-                                  const isZero = displayQty === 0 || (statusFilter !== "all" && item.inventoryItemId && depletedItems.has(item.inventoryItemId));
-                                  return <span className={isZero ? "text-rose-700 font-semibold" : ""}>{displayQty || "—"}</span>;
-                                })()
+                                <span>{Math.max(0, getBorrowedQuantity(activeItems[0]) - getReturnedQuantity(activeItems[0])) || "—"}</span>
                               ) : (
                                 "—"
                               )}
                             </td>
-
-                            {/* Condition */}
                             <td className="px-4 py-3">
                               {activeItems.length > 1 ? (
                                 <ul className="space-y-1">
@@ -3131,12 +3232,7 @@ export default function Borrowing() {
                                     const label = getReturnConditionLabel(item, opLabel, qLabel);
                                     return (
                                       <li key={`${record.id}-${item.id}-condition`}>
-                                        <span
-                                          className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${isOperational
-                                            ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                                            : "bg-rose-100 text-rose-700 border-rose-200"
-                                            }`}
-                                        >
+                                        <span className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-rose-100 text-rose-700 border-rose-200"}`}>
                                           {label}
                                         </span>
                                       </li>
@@ -3152,12 +3248,7 @@ export default function Borrowing() {
                                   const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
                                   const label = getReturnConditionLabel(item, opLabel, qLabel);
                                   return (
-                                    <span
-                                      className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${isOperational
-                                        ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                                        : "bg-rose-100 text-rose-700 border-rose-200"
-                                        }`}
-                                    >
+                                    <span className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-rose-100 text-rose-700 border-rose-200"}`}>
                                       {label}
                                     </span>
                                   );
@@ -3166,32 +3257,26 @@ export default function Borrowing() {
                                 "—"
                               )}
                             </td>
-
-                            {/* Action (active view only) */}
-                            {statusFilter === "borrowed" && (
-                              <td className="px-4 py-3">
-                                <div className="flex justify-end">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      requestReturn(record);
-                                    }}
-                                    className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                                  >
-                                    Return
-                                  </button>
-                                </div>
-                              </td>
-                            )}
+                            <td className="px-4 py-3">
+                              <div className="flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    requestReturn(record);
+                                  }}
+                                  className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                                >
+                                  Return
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
                 </div>
-
-                {/* ── Pagination Footer ─────────────────────────────────────────────── */}
                 {filteredData.length > 0 && (
                   <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
                     <div className="text-sm text-slate-500">
