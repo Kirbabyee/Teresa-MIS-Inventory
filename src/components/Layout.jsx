@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import arkLogo from "@/assets/imgs/ark-logo.png";
 import { useAuth } from "@/lib/AuthContext";
+import { Loader2 } from "lucide-react";
 
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
@@ -168,7 +169,7 @@ export default function Layout() {
   });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const { logout } = useAuth();
+  const { logout, isGlobalLoading, globalLoadingMessage } = useAuth();
   const [now, setNow] = useState(() => new Date());
   const { tabs: inventoryTabs } = useInventoryCatalog();
   const navigate = useNavigate();
@@ -427,6 +428,16 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Global Loading Overlay */}
+      {isGlobalLoading && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 rounded-2xl bg-white px-8 py-6 shadow-xl">
+            <Loader2 className="h-8 w-8 animate-spin text-[#4a1111]" />
+            <p className="text-sm font-medium text-slate-700">{globalLoadingMessage}</p>
+          </div>
+        </div>
+      )}
 
       {/* Logout Modal */}
       <AlertDialog open={showLogoutConfirm} onOpenChange={setShowLogoutConfirm}>

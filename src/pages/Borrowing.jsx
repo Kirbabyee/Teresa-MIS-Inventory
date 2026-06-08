@@ -746,107 +746,141 @@ const ItemCard = ({
 }) => {
   const [carouselIdx, setCarouselIdx] = useState(0);
 
-  // Reset carousel when item changes
   useEffect(() => { setCarouselIdx(0); }, [item.id]);
 
   const dotColorFor = (remark) => {
-    if (!remark || remark === "Returned") return "bg-slate-400";
-    // Operational / working → green
+    if (!remark || remark === "Returned") return "bg-slate-300";
     if (remark === opLabel || (remark && remark.toLowerCase() === "working")) return "bg-emerald-500";
-    // Quarantine / non-operational → rose
     if (remark === qLabel) return "bg-rose-500";
-    // Any other custom remark → amber
     return "bg-amber-500";
   };
 
+  const conditionBadgeClass = (label) => {
+    if (!label) return "bg-slate-100 text-slate-500";
+    const l = label.toLowerCase();
+    if (l === String(opLabel).toLowerCase() || l === "working") return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
+    if (l === String(qLabel).toLowerCase() || l === "defective") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
+    return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+  };
+
+  const hasActiveUnits = displayUnits.some((u) => u.status === "Active / Borrowed");
+  const activeCount = displayUnits.filter((u) => u.status === "Active / Borrowed").length;
+
+  // ── Right panel (static, no carousel) ──
   const renderRightPanel = (groupRemark, groupUnits) => {
-    const groupCount = groupUnits.length;
     const groupCondition = groupRemark && groupRemark !== "Returned" ? groupRemark : returnConditionLabel;
-    // Per-unit data from returned_item_details JSONB (one entry per returned unit)
     const retDetails = item.returnedItemDetails;
     const hasJsonbData = Array.isArray(retDetails) && retDetails.length > 0;
     return (
-      <div className="shrink-0 sm:w-56 bg-slate-50/60 border-t sm:border-t-0 border-slate-100 px-4 py-3 space-y-3">
+      <div className="shrink-0 sm:w-60 bg-slate-50/40 border-t sm:border-t-0 border-l-0 border-slate-100 px-5 py-5 space-y-4">
+        {/* Condition flow */}
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Qty Returned</p>
-          <p className="mt-0.5 text-xs font-semibold text-slate-700">{returnedQty} / {borrowedQty}</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Original Condition</p>
-          <p className="mt-0.5 text-xs font-semibold text-slate-700">{originalRemark}</p>
-        </div>
-        {returnedQty > 0 && (
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Condition</p>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <span className="text-xs font-semibold text-slate-700">{groupCondition}</span>
+          <p className="text-xs font-medium text-slate-400 mb-1.5">Condition</p>
+          {returnedQty > 0 ? (
+            <div className="flex items-center gap-2">
+              <span className={`rounded-md px-2 py-1 text-xs font-semibold ${conditionBadgeClass(originalRemark)}`}>
+                {originalRemark || opLabel}
+              </span>
+              <span className="text-sm text-slate-300">→</span>
+              <span className={`rounded-md px-2 py-1 text-xs font-semibold ${conditionBadgeClass(groupCondition.split(" / ")[0].split(": ")[0])}`}>
+                {groupCondition}
+              </span>
             </div>
-          </div>
-        )}
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Borrowed At</p>
-          <p className="mt-0.5 text-xs font-semibold text-slate-700">{formatExportDate(borrowDate)}</p>
-          <p className="text-[11px] text-slate-400">{formatExportTime(borrowDate)}</p>
+          ) : (
+            <span className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${conditionBadgeClass(originalRemark)}`}>
+              {originalRemark || opLabel}
+            </span>
+          )}
         </div>
-        {/* ── Returned At: one entry per unit ── */}
+
+        {/* Quantity */}
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Returned At</p>
-          {hasJsonbData ? (
-            <div className="mt-1 space-y-1.5">
+          <p className="text-xs font-medium text-slate-400 mb-1.5">Quantity</p>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-lg font-bold tabular-nums text-slate-900">{returnedQty}</span>
+            <span className="text-sm text-slate-300">/</span>
+            <span className="text-sm font-medium tabular-nums text-slate-500">{borrowedQty}</span>
+            <span className="text-xs text-slate-400">units</span>
+          </div>
+          {hasActiveUnits && (
+            <p className="mt-1 text-xs font-medium text-blue-600">
+              {activeCount} {activeCount === 1 ? "unit" : "units"} still borrowed
+            </p>
+          )}
+        </div>
+
+        {/* Dates */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+          <div>
+            <p className="text-xs font-medium text-slate-400 mb-1">Borrowed</p>
+            <p className="text-sm font-semibold text-slate-900">{formatExportDate(borrowDate)}</p>
+            <p className="text-xs text-slate-400">{formatExportTime(borrowDate)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-slate-400 mb-1">Returned</p>
+            {hasJsonbData && retDetails[0]?.returnedAt ? (
+              <>
+                <p className="text-sm font-semibold text-slate-900">{formatExportDate(retDetails[0].returnedAt)}</p>
+                <p className="text-xs text-slate-400">{formatExportTime(retDetails[0].returnedAt)}</p>
+              </>
+            ) : item.itemReturnedAt ? (
+              <>
+                <p className="text-sm font-semibold text-slate-900">{formatExportDate(item.itemReturnedAt)}</p>
+                <p className="text-xs text-slate-400">{formatExportTime(item.itemReturnedAt)}</p>
+              </>
+            ) : (
+              <p className="text-xs italic text-slate-400">Not yet returned</p>
+            )}
+          </div>
+        </div>
+
+        {/* Per-unit timestamps (only when multiple distinct timestamps) */}
+        {hasJsonbData && retDetails.length > 1 && (
+          <div className="border-t border-slate-200 pt-3">
+            <p className="text-xs font-medium text-slate-400 mb-2">Unit Timestamps</p>
+            <div className="space-y-1.5">
               {retDetails.map((entry, i) => (
-                <div key={i}>
-                  <p className="text-xs">
-                    <span className="font-semibold text-slate-700">
-                      {entry.returnedAt ? formatExportDate(entry.returnedAt) : <span className="italic text-slate-400">pending</span>}
-                    </span>
-                    {retDetails.length > 1 && (
-                      <span className="font-normal text-slate-400"> — Unit {i + 1}</span>
-                    )}
-                  </p>
+                <div key={i} className="flex items-baseline gap-2">
+                  <span className="w-6 shrink-0 text-[10px] font-bold tabular-nums text-slate-400">Unit{i + 1}:</span>
+                  <span className="text-sm font-semibold text-slate-700">
+                    {entry.returnedAt ? formatExportDate(entry.returnedAt) : <span className="italic text-slate-400">pending</span>}
+                  </span>
                   {entry.returnedAt && (
-                    <p className="text-[11px] text-slate-400">{formatExportTime(entry.returnedAt)}</p>
+                    <span className="text-xs text-slate-400">{formatExportTime(entry.returnedAt)}</span>
                   )}
                 </div>
               ))}
             </div>
-          ) : item.itemReturnedAt ? (
-            <>
-              <p className="mt-0.5 text-xs font-semibold text-slate-700">{formatExportDate(item.itemReturnedAt)}</p>
-              <p className="text-[11px] text-slate-400">{formatExportTime(item.itemReturnedAt)}</p>
-            </>
-          ) : (
-            <p className="mt-0.5 text-xs text-slate-400 italic">Not yet returned</p>
-          )}
-        </div>
-        {/* ── Return Remarks: one entry per unit ── */}
+          </div>
+        )}
+
+        {/* Return remarks */}
         {(() => {
           if (hasJsonbData) {
-            const entriesWithRemarks = retDetails.filter((e) => e.remarks?.trim());
-            if (entriesWithRemarks.length > 0) {
-              return (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
-                  <div className="mt-1 space-y-1">
-                    {entriesWithRemarks.map((entry, i) => {
-                      const unitIdx = retDetails.indexOf(entry) + 1;
-                      return (
-                        <p key={i} className="text-xs">
-                          <span className="text-slate-600">{entry.remarks}</span>
-                          {retDetails.length > 1 && (
-                            <span className="text-slate-400"> — Unit {unitIdx}</span>
-                          )}
-                        </p>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            }
-          } else if (item.returnRemarks?.trim()) {
+            const withRemarks = retDetails.filter((e) => e.remarks?.trim());
+            if (withRemarks.length === 0) return null;
             return (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
-                <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{item.returnRemarks}</p>
+              <div className="border-t border-slate-200 pt-3">
+                <p className="text-xs font-medium text-slate-400 mb-1.5">Notes</p>
+                <div className="space-y-1">
+                  {withRemarks.map((entry, i) => {
+                    const unitNum = retDetails.indexOf(entry) + 1;
+                    return (
+                      <p key={i} className="text-sm text-slate-700">
+                        <span className="w-6 shrink-0 text-[10px] font-bold tabular-nums text-slate-400">Unit{unitNum}:</span>{" "}
+                        <span className="font-medium">{entry.remarks}</span>
+                      </p>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          }
+          if (item.returnRemarks?.trim()) {
+            return (
+              <div className="border-t border-slate-200 pt-3">
+                <p className="text-xs font-medium text-slate-400 mb-1.5">Notes</p>
+                <p className="text-sm font-medium text-slate-700">{item.returnRemarks}</p>
               </div>
             );
           }
@@ -856,59 +890,111 @@ const ItemCard = ({
     );
   };
 
-  // Shared left panel: always shows ALL units regardless of carousel state
+  // ── Unit status pagination (10 per page) ──
+  const UNITS_PER_PAGE = 10;
+  const [unitPage, setUnitPage] = useState(0);
+  const totalUnitPages = Math.ceil(displayUnits.length / UNITS_PER_PAGE);
+  const pagedUnits = displayUnits.slice(
+    unitPage * UNITS_PER_PAGE,
+    (unitPage + 1) * UNITS_PER_PAGE,
+  );
+
+  // ── Left panel: asset fields + unit status ──
   const renderLeftPanel = () => (
-    <div className="flex-1 min-w-0 border-r border-slate-100">
+    <div className="flex-1 min-w-0">
       {displayFields.length > 0 && (
-        <div className="px-4 pt-3 pb-2">
-          <div className="flex flex-col gap-y-1.5">
+        <div className="px-5 pt-4 pb-3">
+          <div className="flex flex-col gap-y-2">
             {displayFields.map((field) => (
-              <div key={`${item.id}-${field.key}`} className="flex items-start gap-2 min-w-0">
-                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                  {field.label}:
+              <div key={`${item.id}-${field.key}`} className="flex items-baseline gap-2 min-w-0">
+                <span className="shrink-0 text-xs font-medium text-slate-400">
+                  {formatFieldLabel(field.key || field.label)}:
                 </span>
-                <span className="break-words text-xs font-medium text-slate-700">{field.value}</span>
+                <span className="truncate text-sm font-semibold text-slate-900">{field.value}</span>
               </div>
             ))}
           </div>
         </div>
       )}
       {displayUnits.length > 0 && (
-        <div className={`px-4 ${displayFields.length > 0 ? "pt-1" : "pt-3"} pb-3`}>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-            {displayUnits.length > 1 ? "Unit Status" : "Status"}
-          </p>
-          <div className={displayUnits.length > 1 ? "space-y-0" : ""}>
-            {displayUnits.map((unit, uIdx) => {
+        <div className={`px-5 ${displayFields.length > 0 ? "pt-1" : "pt-4"} pb-4`}>
+          <div className="flex items-baseline justify-between mb-2">
+            <p className="text-xs font-medium text-slate-400">
+              {displayUnits.length > 1 ? "Unit Status" : "Status"}
+            </p>
+            {totalUnitPages > 1 && (
+              <span className="text-[10px] font-medium text-slate-400">
+                {unitPage * UNITS_PER_PAGE + 1}–{Math.min((unitPage + 1) * UNITS_PER_PAGE, displayUnits.length)} of {displayUnits.length}
+              </span>
+            )}
+          </div>
+          {/* Unit list: strict vertical */}
+          <div className="flex flex-col gap-y-1">
+            {pagedUnits.map((unit) => {
               const isActive = unit.status === "Active / Borrowed";
-              const dot = isActive ? "bg-sky-500" : dotColorFor(unit.remark);
+              const dot = isActive ? "bg-blue-500" : dotColorFor(unit.remark);
               return (
                 <div
                   key={`${item.id}-unit-${unit.index}`}
-                  className={`flex items-center gap-2 text-xs py-1 ${displayUnits.length > 1 && uIdx < displayUnits.length - 1 ? "border-b border-slate-100/80" : ""}`}
+                  className="flex items-center gap-1.5 text-sm py-0.5"
                 >
-                  <span className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${dot}`} />
-                  {displayUnits.length > 1 && (
-                    <span className="font-medium text-slate-400 w-10 shrink-0 tabular-nums">
-                      Unit {unit.index + 1}:
-                    </span>
-                  )}
-                  <span className={`font-medium ${isActive ? "text-sky-700" : "text-slate-600"}`}>
-                    {unit.status}
+                  <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${dot}`} />
+                  <span className={`font-semibold tabular-nums ${isActive ? "text-blue-600" : "text-slate-700"}`}>
+                    {displayUnits.length > 1 ? `${unit.index + 1}: ` : ""}{unit.status}
                   </span>
                   {!isActive && unit.remark && unit.remark !== "Returned" && (
-                    <span className="text-slate-400">— {unit.remark}</span>
+                    <span className="truncate text-xs font-medium text-slate-400">{unit.remark}</span>
                   )}
                 </div>
               );
             })}
           </div>
+          {/* Pagination controls — 3-page sliding window */}
+          {totalUnitPages > 1 && (() => {
+            const windowSize = 3;
+            let start = Math.max(0, unitPage - Math.floor(windowSize / 2));
+            start = Math.min(start, Math.max(0, totalUnitPages - windowSize));
+            const end = Math.min(start + windowSize, totalUnitPages);
+            const pages = Array.from({ length: end - start }, (_, i) => start + i);
+            return (
+              <div className="mt-3 flex items-center justify-center gap-1.5 border-t border-border pt-2.5">
+                <button
+                  onClick={() => setUnitPage((p) => Math.max(0, p - 1))}
+                  disabled={unitPage === 0}
+                  className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Previous unit page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                {pages.map((i) => (
+                  <button
+                    key={i}
+                    onClick={() => setUnitPage(i)}
+                    className={`rounded-md px-3 py-1 text-sm transition ${i === unitPage
+                      ? "bg-[#4a1111] text-primary-foreground font-semibold tabular-nums"
+                      : "text-foreground hover:bg-accent hover:text-accent-foreground tabular-nums"
+                      }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setUnitPage((p) => Math.min(totalUnitPages - 1, p + 1))}
+                  disabled={unitPage === totalUnitPages - 1}
+                  className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Next unit page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
   );
 
-  // Right panel: in carousel mode, shows one remark group at a time with chevrons
+  // ── Carousel right panel ──
   const renderCarouselRightPanel = () => {
     const groupRemark = remarkGroups[carouselIdx];
     const groupUnits = seenRemarks.get(groupRemark) || [];
@@ -918,86 +1004,94 @@ const ItemCard = ({
     const nextPanel = () => setCarouselIdx((carouselIdx + 1) % remarkGroups.length);
 
     return (
-      <div className="shrink-0 sm:w-56 bg-slate-50/60 border-t sm:border-t-0 border-slate-100">
-        {/* Chevron navigation header */}
-        <div className="flex items-center justify-between px-4 pt-3 pb-2">
-          <button
-            onClick={prevPanel}
-            className="p-1 rounded-md hover:bg-slate-200/60 text-slate-400 hover:text-slate-600 transition-colors"
-            title="Previous"
-          >
+      <div className="shrink-0 sm:w-60 bg-slate-50/40 border-t sm:border-t-0 border-l-0 border-slate-100">
+        {/* Chevron nav */}
+        <div className="flex items-center justify-between px-5 pt-4 pb-3">
+          <button onClick={prevPanel} className="rounded-md border border-border bg-background p-1.5 text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:opacity-50" aria-label="Previous panel">
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <div className="text-center min-w-0 flex-1 mx-1">
-            <p className="text-[11px] font-bold text-slate-700 truncate">{groupCondition}</p>
-            <p className="text-[10px] text-slate-400">
-              {carouselIdx + 1} / {remarkGroups.length}
-            </p>
+          <div className="text-center min-w-0 flex-1 mx-2">
+            {/* <div className="flex items-center justify-center gap-2">
+              <span className={`inline-block h-2.5 w-2.5 rounded-full ${dotColorFor(groupRemark)}`} />
+              <span className="text-sm font-bold text-foreground truncate">{groupCondition}</span>
+            </div>*/}
+
+            <p className="text-[10px] text-muted-foreground mt-0.5">{carouselIdx + 1} / {remarkGroups.length}</p>
           </div>
-          <button
-            onClick={nextPanel}
-            className="p-1 rounded-md hover:bg-slate-200/60 text-slate-400 hover:text-slate-600 transition-colors"
-            title="Next"
-          >
+          <button onClick={nextPanel} className="rounded-md border border-border bg-background p-1.5 text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:opacity-50" aria-label="Next panel">
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Panel content */}
-        <div className="px-4 pb-3 space-y-3">
+        <div className="px-5 pb-4 space-y-3.5">
+          {/* Condition flow */}
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Original Condition</p>
-            <p className="mt-0.5 text-xs font-semibold text-slate-700">{originalRemark}</p>
-          </div>
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Condition</p>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <span className={`inline-block h-2 w-2 rounded-full ${dotColorFor(groupRemark)}`} />
-              <span className="text-xs font-semibold text-slate-700">{groupCondition}</span>
+            <p className="text-xs font-medium text-slate-400 mb-1.5">Condition</p>
+            <div className="flex items-center gap-2">
+              <span className={`rounded-md px-2 py-1 text-xs font-semibold ${conditionBadgeClass(originalRemark)}`}>
+                {originalRemark || opLabel}
+              </span>
+              <span className="text-sm text-slate-300">→</span>
+              <span className={`rounded-md px-2 py-1 text-xs font-semibold ${conditionBadgeClass(groupCondition)}`}>
+                {groupCondition}
+              </span>
             </div>
           </div>
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Borrowed At</p>
-            <p className="mt-0.5 text-xs font-semibold text-slate-700">{formatExportDate(borrowDate)}</p>
-            <p className="text-[11px] text-slate-400">{formatExportTime(borrowDate)}</p>
+
+          {/* Borrowed / Returned dates */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <div>
+              <p className="text-xs font-medium text-slate-400 mb-1">Borrowed</p>
+              <p className="text-sm font-semibold text-slate-900">{formatExportDate(borrowDate)}</p>
+              <p className="text-xs text-slate-400">{formatExportTime(borrowDate)}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-400 mb-1">Returned</p>
+              {groupUnits[0]?.returnedAt ? (
+                <>
+                  <p className="text-sm font-semibold text-slate-900">{formatExportDate(groupUnits[0].returnedAt)}</p>
+                  <p className="text-xs text-slate-400">{formatExportTime(groupUnits[0].returnedAt)}</p>
+                </>
+              ) : (
+                <p className="text-xs italic text-slate-400">pending</p>
+              )}
+            </div>
           </div>
-          {/* ── Returned At: one entry per unit ── */}
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Returned At</p>
-            <div className="mt-1 space-y-1.5">
-              {(groupUnits || []).map((unit, ui) => (
-                <div key={ui}>
-                  <p className="text-xs">
-                    <span className="font-semibold text-slate-700">
+
+          {/* Per-unit timestamps */}
+          {groupCount > 1 && (
+            <div className="border-t border-slate-200 pt-3">
+              <p className="text-xs font-medium text-slate-400 mb-2">Unit Timestamps</p>
+              <div className="space-y-1.5">
+                {groupUnits.map((unit, ui) => (
+                  <div key={ui} className="flex items-baseline gap-2">
+                    <span className="w-6 shrink-0 text-[10px] font-bold tabular-nums text-slate-400">
+                      U{unit.index + 1}
+                    </span>
+                    <span className="text-sm font-semibold text-slate-700">
                       {unit.returnedAt ? formatExportDate(unit.returnedAt) : <span className="italic text-slate-400">pending</span>}
                     </span>
-                    {groupCount > 1 && (
-                      <span className="font-normal text-slate-400"> — Unit {unit.index + 1}</span>
+                    {unit.returnedAt && (
+                      <span className="text-xs text-slate-400">{formatExportTime(unit.returnedAt)}</span>
                     )}
-                  </p>
-                  {unit.returnedAt && (
-                    <p className="text-[11px] text-slate-400">{formatExportTime(unit.returnedAt)}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-          {/* ── Return Remarks: one entry per unit ── */}
-          {(groupUnits || []).some((u) => u.remarks?.trim()) && (
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Return Remarks</p>
-              <div className="mt-1 space-y-1">
-                {(groupUnits || []).map((unit, ui) => (
-                  unit.remarks?.trim() ? (
-                    <p key={ui} className="text-xs">
-                      <span className="text-slate-600">{unit.remarks}</span>
-                      {groupCount > 1 && (
-                        <span className="text-slate-400"> — Unit {unit.index + 1}</span>
-                      )}
-                    </p>
-                  ) : null
+                  </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Remarks */}
+          {groupUnits.some((u) => u.remarks?.trim()) && (
+            <div className="border-t border-slate-200 pt-3">
+              <p className="text-xs font-medium text-slate-400 mb-1.5">Notes</p>
+              {groupUnits.map((unit, ui) => (
+                unit.remarks?.trim() ? (
+                  <p key={ui} className="text-sm text-slate-700">
+                    <span className="font-medium text-slate-400">U{unit.index + 1}:</span>{" "}
+                    <span className="font-medium">{unit.remarks}</span>
+                  </p>
+                ) : null
+              ))}
             </div>
           )}
         </div>
@@ -1006,29 +1100,23 @@ const ItemCard = ({
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-      {/* ── Item Header Strip ─────────────────────────────────── */}
-      <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3">
-        <div className="flex flex-wrap items-start justify-between gap-2">
+    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+      {/* ── Header strip ─────────────────────────────────────────── */}
+      <div className="bg-slate-50/60 border-b border-slate-100 px-5 py-4">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-slate-800 leading-tight">{item.label}</p>
-            {isCustom ? (
-              <p className="mt-0.5 text-[11px] text-slate-400">Custom Item (Outside Inventory)</p>
-            ) : (
-              <p className="mt-0.5 text-[11px] text-slate-400">
-                {tabName || "Inventory"}{tabName && sectionName ? " / " : ""}{sectionName || ""}
-              </p>
-            )}
+            <p className="text-base font-bold text-slate-900 leading-snug truncate">
+              {item.label}
+            </p>
+            <p className="mt-0.5 text-sm text-slate-400 truncate">
+              {isCustom ? "Custom Item" : `${tabName || "Inventory"}${sectionName ? ` · ${sectionName}` : ""}`}
+            </p>
           </div>
-          <div className="shrink-0 flex items-center gap-2">
-            <span className="rounded-md bg-slate-200/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-600">
-              Qty: {borrowedQty}
-            </span>
-          </div>
+
         </div>
       </div>
 
-      {/* ── Body: left panel (always all units) + right panel ── */}
+      {/* ── Body ─────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row">
         {renderLeftPanel()}
         {needsCarousel ? renderCarouselRightPanel() : renderRightPanel(null, [])}
@@ -1039,7 +1127,7 @@ const ItemCard = ({
 
 export default function Borrowing() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user } = useAuth();
+  const { user, showGlobalLoader, hideGlobalLoader } = useAuth();
   const { tabs, loading: inventoryLoading, error: inventoryError } = useInventoryCatalog();
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -1524,7 +1612,7 @@ export default function Borrowing() {
         ? allOptions.find((opt) => String(opt).toLowerCase() === String(currentRemark).toLowerCase())
         : opLabel;
       initialSelections[unit.unitKey] = {
-        checked: true,
+        checked: false,
         returnRemark: defaultRemark,
         remarks: "",
       };
@@ -1783,6 +1871,19 @@ export default function Borrowing() {
     setReturnSelections({});
   };
 
+  const handleSelectAll = () => {
+    if (!pendingReturn) return;
+    const units = unrollBorrowedUnits(pendingReturn.items || []);
+    const allChecked = units.every((u) => returnSelections[u.unitKey]?.checked);
+    const updated = { ...returnSelections };
+    for (const unit of units) {
+      if (updated[unit.unitKey]) {
+        updated[unit.unitKey] = { ...updated[unit.unitKey], checked: !allChecked };
+      }
+    }
+    setReturnSelections(updated);
+  };
+
   // ── Confirm Return — Ledger Merge Engine ──────────────────────────────
   // Mirrors the exact remark-change row-shifting architecture from
   // InventorySection.jsx handleRemarkChange(), but operates on checked
@@ -1798,6 +1899,7 @@ export default function Borrowing() {
 
     setReturningBorrow(true);
     setReturnError("");
+    showGlobalLoader("Processing return...");
 
     try {
       // Group checked units by the borrowed item they belong to
@@ -2226,6 +2328,7 @@ export default function Borrowing() {
       setBorrowingsError(message);
     } finally {
       setReturningBorrow(false);
+      hideGlobalLoader();
     }
   };
 
@@ -2359,6 +2462,7 @@ export default function Borrowing() {
     if (savingBorrow) return;
 
     setSavingBorrow(true);
+    showGlobalLoader("Processing borrow...");
     try {
       // Split cart into inventory items and custom items
       const inventoryCartItems = borrowCart.filter((c) => !c.isCustom);
@@ -2516,6 +2620,7 @@ export default function Borrowing() {
       setFormError(error?.message || "Failed to save borrowing record.");
     } finally {
       setSavingBorrow(false);
+      hideGlobalLoader();
     }
   };
 
@@ -2687,7 +2792,7 @@ export default function Borrowing() {
       <div className="w-full space-y-5">
 
         {/* ── Page Header ─────────────────────────────────────────────────── */}
-        
+
 
         {/* ── Filters & Actions ────────────────────────────────────────────── */}
         <div className="relative z-20 flex w-full flex-col gap-3 overflow-visible xl:flex-row xl:items-center xl:justify-between">
@@ -2715,53 +2820,53 @@ export default function Borrowing() {
             </div>
 
             <div ref={datePickerRef} className="relative z-50">
-                <button
-                  type="button"
-                  onClick={() => setShowDatePicker((current) => !current)}
-                  className="flex w-full min-w-[18rem] items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 shadow-sm hover:border-slate-300 focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20 sm:w-64"
-                >
-                  <span className="text-slate-500">{formatPickerLabel(dateRange)}</span>
-                  <ChevronDown className="h-4 w-4 text-slate-400" />
-                </button>
-                {showDatePicker && (
-                  <div className="absolute left-0 top-full z-50 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
-                    <DayPicker
-                      className="rdp-sidebar-picker text-sm"
-                      mode="range"
-                      selected={dateRange}
-                      numberOfMonths={1}
-                      onSelect={(range) => {
-                        setDateRange(range || { from: undefined, to: undefined });
+              <button
+                type="button"
+                onClick={() => setShowDatePicker((current) => !current)}
+                className="flex w-full min-w-[18rem] items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 shadow-sm hover:border-slate-300 focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20 sm:w-64"
+              >
+                <span className="text-slate-500">{formatPickerLabel(dateRange)}</span>
+                <ChevronDown className="h-4 w-4 text-slate-400" />
+              </button>
+              {showDatePicker && (
+                <div className="absolute left-0 top-full z-50 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
+                  <DayPicker
+                    className="rdp-sidebar-picker text-sm"
+                    mode="range"
+                    selected={dateRange}
+                    numberOfMonths={1}
+                    onSelect={(range) => {
+                      setDateRange(range || { from: undefined, to: undefined });
+                    }}
+                    footer={
+                      dateRange.from && dateRange.to
+                        ? `${format(dateRange.from, "MMM d, yyyy")} — ${format(dateRange.to, "MMM d, yyyy")}`
+                        : ""
+                    }
+                    fromDate={new Date("2000-01-01")}
+                    toDate={new Date("2100-12-31")}
+                  />
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDateRange({ from: undefined, to: undefined });
                       }}
-                      footer={
-                        dateRange.from && dateRange.to
-                          ? `${format(dateRange.from, "MMM d, yyyy")} — ${format(dateRange.to, "MMM d, yyyy")}`
-                          : ""
-                      }
-                      fromDate={new Date("2000-01-01")}
-                      toDate={new Date("2100-12-31")}
-                    />
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDateRange({ from: undefined, to: undefined });
-                        }}
-                        className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                      >
-                        Clear
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowDatePicker(false)}
-                        className="rounded-full bg-[#4a1111] px-3 py-1 text-xs font-medium text-white hover:bg-[#5a1717]"
-                      >
-                        Close
-                      </button>
-                    </div>
+                      className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowDatePicker(false)}
+                      className="rounded-full bg-[#4a1111] px-3 py-1 text-xs font-medium text-white hover:bg-[#5a1717]"
+                    >
+                      Close
+                    </button>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
@@ -3044,11 +3149,11 @@ export default function Borrowing() {
                                 </td>
                                 <td className="px-4 py-3 text-sm text-slate-600">
                                   {activeItems.length > 1 ? (
-                                    <ul className="list-disc list-inside space-y-0.5">
+                                    <div className="space-y-0.5">
                                       {activeItems.map((item) => (
-                                        <li key={`${record.id}-${item.id}`}>{item.label}</li>
+                                        <div key={`${record.id}-${item.id}`}>{item.label}</div>
                                       ))}
-                                    </ul>
+                                    </div>
                                   ) : activeItems.length === 1 ? (
                                     <span>{activeItems[0].label}</span>
                                   ) : (
@@ -3057,12 +3162,12 @@ export default function Borrowing() {
                                 </td>
                                 <td className="px-4 py-3 text-sm text-slate-600">
                                   {activeItems.length > 1 ? (
-                                    <ul className="list-disc list-inside space-y-0.5">
+                                    <div className="space-y-0.5">
                                       {activeItems.map((item) => {
                                         const returned = getReturnedQuantity(item);
-                                        return <li key={`${record.id}-${item.id}-qty`}>{returned || "—"}</li>;
+                                        return <div key={`${record.id}-${item.id}-qty`}>{returned || "—"}</div>;
                                       })}
-                                    </ul>
+                                    </div>
                                   ) : activeItems.length === 1 ? (
                                     <span>{getReturnedQuantity(activeItems[0]) || "—"}</span>
                                   ) : (
@@ -3071,21 +3176,21 @@ export default function Borrowing() {
                                 </td>
                                 {/*<td className="px-4 py-3">
                                   {activeItems.length > 1 ? (
-                                    <ul className="space-y-1">
+                                    <div className="space-y-1">
                                       {activeItems.map((item) => {
                                         const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
                                         const opLabel = tabMeta.operational || "Working";
                                         const qLabel = tabMeta.quarantine || "Defective";
                                         const label = getReturnConditionLabel(item, opLabel, qLabel);
                                         return (
-                                          <li key={`${record.id}-${item.id}-condition`}>
-                                            <span className="inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border border-rose-200 bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                                          <div key={`${record.id}-${item.id}-condition`}>
+                                            <span className="rounded-md px-2 py-1 text-xs font-semibold border border-rose-200 bg-rose-100 text-rose-700">
                                               {label}
                                             </span>
-                                          </li>
+                                          </div>
                                         );
                                       })}
-                                    </ul>
+                                    </div>
                                   ) : activeItems.length === 1 ? (
                                     (() => {
                                       const item = activeItems[0];
@@ -3102,7 +3207,7 @@ export default function Borrowing() {
                                     "—"
                                   )}
                                 </td> */}
-                                
+
                               </tr>
                             );
                           })}
@@ -3215,15 +3320,15 @@ export default function Borrowing() {
                               <div className="text-xs text-slate-400">{formatExportTime(record.date)}</div>
                             </td>
                             <td className="px-4 py-3">
-                              <span className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-1 text-xs font-medium ${getBorrowingStatusClass(record.status)}`}>
+                              <span className={`rounded-md px-2 py-1 text-xs font-semibold ${getBorrowingStatusClass(record.status)}`}>
                                 {formatBorrowingStatus(record.status)}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-sm text-slate-600">
                               {activeItems.length > 1 ? (
-                                <ul className="list-disc list-inside space-y-0.5">
-                                  {activeItems.map((item) => <li key={`${record.id}-${item.id}`}>{item.label}</li>)}
-                                </ul>
+                                <div className="space-y-0.5">
+                                  {activeItems.map((item) => <div key={`${record.id}-${item.id}`}>{item.label}</div>)}
+                                </div>
                               ) : activeItems.length === 1 ? (
                                 <span>{activeItems[0].label}</span>
                               ) : (
@@ -3232,14 +3337,14 @@ export default function Borrowing() {
                             </td>
                             <td className="px-4 py-3 text-sm text-slate-600">
                               {activeItems.length > 1 ? (
-                                <ul className="list-disc list-inside space-y-0.5">
+                                <div className="space-y-0.5">
                                   {activeItems.map((item) => {
                                     const total = getBorrowedQuantity(item);
                                     const returned = getReturnedQuantity(item);
                                     const displayQty = Math.max(0, total - returned);
-                                    return <li key={`${record.id}-${item.id}-qty`}>{displayQty || "—"}</li>;
+                                    return <div key={`${record.id}-${item.id}-qty`}>{displayQty || "—"}</div>;
                                   })}
-                                </ul>
+                                </div>
                               ) : activeItems.length === 1 ? (
                                 <span>{Math.max(0, getBorrowedQuantity(activeItems[0]) - getReturnedQuantity(activeItems[0])) || "—"}</span>
                               ) : (
@@ -3248,7 +3353,7 @@ export default function Borrowing() {
                             </td>
                             <td className="px-4 py-3">
                               {activeItems.length > 1 ? (
-                                <ul className="space-y-1">
+                                <div className="space-y-1">
                                   {activeItems.map((item) => {
                                     const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
                                     const opLabel = tabMeta.operational || "Working";
@@ -3256,14 +3361,14 @@ export default function Borrowing() {
                                     const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
                                     const label = getReturnConditionLabel(item, opLabel, qLabel);
                                     return (
-                                      <li key={`${record.id}-${item.id}-condition`}>
-                                        <span className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-rose-100 text-rose-700 border-rose-200"}`}>
+                                      <div key={`${record.id}-${item.id}-condition`}>
+                                        <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-rose-100 text-rose-700 border border-rose-200"}`}>
                                           {label}
                                         </span>
-                                      </li>
+                                      </div>
                                     );
                                   })}
-                                </ul>
+                                </div>
                               ) : activeItems.length === 1 ? (
                                 (() => {
                                   const item = activeItems[0];
@@ -3273,7 +3378,7 @@ export default function Borrowing() {
                                   const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
                                   const label = getReturnConditionLabel(item, opLabel, qLabel);
                                   return (
-                                    <span className={`inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-rose-100 text-rose-700 border-rose-200"}`}>
+                                    <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-rose-100 text-rose-700 border border-rose-200"}`}>
                                       {label}
                                     </span>
                                   );
@@ -3352,79 +3457,72 @@ export default function Borrowing() {
       {selectedRecord && (
         <Dialog open={!!selectedRecord} onOpenChange={(open) => !open && setSelectedRecord(null)}>
           <DialogContent
-            className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
+            className="flex max-h-[85vh] max-w-3xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
             onPointerDownOutside={(e) => e.preventDefault()}
           >
             {/* ── Header ───────────────────────────────────────────────────── */}
-            <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
+            <DialogHeader className="border-b border-slate-200 bg-white px-8 pt-8 pb-6 sm:px-10">
               <DialogTitle className="text-lg font-semibold text-slate-900">
-                Borrowing Record Details
+                Borrowing Record
               </DialogTitle>
-              <DialogDescription className="mt-1 text-sm text-slate-500">
-                Complete transaction data for this borrowing record.
-              </DialogDescription>
             </DialogHeader>
 
             {/* ── Body ─────────────────────────────────────────────────────── */}
-            <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6 sm:px-8">
+            <div className="flex-1 space-y-8 overflow-y-auto px-8 py-8 sm:px-10">
 
-              {/* Borrower Identity Section */}
-              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
-                <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Borrower Identity
-                </h3>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Full Name</p>
-                    <p className="mt-1 text-sm font-medium text-slate-800">{selectedRecord.name}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">ID Number</p>
-                    <p className="mt-1 text-sm font-medium text-slate-800">{selectedRecord.studentId || "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Role</p>
-                    <p className="mt-1 text-sm font-medium text-slate-800">{selectedRecord.role || "—"}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Transaction Timeline Section */}
-              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
-                <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {/* Transaction Overview — Borrower + Timeline */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-6">
+                <h3 className="mb-5 text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">
                   Transaction Details
                 </h3>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Borrowed At</p>
-                    <div className="mt-1">
-                      <p className="text-sm text-slate-700">{formatExportDate(selectedRecord.date)}</p>
-                      <p className="text-xs text-slate-400">{formatExportTime(selectedRecord.date)}</p>
-                    </div>
-                  </div>
-                  {selectedRecord.returnedAt && (
+                <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+                  {/* Left column: Borrower */}
+                  <div className="space-y-3">
                     <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Returned At</p>
-                      <div className="mt-1">
-                        <p className="text-sm text-slate-700">{formatExportDate(selectedRecord.returnedAt)}</p>
-                        <p className="text-xs text-slate-400">{formatExportTime(selectedRecord.returnedAt)}</p>
+                      <p className="text-xs font-medium text-slate-400">Full Name</p>
+                      <p className="mt-0.5 text-base font-semibold text-slate-900">{selectedRecord.name}</p>
+                    </div>
+                    <div className="flex gap-6">
+                      <div>
+                        <p className="text-xs font-medium text-slate-400">ID Number</p>
+                        <p className="mt-0.5 text-sm font-semibold text-slate-900">{selectedRecord.studentId || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-slate-400">Role</p>
+                        <p className="mt-0.5 text-sm font-semibold text-slate-900">{selectedRecord.role || "—"}</p>
                       </div>
                     </div>
-                  )}
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Status</p>
-                    <p className="mt-1 text-sm font-medium text-slate-700">
-                      {formatBorrowingStatus(selectedRecord.status)}
-                    </p>
-                    {(() => {
-                      const rs = deriveReturningStatus(selectedRecord);
-                      if (rs === "fully returned") return null;
-                      const progressLabel = rs === "partially returned" ? "Partially returned" : "No items returned";
-                      const progressClass = rs === "partially returned" ? "text-amber-600" : "text-slate-400";
-                      return (
-                        <p className={`mt-0.5 text-xs ${progressClass}`}>{progressLabel}</p>
-                      );
-                    })()}
+                  </div>
+                  {/* Right column: Dates + Status */}
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs font-medium text-slate-400">Borrowed At</p>
+                      <p className="mt-0.5 text-base font-semibold text-slate-900">{formatExportDate(selectedRecord.date)}</p>
+                      <p className="text-sm text-slate-400">{formatExportTime(selectedRecord.date)}</p>
+                    </div>
+                    {selectedRecord.returnedAt ? (
+                      <div>
+                        <p className="text-xs font-medium text-slate-400">Returned At</p>
+                        <p className="mt-0.5 text-base font-semibold text-slate-900">{formatExportDate(selectedRecord.returnedAt)}</p>
+                        <p className="text-sm text-slate-400">{formatExportTime(selectedRecord.returnedAt)}</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-xs font-medium text-slate-400">Status</p>
+                        <p className="mt-0.5 text-base font-semibold text-slate-900">
+                          {formatBorrowingStatus(selectedRecord.status)}
+                        </p>
+                        {(() => {
+                          const rs = deriveReturningStatus(selectedRecord);
+                          if (rs === "fully returned") return null;
+                          const progressLabel = rs === "partially returned" ? "Partially returned" : "No items returned";
+                          const progressClass = rs === "partially returned" ? "text-amber-600" : "text-slate-400";
+                          return (
+                            <p className={`mt-0.5 text-sm font-medium ${progressClass}`}>{progressLabel}</p>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -3464,32 +3562,31 @@ export default function Borrowing() {
                 const hasSegregation = borrowedItems.length > 0 && returnedItems.length > 0;
 
                 return (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        {statusFilter === "all" && returningStatus === "partially returned"
-                          ? `Returned Items · ${visibleItems.length} of ${allItems.length} ${allItems.length === 1 ? "item" : "items"}`
-                          : returningStatus === "partially returned"
-                            ? `Items · ${allItems.length} ${allItems.length === 1 ? "item" : "items"} · ${totalReturnedQty} of ${totalBorrowedQty} units returned`
-                            : `Items · ${allItems.length} ${allItems.length === 1 ? "item" : "items"}`
-                        }
+                  <div className="rounded-2xl border border-slate-200 bg-white p-6">
+                    <div className="mb-6">
+                      <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Items
                       </h3>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
+                        <span>{allItems.length} {allItems.length === 1 ? "item" : "items"}</span>
+                        <span className="text-slate-300">|</span>
+                        <span>{totalReturnedQty} of {totalBorrowedQty} units returned</span>
 
+                      </div>
                     </div>
-                    <div className="space-y-4">
+                    <div className="space-y-5">
                       {/* ════════════════════════════════════════════════════════════
                         STILL BORROWED items (borrowed view only)
                         ════════════════════════════════════════════════════════════ */}
                       {hasSegregation && borrowedItems.length > 0 && (
                         <div>
-                          <div className="flex items-center gap-2.5 mb-3 px-1">
-                            <span className="inline-block h-2 w-2 rounded-full bg-sky-500" />
-                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                              Still Borrowed
+                          <div className="flex items-center gap-2.5 mb-4 px-1">
+                            <span className="inline-block h-2 w-2 rounded-full bg-blue-500" />
+                            <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">
+                              Active / Borrowed
                             </p>
-                            <span className="text-[10px] text-slate-400">· {borrowedItems.length} {borrowedItems.length === 1 ? "item" : "items"}</span>
                           </div>
-                          <div className="space-y-3">
+                          <div className="space-y-4">
                             {borrowedItems.map((item, idx) => {
                               const borrowedQty = getBorrowedQuantity(item);
                               const returnedQty = getReturnedQuantity(item);
@@ -3523,16 +3620,28 @@ export default function Borrowing() {
 
                               // ── Asset attribute key-value pairs (no raw DB IDs) ──
                               const assetFields = (item.details || []).filter((d) => {
+                                if (d.value == null || String(d.value).trim() === "") return false;
+                                const strVal = String(d.value);
+                                if (strVal === "[object Object]" || (typeof d.value === "object" && !Array.isArray(d.value))) return false;
                                 const k = String(d.key || "").toLowerCase();
-                                if (d.value == null || String(d.value).trim() === "" || String(d.value) === "[object Object]") return false;
-                                const blocked = new Set(["quantity","id","section_id","created_at","updated_at","sort_order","data","remark","condition","return_defective_quantity","return_working_quantity","tab_id","section_id","inventory_tab_id","inventory_section_id","inventory_item_id","borrowing_record_id","inventory_table_name","computer_number","computerNumber","item_number","itemNumber","tab_name","section_name","tabName","sectionName","tableName","table_name","inventoryTableName","tabId","sectionId","inventoryTabId","inventorySectionId","inventoryItemId","borrowingRecordId","name","item_name","asset_name","itemName","assetName","label","item_label","itemLabel"]);
-                                if (blocked.has(k) || k.endsWith("_id") || k.startsWith("_") || k.includes("tab") || k.includes("section") || k.includes("table")) return false;
+                                const l = String(d.label || "").toLowerCase();
+                                const blocked = new Set(["quantity", "id", "section_id", "created_at", "updated_at", "sort_order", "data", "remark", "condition", "return_defective_quantity", "return_working_quantity", "tab_id", "inventory_tab_id", "inventory_section_id", "inventory_item_id", "borrowing_record_id", "inventory_table_name", "computer_number", "item_number", "tab_name", "section_name", "tab_name", "section_name", "table_name", "tabid", "sectionid", "inventorytabid", "inventorysectionid", "inventoryitemid", "borrowingrecordid", "name", "item_name", "asset_name", "itemname", "assetname", "itemlabel", "returncondition", "returnremarks", "item_returned_at", "itemreturnedat", "returned_item_details", "returneditemdetails", "_returned_qty", "status"]);
+                                if (blocked.has(k) || blocked.has(l) || k.endsWith("_id") || k.startsWith("_") || /inventory|borrowing|tab_id|section_id|table_name/.test(k)) return false;
+                                // Reject raw DB keys that are ALL_CAPS or snake_case internal fields
+                                const rawKey = String(d.key || "");
+                                if (rawKey === rawKey.toUpperCase() && rawKey.length > 1 && /^[A-Z][A-Z_]+$/.test(rawKey)) return false;
                                 return true;
-                              }).map((d) => ({ key: d.key, label: d.label || formatFieldLabel(d.key), value: String(d.value) }));
+                              }).map((d) => ({
+                                key: d.key,
+                                label: d.label && !/^_/.test(d.label) && d.label !== d.label.toUpperCase()
+                                  ? d.label
+                                  : formatFieldLabel(d.key),
+                                value: typeof d.value === "object" ? JSON.stringify(d.value) : String(d.value),
+                              }));
 
                               const fbFields = [];
                               if (assetFields.length === 0 && (item.details || []).length === 0) {
-                                for (const key of ["brand","model","serial_number","serialNumber","type","description","acquisition_date","acquisitionDate","date_acquired","color","size","capacity","processor","ram","storage"]) {
+                                for (const key of ["brand", "model", "serial_number", "serialNumber", "type", "description", "acquisition_date", "acquisitionDate", "date_acquired", "color", "size", "capacity", "processor", "ram", "storage"]) {
                                   const val = item[key];
                                   if (val != null && String(val).trim() !== "") fbFields.push({ key, label: formatFieldLabel(key), value: String(val) });
                                 }
@@ -3571,14 +3680,14 @@ export default function Borrowing() {
                         ════════════════════════════════════════════════════════════ */}
                       {hasSegregation && returnedItems.length > 0 && (
                         <div>
-                          <div className="flex items-center gap-2.5 mb-3 px-1">
+                          <div className="flex items-center gap-2.5 mb-4 px-1">
                             <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">
                               Returned
                             </p>
-                            <span className="text-[10px] text-slate-400">· {returnedItems.length} {returnedItems.length === 1 ? "item" : "items"}</span>
+                            <span className="text-xs text-slate-400">({returnedItems.length})</span>
                           </div>
-                          <div className="space-y-3">
+                          <div className="space-y-4">
                             {returnedItems.map((item, idx) => {
                               const borrowedQty = getBorrowedQuantity(item);
                               const returnedQty = getReturnedQuantity(item);
@@ -3614,14 +3723,14 @@ export default function Borrowing() {
                               const assetFields = (item.details || []).filter((d) => {
                                 const k = String(d.key || "").toLowerCase();
                                 if (d.value == null || String(d.value).trim() === "" || String(d.value) === "[object Object]") return false;
-                                const blocked = new Set(["quantity","id","section_id","created_at","updated_at","sort_order","data","remark","condition","return_defective_quantity","return_working_quantity","tab_id","section_id","inventory_tab_id","inventory_section_id","inventory_item_id","borrowing_record_id","inventory_table_name","computer_number","computerNumber","item_number","itemNumber","tab_name","section_name","tabName","sectionName","tableName","table_name","inventoryTableName","tabId","sectionId","inventoryTabId","inventorySectionId","inventoryItemId","borrowingRecordId","name","item_name","asset_name","itemName","assetName","label","item_label","itemLabel"]);
+                                const blocked = new Set(["quantity", "id", "section_id", "created_at", "updated_at", "sort_order", "data", "remark", "condition", "return_defective_quantity", "return_working_quantity", "tab_id", "section_id", "inventory_tab_id", "inventory_section_id", "inventory_item_id", "borrowing_record_id", "inventory_table_name", "computer_number", "computerNumber", "item_number", "itemNumber", "tab_name", "section_name", "tabName", "sectionName", "tableName", "table_name", "inventoryTableName", "tabId", "sectionId", "inventoryTabId", "inventorySectionId", "inventoryItemId", "borrowingRecordId", "name", "item_name", "asset_name", "itemName", "assetName", "label", "item_label", "itemLabel"]);
                                 if (blocked.has(k) || k.endsWith("_id") || k.startsWith("_") || k.includes("tab") || k.includes("section") || k.includes("table")) return false;
                                 return true;
                               }).map((d) => ({ key: d.key, label: d.label || formatFieldLabel(d.key), value: String(d.value) }));
 
                               const fbFields = [];
                               if (assetFields.length === 0 && (item.details || []).length === 0) {
-                                for (const key of ["brand","model","serial_number","serialNumber","type","description","acquisition_date","acquisitionDate","date_acquired","color","size","capacity","processor","ram","storage"]) {
+                                for (const key of ["brand", "model", "serial_number", "serialNumber", "type", "description", "acquisition_date", "acquisitionDate", "date_acquired", "color", "size", "capacity", "processor", "ram", "storage"]) {
                                   const val = item[key];
                                   if (val != null && String(val).trim() !== "") fbFields.push({ key, label: formatFieldLabel(key), value: String(val) });
                                 }
@@ -3694,14 +3803,14 @@ export default function Borrowing() {
                         const assetFields = (item.details || []).filter((d) => {
                           const k = String(d.key || "").toLowerCase();
                           if (d.value == null || String(d.value).trim() === "" || String(d.value) === "[object Object]") return false;
-                          const blocked = new Set(["quantity","id","section_id","created_at","updated_at","sort_order","data","remark","condition","return_defective_quantity","return_working_quantity","tab_id","section_id","inventory_tab_id","inventory_section_id","inventory_item_id","borrowing_record_id","inventory_table_name","computer_number","computerNumber","item_number","itemNumber","tab_name","section_name","tabName","sectionName","tableName","table_name","inventoryTableName","tabId","sectionId","inventoryTabId","inventorySectionId","inventoryItemId","borrowingRecordId","name","item_name","asset_name","itemName","assetName","label","item_label","itemLabel"]);
+                          const blocked = new Set(["quantity", "id", "section_id", "created_at", "updated_at", "sort_order", "data", "remark", "condition", "return_defective_quantity", "return_working_quantity", "tab_id", "section_id", "inventory_tab_id", "inventory_section_id", "inventory_item_id", "borrowing_record_id", "inventory_table_name", "computer_number", "computerNumber", "item_number", "itemNumber", "tab_name", "section_name", "tabName", "sectionName", "tableName", "table_name", "inventoryTableName", "tabId", "sectionId", "inventoryTabId", "inventorySectionId", "inventoryItemId", "borrowingRecordId", "name", "item_name", "asset_name", "itemName", "assetName", "label", "item_label", "itemLabel"]);
                           if (blocked.has(k) || k.endsWith("_id") || k.startsWith("_") || k.includes("tab") || k.includes("section") || k.includes("table")) return false;
                           return true;
                         }).map((d) => ({ key: d.key, label: d.label || formatFieldLabel(d.key), value: String(d.value) }));
 
                         const fbFields = [];
                         if (assetFields.length === 0 && (item.details || []).length === 0) {
-                          for (const key of ["brand","model","serial_number","serialNumber","type","description","acquisition_date","acquisitionDate","date_acquired","color","size","capacity","processor","ram","storage"]) {
+                          for (const key of ["brand", "model", "serial_number", "serialNumber", "type", "description", "acquisition_date", "acquisitionDate", "date_acquired", "color", "size", "capacity", "processor", "ram", "storage"]) {
                             const val = item[key];
                             if (val != null && String(val).trim() !== "") fbFields.push({ key, label: formatFieldLabel(key), value: String(val) });
                           }
@@ -3739,13 +3848,13 @@ export default function Borrowing() {
             </div>
 
             {/* ── Footer ───────────────────────────────────────────────────── */}
-            <DialogFooter className="flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:justify-end sm:px-8">
+            <DialogFooter className="flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50/60 px-8 py-5 sm:flex-row sm:justify-end sm:px-10">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setSelectedRecord(null)}
                 className="rounded-lg"
+                onClick={() => setSelectedRecord(null)}
               >
                 Close
               </Button>
@@ -4094,8 +4203,9 @@ export default function Borrowing() {
 
                     {/* ── Compact Scrollable Item List ────────────────────────── */}
                     <div className="rounded-lg border border-slate-200 overflow-hidden">
-                      <div className="grid grid-cols-[1fr_90px_80px] gap-2 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      <div className="grid grid-cols-[1fr_80px_90px_80px] gap-2 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                         <span>Item</span>
+                        <span className="text-center">Status</span>
                         <span className="text-center">In Stock</span>
                         <span className="text-right">Action</span>
                       </div>
@@ -4122,22 +4232,24 @@ export default function Borrowing() {
                             return (
                               <div
                                 key={cartId}
-                                className="grid grid-cols-[1fr_90px_80px] gap-2 items-center border-b border-slate-100 px-3 py-2.5 hover:bg-slate-50 transition-colors"
+                                className="grid grid-cols-[1fr_80px_90px_80px] gap-2 items-center border-b border-slate-100 px-3 py-2.5 hover:bg-slate-50 transition-colors"
                               >
                                 <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5">
-                                    <p className="truncate text-sm font-medium text-slate-800">{getItemLabel(item)}</p>
-                                    {itemRemark && (
-                                      <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-600">
-                                        {itemRemark}
-                                      </span>
-                                    )}
-                                  </div>
+                                  <p className="truncate text-sm font-medium text-slate-800">{getItemLabel(item)}</p>
                                   <p className="truncate text-[11px] text-slate-400">{item.tabName} • {item.sectionName}</p>
                                 </div>
                                 <div className="text-center">
+                                  {itemRemark ? (
+                                    <span className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600">
+                                      {itemRemark}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-slate-400">—</span>
+                                  )}
+                                </div>
+                                <div className="text-center">
                                   <span className={cn(
-                                    "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                                    "rounded-md px-2 py-1 text-xs font-semibold",
                                     availableStock > 0
                                       ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                       : "bg-rose-50 text-rose-700 border border-rose-200"
@@ -4354,23 +4466,30 @@ export default function Borrowing() {
                             Cart ({borrowCart.length} {borrowCart.length === 1 ? "item" : "items"})
                           </h3>
                         </div>
+                        <div className="grid grid-cols-[1fr_80px_120px] gap-3 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                          <span>Item</span>
+                          <span className="text-center">Status</span>
+                          <span className="text-center">Quantity</span>
+                        </div>
                         <div className="divide-y divide-slate-100 max-h-[180px] overflow-y-auto">
                           {borrowCart.map((item) => (
-                            <div key={item.cartId} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5">
-                                  <p className="text-sm font-medium text-slate-800 truncate">
-                                    {item.label || getItemLabel(item)}
-                                  </p>
-                                  {getItemRemark(item) && (
-                                    <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-600">
-                                      {getItemRemark(item)}
-                                    </span>
-                                  )}
-                                </div>
+                            <div key={item.cartId} className="grid grid-cols-[1fr_80px_120px] gap-3 items-center px-3 py-2.5">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-slate-800 truncate">
+                                  {item.label || getItemLabel(item)}
+                                </p>
                                 <p className="text-xs text-slate-400">
                                   {item.isCustom ? "Custom Item" : `${item.tabName} / ${item.sectionName}`}
                                 </p>
+                              </div>
+                              <div className="text-center">
+                                {getItemRemark(item) ? (
+                                  <span className="rounded-md px-2 py-1 text-xs font-semibold  text-slate-600">
+                                    {getItemRemark(item)}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-slate-400">—</span>
+                                )}
                               </div>
                               {!item.isCustom && (
                                 <div className="flex items-center gap-1.5">
@@ -4464,21 +4583,28 @@ export default function Borrowing() {
                           Items ({borrowCart.length})
                         </h3>
                       </div>
+                      <div className="grid grid-cols-[1fr_80px_120px] gap-4 bg-slate-100 px-5 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                        <span>Item</span>
+                        <span className="text-center">Status</span>
+                        <span className="text-center">Quantity</span>
+                      </div>
                       <div className="divide-y divide-slate-100">
                         {borrowCart.map((item) => (
-                          <div key={item.cartId} className="flex items-center justify-between gap-4 px-5 py-3.5">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5">
-                                <p className="text-sm font-medium text-slate-800">{item.label || getItemLabel(item)}</p>
-                                {getItemRemark(item) && (
-                                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-600">
-                                    {getItemRemark(item)}
-                                  </span>
-                                )}
-                              </div>
+                          <div key={item.cartId} className="grid grid-cols-[1fr_80px_120px] gap-4 items-center px-5 py-3.5">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-slate-800">{item.label || getItemLabel(item)}</p>
                               <p className="mt-0.5 text-xs text-slate-400">
                                 {item.isCustom ? "Custom Item" : `${item.tabName} • ${item.sectionName}`}
                               </p>
+                            </div>
+                            <div className="text-center">
+                              {getItemRemark(item) ? (
+                                <span className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600">
+                                  {getItemRemark(item)}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-slate-400">—</span>
+                              )}
                             </div>
                             <div className="flex items-center gap-3">
                               {!item.isCustom && (
@@ -4658,19 +4784,31 @@ export default function Borrowing() {
           currentGroup.units.push(unit);
         }
 
+        const hasMissingRemarks = units.some((u) => {
+          const sel = returnSelections[u.unitKey];
+          if (!sel?.checked) return false;
+          const tabMeta = conditionMetaByTab[u.item?.inventoryTabId] || {};
+          const opLabel = tabMeta.operational || "Working";
+          const isNonOp = sel.returnRemark && sel.returnRemark !== opLabel;
+          return isNonOp && !String(sel.remarks || "").trim();
+        });
+
         return (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-            <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl">
+          <Dialog open={!!pendingReturn} onOpenChange={(open) => !open && cancelReturn()}>
+            <DialogContent
+              className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
+              onPointerDownOutside={(e) => e.preventDefault()}
+            >
               {/* ── Header ──────────────────────────────────────────────── */}
-              <div className="shrink-0 border-b border-slate-200 px-6 py-4">
-                <h3 className="text-lg font-bold text-[#4a1111]">Return Items</h3>
-                <p className="mt-1 text-sm text-slate-500">
+              <DialogHeader className="shrink-0 border-b border-slate-200 bg-slate-50 px-6 pt-5 pb-4 sm:px-8">
+                <DialogTitle className="text-lg font-semibold text-slate-900">Return Items</DialogTitle>
+                <DialogDescription className="mt-1 text-sm">
                   {pendingReturn.name} &middot; {checkedCount}/{totalUnits} units selected for return
-                </p>
-              </div>
+                </DialogDescription>
+              </DialogHeader>
 
               {/* ── Scrollable unit list ────────────────────────────────── */}
-              <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-8">
                 {returnError && (
                   <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                     {returnError}
@@ -4697,7 +4835,7 @@ export default function Borrowing() {
                         {/* Unrolled unit rows */}
                         <div className="divide-y divide-slate-100">
                           {group.units.map((unit) => {
-                            const sel = returnSelections[unit.unitKey] || { checked: true, returnRemark: allOptions[0] || "Working", remarks: "" };
+                            const sel = returnSelections[unit.unitKey] || { checked: false, returnRemark: allOptions[0] || "Working", remarks: "" };
                             const unitNum = unit.unitIndex + 1;
                             const groupQty = group.units.length;
                             const opLabel = tabMeta.operational || "Working";
@@ -4743,8 +4881,8 @@ export default function Borrowing() {
                                     }
                                     disabled={!sel.checked}
                                     className={`h-8 rounded-lg border px-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111] ${sel.checked
-                                        ? "border-slate-200 bg-white text-slate-700"
-                                        : "border-slate-100 bg-slate-50 text-slate-400"
+                                      ? "border-slate-200 bg-white text-slate-700"
+                                      : "border-slate-100 bg-slate-50 text-slate-400"
                                       }`}
                                   >
                                     {allOptions.map((opt) => (
@@ -4755,8 +4893,8 @@ export default function Borrowing() {
 
                                 {/* Reason input — shown when remark is non-operational */}
                                 {isNonOperational && (
-                                  <div className="border-t border-dashed border-slate-200 bg-amber-50/40 px-4 py-2.5">
-                                    <label className="block text-xs font-medium text-amber-800 mb-1">
+                                  <div className="border-t border-dashed border-slate-200 px-4 py-2.5">
+                                    <label className="block text-xs font-medium text-slate-600 mb-1">
                                       Why is this unit being returned as "{sel.returnRemark}"?
                                     </label>
                                     <textarea
@@ -4769,7 +4907,7 @@ export default function Borrowing() {
                                       }
                                       placeholder="e.g. Screen cracked, battery not charging, water damage..."
                                       rows={2}
-                                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#4a1111]/20"
                                     />
                                   </div>
                                 )}
@@ -4784,26 +4922,40 @@ export default function Borrowing() {
               </div>
 
               {/* ── Footer ─────────────────────────────────────────────── */}
-              <div className="shrink-0 flex justify-end gap-3 border-t border-slate-200 bg-slate-50/80 px-6 py-4">
-                <button
+              <DialogFooter className="shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/60 px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:space-x-2 sm:px-8">
+                <Button
                   type="button"
-                  onClick={cancelReturn}
-                  disabled={returningBorrow}
-                  className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSelectAll}
+                  className="rounded-lg"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmReturn}
-                  disabled={returningBorrow || checkedCount === 0}
-                  className="rounded-lg bg-[#4a1111] px-5 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
-                >
-                  {returningBorrow ? "Returning..." : `Return ${checkedCount} Unit${checkedCount !== 1 ? "s" : ""}`}
-                </button>
-              </div>
-            </div>
-          </div>
+                  {checkedCount === totalUnits && totalUnits > 0 ? "Deselect All" : "Select All"}
+                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={cancelReturn}
+                    disabled={returningBorrow}
+                    className="rounded-lg"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={confirmReturn}
+                    disabled={returningBorrow || checkedCount === 0 || hasMissingRemarks}
+                    className="rounded-lg bg-[#4a1111] px-5 text-white hover:bg-[#3f0f0f] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {returningBorrow ? "Returning..." : `Return ${checkedCount} Unit${checkedCount !== 1 ? "s" : ""}`}
+                  </Button>
+                </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         );
       })()}
 
