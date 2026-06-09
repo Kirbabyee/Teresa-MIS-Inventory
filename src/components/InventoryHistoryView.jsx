@@ -229,11 +229,18 @@ export default function InventoryHistoryView({ selectedLab, searchQuery = "", da
       const { oldVal, newVal } = extractChangedPair(entry.old_data, entry.new_data, entry.action);
       const entryDate = parseSafeDate(entry.change_ts);
 
-      if (rangeStart && (!entryDate || entryDate < rangeStart)) return false;
-      if (rangeEnd) {
-        const endOfDay = new Date(rangeEnd);
-        endOfDay.setHours(23, 59, 59, 999);
-        if (!entryDate || entryDate > endOfDay) return false;
+      // Compare date-only: strip time from entry timestamp and check
+      // [rangeStart, rangeEnd+1day) — inclusive on both ends, no UTC pitfalls
+      if (entryDate) {
+        const entryDay = new Date(entryDate.getFullYear(), entryDate.getMonth(), entryDate.getDate());
+        if (rangeStart) {
+          const startDay = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate());
+          if (entryDay < startDay) return false;
+        }
+        if (rangeEnd) {
+          const endDay = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth(), rangeEnd.getDate() + 1);
+          if (entryDay >= endDay) return false;
+        }
       }
 
       const combined = [

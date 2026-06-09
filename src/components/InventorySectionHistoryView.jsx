@@ -269,14 +269,20 @@ export default function InventorySectionHistoryView({ selectedTab, selectedSecti
 
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const displayedLogs = useMemo(() => {
-    const minDate = dateRange?.from ? new Date(`${dateRange.from.toISOString().slice(0, 10)}T00:00:00.000`) : null;
-    const maxDate = dateRange?.to ? new Date(`${dateRange.to.toISOString().slice(0, 10)}T23:59:59.999`) : null;
+    // Date-only comparison in local time — inclusive on both ends, no UTC pitfalls
+    const rangeStart = dateRange?.from
+      ? new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate())
+      : null;
+    const rangeEnd = dateRange?.to
+      ? new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate() + 1)
+      : null;
 
     return logs.filter((entry) => {
       const entryDate = parseSafeDate(entry.change_ts);
       if (!entryDate) return false;
-      const matchesStart = !minDate || entryDate >= minDate;
-      const matchesEnd = !maxDate || entryDate <= maxDate;
+      const entryDay = new Date(entryDate.getFullYear(), entryDate.getMonth(), entryDate.getDate());
+      const matchesStart = !rangeStart || entryDay >= rangeStart;
+      const matchesEnd = !rangeEnd || entryDay < rangeEnd;
       if (!matchesStart || !matchesEnd) return false;
 
       if (!normalizedSearchQuery) return true;

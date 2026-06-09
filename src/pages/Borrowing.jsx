@@ -1261,10 +1261,11 @@ export default function Borrowing() {
         d.name.toLowerCase().includes(searchLower) ||
         (d.items || []).some((item) => String(item.label || "").toLowerCase().includes(searchLower));
       const recordDate = new Date(d.date);
-      const minDate = dateRange.from ? new Date(`${dateRange.from.toISOString().slice(0, 10)}T00:00:00.000`) : null;
-      const maxDate = dateRange.to ? new Date(`${dateRange.to.toISOString().slice(0, 10)}T23:59:59.999`) : null;
-      const matchesStart = !minDate || recordDate >= minDate;
-      const matchesEnd = !maxDate || recordDate <= maxDate;
+      const recordDay = new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate());
+      const minDate = dateRange.from ? new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate()) : null;
+      const maxDate = dateRange.to ? new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate() + 1) : null;
+      const matchesStart = !minDate || recordDay >= minDate;
+      const matchesEnd = !maxDate || recordDay < maxDate;
       return matchesSearch && matchesStart && matchesEnd;
     })
     .sort((a, b) => new Date(b.date) - new Date(a.date));
