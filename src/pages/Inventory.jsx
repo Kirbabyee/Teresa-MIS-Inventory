@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Edit, MoreVertical, Plus, Trash2, X, CheckCircle, Monitor, Armchair, Wrench, FileText, Box, Tv, Cable, ChevronLeft, ChevronRight, Columns2, FolderOpen, LayoutTemplate } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -1889,6 +1890,8 @@ export default function Inventory() {
 
     if (creatingNewTab) {
       showGlobalLoader("Creating a new inventory...");
+    } else {
+      showGlobalLoader("Saving inventory...");
     }
 
     try {
@@ -2075,22 +2078,21 @@ export default function Inventory() {
         }
 
         console.warn("Failed to create physical table:", err);
-        alert(`Tab creation failed: ${err.message || err}`);
+        toast.error(`Tab creation failed: ${err.message || err}`);
         refetch();
         return;
       }
 
       console.error("Failed to save inventory tab:", err);
-      alert(`Failed to save inventory tab: ${err.message || err}`);
+      toast.error(`Failed to save inventory tab: ${err.message || err}`);
       refetch();
       return;
     } finally {
-      if (creatingNewTab) {
-        hideGlobalLoader();
-      }
+      hideGlobalLoader();
     }
 
     // Close modal and refresh only after all operations complete successfully
+    toast.success(creatingNewTab ? "Inventory created successfully." : "Inventory saved successfully.");
     setShowModal(false);
     setEditingSlug("");
     refetch();
@@ -2141,12 +2143,10 @@ export default function Inventory() {
       setPendingDeleteTab(null);
       refetch();
       setShowDeleteConfirm(false);
-      // Show success feedback
-      const wasDeletedMsg = "Tab and all associated data (including physical table in database) have been deleted.";
-      alert(wasDeletedMsg);
+      toast.success("Inventory deleted successfully.");
     } catch (err) {
       console.error("Delete failed:", err);
-      alert(`Delete failed: ${err.message || err}`);
+      toast.error(`Delete failed: ${err.message || err}`);
     } finally {
       hideGlobalLoader();
       setIsDeleting(false);

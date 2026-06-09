@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/api/supabaseClient";
 import { createEmployeeInviteAndSendEmail } from "@/lib/employeeInvites";
 import { useAuth } from "@/lib/AuthContext";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,

@@ -7,6 +7,7 @@ import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { format } from "date-fns";
+import { toast } from "sonner";
 import { supabase } from "@/api/supabaseClient";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1551,6 +1552,8 @@ export default function InventorySection() {
     setPendingAction("");
     setConfirmExitEditMode(false);
 
+    toast.success("All changes saved.");
+
     if (nextAction === "switchHistory") {
       setIsHistoryOpen(true);
       setSearchParams((current) => {
@@ -2177,6 +2180,10 @@ export default function InventorySection() {
 
       setShowExportModal(false);
       setExportLogRefreshToken((current) => current + 1);
+      toast.success("Inventory exported successfully.");
+    } catch (err) {
+      console.error("Export failed:", err);
+      toast.error(`Export failed: ${err.message || "Unknown error"}`);
     } finally {
       hideGlobalLoader();
       setExporting(false);

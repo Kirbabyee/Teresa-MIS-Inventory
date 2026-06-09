@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/api/supabaseClient";
 import { createEmployeeInviteAndSendEmail } from "@/lib/employeeInvites";
 import { useAuth } from "@/lib/AuthContext";
+import { toast } from "sonner";
 import {
   Plus,
   Search,
@@ -111,6 +112,8 @@ export default function UserAccounts() {
   const [statusChanging, setStatusChanging] = useState(false);
   const [inviteActionCandidate, setInviteActionCandidate] = useState(null);
   const [inviteActionLoading, setInviteActionLoading] = useState("");
+  const [deleteCandidate, setDeleteCandidate] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [page, setPage] = useState(1);
   const itemsPerPage = 7;
 
@@ -181,7 +184,7 @@ export default function UserAccounts() {
   const handleResendInvite = async (account) => {
     if (!account?.id) return;
     if (!account.email) {
-      alert("This account needs an email before an invitation can be sent.");
+      toast.error("This account needs an email before an invitation can be sent.");
       return;
     }
 
@@ -199,10 +202,10 @@ export default function UserAccounts() {
 
       setInviteActionCandidate(null);
       await load();
-      alert("A fresh activation invitation has been sent.");
+      toast.success("A fresh activation invitation has been sent.");
     } catch (error) {
       console.error("Resend invite failed:", error.message);
-      alert(`Failed to resend invitation: ${error.message}`);
+      toast.error(`Failed to resend invitation: ${error.message}`);
     } finally {
       hideGlobalLoader();
       setInviteActionLoading("");
@@ -227,13 +230,46 @@ export default function UserAccounts() {
 
       setInviteActionCandidate(null);
       await load();
-      alert("Invitation canceled and the account was removed.");
+      toast.success("Invitation canceled and the account was removed.");
     } catch (error) {
       console.error("Cancel invite failed:", error.message);
-      alert(`Failed to cancel invitation: ${error.message}`);
+      toast.error(`Failed to cancel invitation: ${error.message}`);
     } finally {
       hideGlobalLoader();
       setInviteActionLoading("");
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deleteCandidate?.id) return;
+
+    try {
+      setDeleting(true);
+      showGlobalLoader("Deleting account...");
+
+      // Remove any invites first
+      try {
+        await removeAccountInvites(deleteCandidate);
+      } catch (inviteErr) {
+        console.error("Failed to remove invites during delete:", inviteErr?.message || inviteErr);
+      }
+
+      const { error } = await supabase
+        .from("user_accounts")
+        .delete()
+        .eq("id", deleteCandidate.id);
+
+      if (error) throw error;
+
+      setDeleteCandidate(null);
+      toast.success(`Account for ${deleteCandidate.first_name || ""} ${deleteCandidate.last_name || ""} has been deleted.`);
+      await load();
+    } catch (error) {
+      console.error("Delete account failed:", error.message);
+      toast.error(`Failed to delete account: ${error.message}`);
+    } finally {
+      hideGlobalLoader();
+      setDeleting(false);
     }
   };
 
@@ -305,21 +341,31 @@ export default function UserAccounts() {
   const handleToggleAccountStatus = async () => {
     if (!statusCandidate?.id) return;
 
+    const wasActive = statusCandidate.is_active !== false;
+    const action = wasActive ? "deactivate" : "reactivate";
+
     try {
-      showGlobalLoader(statusCandidate.is_active === false ? "Reactivating account..." : "Deactivating account...");
+      setStatusChanging(true);
+      showGlobalLoader(wasActive ? "Deactivating account..." : "Reactivating account...");
       const { error } = await supabase
         .from("user_accounts")
-        .update({ is_active: !Boolean(statusCandidate.is_active) })
+        .update({ is_active: !wasActive })
         .eq("id", statusCandidate.id);
 
       if (error) throw error;
       setStatusCandidate(null);
       await load();
+      toast.success(
+        wasActive
+          ? `Account for ${statusCandidate.first_name || ""} ${statusCandidate.last_name || ""} has been deactivated.`
+          : `Account for ${statusCandidate.first_name || ""} ${statusCandidate.last_name || ""} has been reactivated.`
+      );
     } catch (error) {
       console.error("Account status update failed:", error.message);
-      alert(`Failed to update account status: ${error.message}`);
+      toast.error(`Failed to ${action} account: ${error.message}`);
     } finally {
       hideGlobalLoader();
+      setStatusChanging(false);
     }
   };
 
@@ -543,6 +589,16 @@ export default function UserAccounts() {
                               )}
                               {acc.is_active === false ? "Reactivate account" : "Deactivate account"}
                             </DropdownMenuItem>
+
+                            {acc.is_active === false && (
+                              <DropdownMenuItem
+                                onSelect={() => setDeleteCandidate(acc)}
+                                className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Delete account
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -608,6 +664,7 @@ export default function UserAccounts() {
         onSaved={() => {
           setShowModal(false);
           load();
+          toast.success(editAccount ? "Account updated successfully." : "Account created successfully.");
         }}
       />
 
@@ -738,6 +795,35 @@ export default function UserAccounts() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Delete account confirmation ─────────────────────────────── */}
+      <AlertDialog
+        open={Boolean(deleteCandidate)}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteCandidate(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Account</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteCandidate
+                ? `Permanently delete the account for ${deleteCandidate.first_name || ""} ${deleteCandidate.last_name || ""}? This action cannot be undone.`
+                : "Delete this account?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAccount}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
+import { toast } from "sonner";
 import { createPortal } from "react-dom";
 import { format } from "date-fns";
 import { supabase } from "@/api/supabaseClient";
@@ -503,9 +504,11 @@ export default function ComputerLaboratoryInventory() {
                 return next;
             });
             setHasEditChanges(true);
+            toast.success("Cell updated.");
         } catch (updateError) {
             console.error("Failed to update cell:", updateError.message);
             setError(updateError.message || "Failed to update cell.");
+            toast.error(`Update failed: ${updateError.message || "Unknown error"}`);
         } finally {
             setSavingCellKey(null);
         }
@@ -1326,9 +1329,10 @@ export default function ComputerLaboratoryInventory() {
 
             setExportLogRefreshToken((current) => current + 1);
             setShowExportModal(false);
+            toast.success("Inventory exported successfully.");
         } catch (err) {
             console.error('Export failed:', err);
-            setError(err.message || 'Export failed');
+            toast.error(`Export failed: ${err.message || "Unknown error"}`);
         } finally {
             hideGlobalLoader();
             setExporting(false);
@@ -1355,88 +1359,73 @@ export default function ComputerLaboratoryInventory() {
     return (
         <div className="p-6 space-y-5">
             {deleteConfirmLab && (
-                <Dialog open={!!deleteConfirmLab} onOpenChange={() => setDeleteConfirmLab(null)}>
-                    <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                            <DialogTitle>Delete Laboratory</DialogTitle>
-                            <DialogDescription>
+                <AlertDialog open={!!deleteConfirmLab} onOpenChange={() => setDeleteConfirmLab(null)}>
+                    <AlertDialogContent className="rounded-xl">
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Laboratory</AlertDialogTitle>
+                            <AlertDialogDescription>
                                 Are you sure you want to delete <strong>{labOptions.find((lab) => lab.value === deleteConfirmLab)?.label}</strong>?
-                            </DialogDescription>
-                        </DialogHeader>
-                        <DialogFooter>
-                            <button
-                                type="button"
-                                onClick={() => setDeleteConfirmLab(null)}
-                                className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition"
-                            >
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter className="gap-3 sm:gap-4">
+                            <AlertDialogCancel className="rounded-lg">
                                 Cancel
-                            </button>
-                            <button
-                                type="button"
+                            </AlertDialogCancel>
+                            <AlertDialogAction
                                 onClick={() => handleDeleteLab(deleteConfirmLab)}
                                 disabled={exporting}
-                                className="px-6 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 transition disabled:cursor-not-allowed disabled:opacity-50"
+                                className="rounded-lg bg-red-600 px-6 text-white hover:bg-red-700"
                             >
                                 Delete
-                            </button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             )}
 
             {deleteConfirmComputer !== null && (
-                <Dialog open={deleteConfirmComputer !== null} onOpenChange={() => setDeleteConfirmComputer(null)}>
-                    <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                            <DialogTitle>Delete Computer Row</DialogTitle>
-                            <DialogDescription>
+                <AlertDialog open={deleteConfirmComputer !== null} onOpenChange={() => setDeleteConfirmComputer(null)}>
+                    <AlertDialogContent className="rounded-xl">
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Computer Row</AlertDialogTitle>
+                            <AlertDialogDescription>
                                 Are you sure you want to delete <strong>Computer #{deleteConfirmComputer}</strong> and all its
                                 component entries from <strong>{selectedLabLabel}</strong>?
-                            </DialogDescription>
-                        </DialogHeader>
-                        <DialogFooter>
-                            <button
-                                type="button"
-                                onClick={() => setDeleteConfirmComputer(null)}
-                                className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition"
-                            >
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter className="gap-3 sm:gap-4">
+                            <AlertDialogCancel className="rounded-lg">
                                 Cancel
-                            </button>
-                            <button
-                                type="button"
+                            </AlertDialogCancel>
+                            <AlertDialogAction
                                 onClick={() => handleDeleteComputerRow(deleteConfirmComputer)}
                                 disabled={exporting}
-                                className="px-6 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 transition disabled:cursor-not-allowed disabled:opacity-50"
+                                className="rounded-lg bg-red-600 px-6 text-white hover:bg-red-700"
                             >
                                 Delete
-                            </button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             )}
 
             {confirmExitEditMode && (
-                <Dialog open={confirmExitEditMode} onOpenChange={setConfirmExitEditMode}>
-                    <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                            <DialogTitle>Done Editing?</DialogTitle>
-                            <DialogDescription>
+                <AlertDialog open={confirmExitEditMode} onOpenChange={setConfirmExitEditMode}>
+                    <AlertDialogContent className="rounded-xl">
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Done Editing?</AlertDialogTitle>
+                            <AlertDialogDescription>
                                 You are about to exit edit mode. Are you done making changes?
-                            </DialogDescription>
-                        </DialogHeader>
-                        <DialogFooter>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setConfirmExitEditMode(false);
-                                    setPendingAction(null);
-                                }}
-                                className="px-6 py-2 rounded-lg text-sm border border-[#4a1111] text-[#4a1111] hover:bg-[#4a1111] hover:text-white transition"
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter className="gap-3 sm:gap-4">
+                            <AlertDialogCancel
+                                onClick={() => setPendingAction(null)}
+                                className="rounded-lg"
                             >
                                 Keep Editing
-                            </button>
-                            <button
-                                type="button"
+                            </AlertDialogCancel>
+                            <AlertDialogAction
                                 onClick={() => {
                                     setIsEditMode(false);
                                     setHasEditChanges(false);
@@ -1445,14 +1434,15 @@ export default function ComputerLaboratoryInventory() {
                                         updateHistoryView(true);
                                     }
                                     setPendingAction(null);
+                                    toast.success("All changes saved.");
                                 }}
-                                className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#5a1717]"
+                                className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
                             >
                                 Done
-                            </button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             )}
 
             <Dialog open={isAddComponentOpen} onOpenChange={setIsAddComponentOpen}>
