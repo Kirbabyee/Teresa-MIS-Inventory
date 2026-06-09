@@ -306,7 +306,6 @@ export default function UserAccounts() {
     if (!statusCandidate?.id) return;
 
     try {
-      setStatusChanging(true);
       showGlobalLoader(statusCandidate.is_active === false ? "Reactivating account..." : "Deactivating account...");
       const { error } = await supabase
         .from("user_accounts")
@@ -321,7 +320,6 @@ export default function UserAccounts() {
       alert(`Failed to update account status: ${error.message}`);
     } finally {
       hideGlobalLoader();
-      setStatusChanging(false);
     }
   };
 
@@ -451,7 +449,7 @@ export default function UserAccounts() {
                   ].map((h) => (
                     <th
                       key={h}
-                      className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide"
+                      className={`px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide${h === "Account Type" ? " w-[120px]" : ""}${h === "Status" ? " w-[110px]" : ""}`}
                     >
                       {h}
                     </th>
@@ -484,16 +482,16 @@ export default function UserAccounts() {
                     <td className={`px-4 py-3 text-sm ${acc.is_active === false ? "text-slate-400" : "text-slate-600"}`}>
                       {acc.email || "—"}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 w-[120px]">
                       <span
-                        className={`inline-flex min-w-[84px] justify-center text-xs font-medium px-2 py-1 rounded-full border ${accountTypeColors[acc.account_type] || "bg-gray-100 text-gray-700 border-gray-200"}`}
+                        className={`inline-flex w-[100px] justify-center text-xs font-semibold px-2 py-1 rounded-md border ${accountTypeColors[acc.account_type] || "bg-gray-100 text-gray-700 border-gray-200"}`}
                       >
                         {acc.account_type ? acc.account_type.charAt(0).toUpperCase() + acc.account_type.slice(1) : "—"}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 w-[110px]">
                       <span
-                        className={`inline-flex min-w-[84px] justify-center text-xs font-medium px-2 py-1 rounded-full border ${accountStatusColors[String(acc.is_active !== false)]}`}
+                        className={`inline-flex w-[90px] justify-center text-xs font-semibold px-2 py-1 rounded-md border ${accountStatusColors[String(acc.is_active !== false)]}`}
                       >
                         {acc.is_active === false ? "Inactive" : "Active"}
                       </span>

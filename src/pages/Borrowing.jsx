@@ -6,6 +6,7 @@ import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
 import { format } from "date-fns";
 import "react-day-picker/dist/style.css";
+import { toast } from "sonner";
 import { supabase } from "@/api/supabaseClient";
 import ExportLogsPanel from "@/components/ExportLogsPanel";
 import { useAuth } from "@/lib/AuthContext";
@@ -1131,7 +1132,6 @@ export default function Borrowing() {
   const { tabs, loading: inventoryLoading, error: inventoryError } = useInventoryCatalog();
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
-  const [successMessage, setSuccessMessage] = useState("");
   const [form, setForm] = useState(initialForm);
   const [selectedTabId, setSelectedTabId] = useState("");
   const [selectedSectionId, setSelectedSectionId] = useState("");
@@ -1640,6 +1640,7 @@ export default function Borrowing() {
     );
 
     setExporting(true);
+    showGlobalLoader("Exporting borrowing records...");
     try {
       const separatorBuffer = createHeaderSeparatorBase64();
       const workbook = new ExcelJS.Workbook();
@@ -1861,8 +1862,13 @@ export default function Borrowing() {
       }
 
       setShowExportModal(false);
+      toast.success("Borrowing records exported successfully.");
+    } catch (err) {
+      console.error("Export failed:", err);
+      toast.error(`Export failed: ${err.message || "Unknown error"}`);
     } finally {
       setExporting(false);
+      hideGlobalLoader();
     }
   };
 
@@ -2279,7 +2285,7 @@ export default function Borrowing() {
       }
 
       await loadBorrowings();
-      setSuccessMessage(
+      toast.success(
         allReturned
           ? "All items returned successfully."
           : `Returned ${checkedUnits.length} unit${checkedUnits.length !== 1 ? "s" : ""}.`
@@ -2602,7 +2608,7 @@ export default function Borrowing() {
         })
       );
 
-      setSuccessMessage(
+      toast.success(
         shouldMerge
           ? "Borrowed item merged with the latest active borrowing record."
           : "Borrowing record added successfully."
@@ -3123,7 +3129,17 @@ export default function Borrowing() {
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {currentPageData.map((record, rowIndex) => {
-                            const activeItems = (record.items || []).filter((item) => getReturnedQuantity(item) > 0);
+                            const activeItemsRaw = (record.items || []).filter((item) => getReturnedQuantity(item) > 0);
+                            const searchLower = search.toLowerCase();
+                            const activeItems = searchLower
+                              ? [...activeItemsRaw].sort((a, b) => {
+                                  const aMatch = String(a.label || "").toLowerCase().includes(searchLower);
+                                  const bMatch = String(b.label || "").toLowerCase().includes(searchLower);
+                                  if (aMatch && !bMatch) return -1;
+                                  if (!aMatch && bMatch) return 1;
+                                  return 0;
+                                })
+                              : activeItemsRaw;
                             return (
                               <tr
                                 key={record.id}
@@ -3150,8 +3166,12 @@ export default function Borrowing() {
                                 <td className="px-4 py-3 text-sm text-slate-600">
                                   {activeItems.length > 1 ? (
                                     <div className="space-y-0.5">
-                                      {activeItems.map((item) => (
-                                        <div key={`${record.id}-${item.id}`}>{item.label}</div>
+                                      {activeItems.slice(0, 5).map((item, idx) => (
+                                        <div key={`${record.id}-${item.id}`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
+                                          {idx === 4 && activeItems.length > 5
+                                            ? `+${activeItems.length - 5} more items`
+                                            : item.label}
+                                        </div>
                                       ))}
                                     </div>
                                   ) : activeItems.length === 1 ? (
@@ -3163,9 +3183,15 @@ export default function Borrowing() {
                                 <td className="px-4 py-3 text-sm text-slate-600">
                                   {activeItems.length > 1 ? (
                                     <div className="space-y-0.5">
-                                      {activeItems.map((item) => {
+                                      {activeItems.slice(0, 5).map((item, idx) => {
                                         const returned = getReturnedQuantity(item);
-                                        return <div key={`${record.id}-${item.id}-qty`}>{returned || "—"}</div>;
+                                        return (
+                                          <div key={`${record.id}-${item.id}-qty`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
+                                            {idx === 4 && activeItems.length > 5
+                                              ? `+${activeItems.length - 5} more`
+                                              : (returned || "—")}
+                                          </div>
+                                        );
                                       })}
                                     </div>
                                   ) : activeItems.length === 1 ? (
@@ -3293,7 +3319,7 @@ export default function Borrowing() {
                         ].map((h) => (
                           <th
                             key={h}
-                            className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
+                            className={`bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500${h === "Status" ? " w-[110px]" : ""}${h === "Condition" ? " w-[120px]" : ""}`}
                           >
                             {h}
                           </th>
@@ -3305,7 +3331,17 @@ export default function Borrowing() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {currentPageData.map((record, rowIndex) => {
-                        const activeItems = (record.items || []).filter((item) => getReturnedQuantity(item) < getBorrowedQuantity(item));
+                        const activeItemsRaw = (record.items || []).filter((item) => getReturnedQuantity(item) < getBorrowedQuantity(item));
+                        const searchLower = search.toLowerCase();
+                        const activeItems = searchLower
+                          ? [...activeItemsRaw].sort((a, b) => {
+                              const aMatch = String(a.label || "").toLowerCase().includes(searchLower);
+                              const bMatch = String(b.label || "").toLowerCase().includes(searchLower);
+                              if (aMatch && !bMatch) return -1;
+                              if (!aMatch && bMatch) return 1;
+                              return 0;
+                            })
+                          : activeItemsRaw;
                         return (
                           <tr
                             key={record.id}
@@ -3319,15 +3355,21 @@ export default function Borrowing() {
                               <div>{formatExportDate(record.date)}</div>
                               <div className="text-xs text-slate-400">{formatExportTime(record.date)}</div>
                             </td>
-                            <td className="px-4 py-3">
-                              <span className={`rounded-md px-2 py-1 text-xs font-semibold ${getBorrowingStatusClass(record.status)}`}>
+                            <td className="px-4 py-3 w-[110px]">
+                              <span className={`inline-flex w-[90px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${getBorrowingStatusClass(record.status)}`}>
                                 {formatBorrowingStatus(record.status)}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-sm text-slate-600">
                               {activeItems.length > 1 ? (
                                 <div className="space-y-0.5">
-                                  {activeItems.map((item) => <div key={`${record.id}-${item.id}`}>{item.label}</div>)}
+                                  {activeItems.slice(0, 5).map((item, idx) => (
+                                    <div key={`${record.id}-${item.id}`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
+                                      {idx === 4 && activeItems.length > 5
+                                        ? `+${activeItems.length - 5} more items`
+                                        : item.label}
+                                    </div>
+                                  ))}
                                 </div>
                               ) : activeItems.length === 1 ? (
                                 <span>{activeItems[0].label}</span>
@@ -3338,11 +3380,17 @@ export default function Borrowing() {
                             <td className="px-4 py-3 text-sm text-slate-600">
                               {activeItems.length > 1 ? (
                                 <div className="space-y-0.5">
-                                  {activeItems.map((item) => {
+                                  {activeItems.slice(0, 5).map((item, idx) => {
                                     const total = getBorrowedQuantity(item);
                                     const returned = getReturnedQuantity(item);
                                     const displayQty = Math.max(0, total - returned);
-                                    return <div key={`${record.id}-${item.id}-qty`}>{displayQty || "—"}</div>;
+                                    return (
+                                      <div key={`${record.id}-${item.id}-qty`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
+                                        {idx === 4 && activeItems.length > 5
+                                          ? `+${activeItems.length - 5} more`
+                                          : (displayQty || "—")}
+                                      </div>
+                                    );
                                   })}
                                 </div>
                               ) : activeItems.length === 1 ? (
@@ -3351,20 +3399,24 @@ export default function Borrowing() {
                                 "—"
                               )}
                             </td>
-                            <td className="px-4 py-3">
+                            <td className="px-4 py-3 w-[120px]">
                               {activeItems.length > 1 ? (
                                 <div className="space-y-1">
-                                  {activeItems.map((item) => {
+                                  {activeItems.slice(0, 5).map((item, idx) => {
                                     const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
                                     const opLabel = tabMeta.operational || "Working";
                                     const qLabel = tabMeta.quarantine || "Defective";
                                     const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
                                     const label = getReturnConditionLabel(item, opLabel, qLabel);
                                     return (
-                                      <div key={`${record.id}-${item.id}-condition`}>
-                                        <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-rose-100 text-rose-700 border border-rose-200"}`}>
-                                          {label}
-                                        </span>
+                                      <div key={`${record.id}-${item.id}-condition`} className="flex justify-center">
+                                        {idx === 4 && activeItems.length > 5 ? (
+                                          <span className="text-xs italic text-slate-400">+{activeItems.length - 5} more</span>
+                                        ) : (
+                                          <span className={`inline-flex min-w-[72px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-rose-100 text-rose-700 border border-rose-200"}`}>
+                                            {label}
+                                          </span>
+                                        )}
                                       </div>
                                     );
                                   })}
@@ -3378,9 +3430,11 @@ export default function Borrowing() {
                                   const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
                                   const label = getReturnConditionLabel(item, opLabel, qLabel);
                                   return (
-                                    <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-rose-100 text-rose-700 border border-rose-200"}`}>
-                                      {label}
-                                    </span>
+                                    <div className="flex justify-center">
+                                      <span className={`inline-flex min-w-[72px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-rose-100 text-rose-700 border border-rose-200"}`}>
+                                        {label}
+                                      </span>
+                                    </div>
                                   );
                                 })()
                               ) : (
@@ -4959,24 +5013,6 @@ export default function Borrowing() {
         );
       })()}
 
-      {successMessage && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-2xl font-bold text-emerald-700">
-              ✓
-            </div>
-            <h3 className="mt-4 text-lg font-semibold text-slate-900">Success</h3>
-            <p className="mt-2 text-sm text-slate-500">{successMessage}</p>
-            <button
-              type="button"
-              onClick={() => setSuccessMessage("")}
-              className="mt-5 rounded-lg bg-[#4a1111] px-5 py-2 text-sm font-medium text-white hover:opacity-90"
-            >
-              OK
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

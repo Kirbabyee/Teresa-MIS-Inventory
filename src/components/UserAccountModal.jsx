@@ -59,7 +59,7 @@ const isNameField = (field) =>
   ["firstName", "lastName", "middleName", "suffix"].includes(field);
 
 export default function UserAccountModal({ open, account, onClose, onSaved }) {
-  const { showGlobalLoader: _showGlobalLoader, hideGlobalLoader } = useAuth();
+  const { showGlobalLoader, hideGlobalLoader } = useAuth();
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -67,7 +67,6 @@ export default function UserAccountModal({ open, account, onClose, onSaved }) {
   const [suffix, setSuffix] = useState("");
   const [email, setEmail] = useState("");
   const [accountType, setAccountType] = useState("staff");
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -170,8 +169,8 @@ export default function UserAccountModal({ open, account, onClose, onSaved }) {
     }
 
     try {
-      setSaving(true);
       setError("");
+      showGlobalLoader(account?.id ? "Updating account..." : "Creating account...");
 
       const payload = {
         first_name: capitalizeName(firstName.trim()),
@@ -217,7 +216,6 @@ export default function UserAccountModal({ open, account, onClose, onSaved }) {
       setError(err.message || "Failed to save account.");
     } finally {
       hideGlobalLoader();
-      setSaving(false);
     }
   };
 
@@ -383,7 +381,6 @@ export default function UserAccountModal({ open, account, onClose, onSaved }) {
             <Button
               type="button"
               onClick={onClose}
-              disabled={saving}
               variant="outline"
               size="sm"
               className="rounded-lg"
@@ -393,11 +390,11 @@ export default function UserAccountModal({ open, account, onClose, onSaved }) {
             <Button
               type="button"
               onClick={() => setShowConfirm(true)}
-              disabled={saving || !isValid()}
+              disabled={!isValid()}
               size="sm"
               className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
             >
-              {saving ? "Saving..." : account ? "Update" : "Proceed"}
+              {account ? "Update" : "Proceed"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -417,18 +414,14 @@ export default function UserAccountModal({ open, account, onClose, onSaved }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-3 sm:gap-4">
-            <AlertDialogCancel
-              disabled={saving}
-              className="rounded-lg"
-            >
+            <AlertDialogCancel className="rounded-lg">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleSave}
-              disabled={saving}
               className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
             >
-              {saving ? "Saving..." : "Confirm"}
+              Confirm
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

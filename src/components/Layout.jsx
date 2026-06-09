@@ -429,15 +429,7 @@ export default function Layout() {
         </main>
       </div>
 
-      {/* Global Loading Overlay */}
-      {isGlobalLoading && (
-        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-3 rounded-2xl bg-white px-8 py-6 shadow-xl">
-            <Loader2 className="h-8 w-8 animate-spin text-[#4a1111]" />
-            <p className="text-sm font-medium text-slate-700">{globalLoadingMessage}</p>
-          </div>
-        </div>
-      )}
+     
 
       {/* Logout Modal */}
       <AlertDialog open={showLogoutConfirm} onOpenChange={setShowLogoutConfirm}>
