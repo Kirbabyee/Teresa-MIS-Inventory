@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useInventoryCatalog } from "@/lib/inventoryApi";
@@ -25,9 +25,8 @@ import {
   Boxes,
   FlaskConical,
 } from "lucide-react";
-import arkLogo from "@/assets/imgs/ark-logo.png";
+const arkLogo = "/folder/teresalogo-removebg-preview.png";
 import { useAuth } from "@/lib/AuthContext";
-import { Loader2 } from "lucide-react";
 
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
@@ -49,81 +48,138 @@ const readSession = () => {
   }
 };
 
+/* ─────────────────────────────────────────────────────────
+   Tooltip portal — renders at <body> to escape overflow:hidden
+   ───────────────────────────────────────────────────────── */
+function TooltipPortal({ label, targetRef, visible }) {
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (!visible || !targetRef?.current) return;
+    const el = targetRef.current;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      setPos({ top: r.top + r.height / 2, left: r.right + 12 });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [visible, targetRef]);
+
+  if (!visible) return null;
+
+  return (
+    <span
+      className="pointer-events-none fixed z-[9999] -translate-y-1/2 whitespace-nowrap rounded-lg border border-white/15 bg-[#2b0707] px-3.5 py-1.5 text-sm font-medium tracking-wide text-white shadow-2xl shadow-black/50"
+      style={{ top: pos.top, left: pos.left }}
+      role="tooltip"
+    >
+      <span
+        className="absolute right-full top-1/2 -translate-y-1/2 border-[5px] border-transparent border-r-[#2b0707]"
+        aria-hidden="true"
+      />
+      {label}
+    </span>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+   Nav Item — tooltip via fixed portal (escapes overflow)
+   ───────────────────────────────────────────────────────── */
 function NavItem({ item, collapsed, setMobileOpen }) {
   const location = useLocation();
+  const linkRef = useRef(null);
+  const [hovered, setHovered] = useState(false);
+
   const isDirectActive = item.path ? location.pathname === item.path : false;
   const isChildActive = item.children?.some((child) => {
     const childPathname = child.path.split("?")[0];
     return location.pathname === childPathname;
   });
   const isActive = isDirectActive || isChildActive;
+  const Icon = item.icon;
 
   const [isOpen, setIsOpen] = useState(() => item.children && isActive);
-  const Icon = item.icon;
+
+  useEffect(() => {
+    if (item.children && isActive) setIsOpen(true);
+  }, [isActive, item.children]);
+
+  const handleParentClick = (e) => {
+    if (item.children) {
+      e.preventDefault();
+      setIsOpen((prev) => !prev);
+    } else {
+      setMobileOpen(false);
+    }
+  };
 
   return (
     <div className="relative w-full">
-      <div className="relative flex items-center">
-        <Link
-          to={item.children ? "#" : item.path}
-          title={collapsed ? item.label : undefined}
-          onClick={(e) => {
-            if (item.children) {
-              e.preventDefault();
-              setIsOpen(!isOpen);
-            } else {
-              setMobileOpen(false); // Close mobile menu on click
-            }
-          }}
+      {/* Parent Link — ref & hover on the Link itself, not the wrapper */}
+      <Link
+        ref={linkRef}
+        to={item.children ? "#" : item.path}
+        onClick={handleParentClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className={cn(
+          "relative flex items-center gap-3 rounded-xl text-[13px] font-medium transition-all duration-200",
+          collapsed ? "justify-center px-2 py-3" : "px-4 py-2.5",
+          isActive
+            ? "bg-white/10 text-white"
+            : "text-white/70 hover:text-white hover:bg-white/[0.06]"
+        )}
+      >
+        <span
           className={cn(
-            "group relative flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+            "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
             isActive
-              ? "bg-[linear-gradient(90deg,rgba(255,255,255,0.22),rgba(255,255,255,0.12))] text-white shadow-sm ring-1 ring-white/30"
-              : "text-white/80 hover:bg-white/10 hover:text-white"
+              ? "bg-white/15 text-white shadow-sm"
+              : "bg-white/[0.06] text-white/60 group-hover:bg-white/10 group-hover:text-white/90"
           )}
         >
+          <Icon className="w-[18px] h-[18px]" />
+
+          {/* Chevron badge — overlaid on icon corner in collapsed mode */}
+          {collapsed && item.children && (
+            <span
+              className={cn(
+                "absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#411111] border border-white/20 transition-all duration-200",
+                isOpen ? "rotate-0" : "-rotate-90"
+              )}
+            >
+              <ChevronDown className="h-2 w-2 text-white/70" />
+            </span>
+          )}
+        </span>
+
+        {!collapsed && (
+          <span className="flex-1 truncate tracking-wide">{item.label}</span>
+        )}
+
+        {!collapsed && item.children && (
           <span
             className={cn(
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ring-1 transition-colors",
-              isActive
-                ? "bg-white/20 ring-white/25"
-                : "bg-white/5 ring-white/15 group-hover:bg-white/15"
+              "flex h-5 w-5 items-center justify-center rounded-md transition-all duration-200",
+              isOpen
+                ? "rotate-0 text-white/80"
+                : "-rotate-90 text-white/40"
             )}
           >
-            <Icon className="w-4 h-4" />
+            <ChevronDown className="h-3.5 w-3.5" />
           </span>
+        )}
+      </Link>
 
-          {item.children && (
-            <>
-              {/* Chevron background highlight when hovered */}
-              <span
-                className={cn(
-                  "pointer-events-none absolute rounded-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100",
-                  "h-8 w-8 bg-black/50",
-                  collapsed ? "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" : "hidden"
-                )}
-              />
-              {/* Chevron icon */}
-              <span
-                className={cn(
-                  "pointer-events-none absolute text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100",
-                  collapsed
-                    ? "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-                    : "right-2 top-1/2 -translate-y-1/2"
-                )}
-              >
-                {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-              </span>
-            </>
-          )}
-
-          {!collapsed && (
-            <div className="flex flex-1 items-center justify-between">
-              <span>{item.label}</span>
-            </div>
-          )}
-        </Link>
-      </div>
+      {/* Tooltip via portal — escapes overflow:hidden */}
+      {collapsed && (
+        <TooltipPortal label={item.label} targetRef={linkRef} visible={hovered} />
+      )}
 
       {/* Nested Children Rendering */}
       {isOpen && item.children && (
@@ -138,22 +194,15 @@ function NavItem({ item, collapsed, setMobileOpen }) {
             const isSubActive = location.pathname === child.path.split("?")[0];
 
             return (
-              <Link
+              <NavChildLink
                 key={child.path}
                 to={child.path}
-                title={collapsed ? child.label : undefined}
+                icon={ChildIcon}
+                label={child.label}
+                isSubActive={isSubActive}
+                collapsed={collapsed}
                 onClick={() => setMobileOpen(false)}
-                className={cn(
-                  "group flex items-center rounded-lg text-xs font-medium transition-all duration-200",
-                  collapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
-                  isSubActive
-                    ? "text-white bg-white/18 ring-1 ring-white/25"
-                    : "text-white/65 hover:text-white hover:bg-white/12"
-                )}
-              >
-                <ChildIcon className="w-3 h-3" />
-                {!collapsed && <span>{child.label}</span>}
-              </Link>
+              />
             );
           })}
         </div>
@@ -162,6 +211,45 @@ function NavItem({ item, collapsed, setMobileOpen }) {
   );
 }
 
+/* ─────────────────────────────────────────────────────────
+   Child link — tooltip via fixed portal
+   ───────────────────────────────────────────────────────── */
+function NavChildLink({ to, icon: ChildIcon, label, isSubActive, collapsed, onClick }) {
+  const ref = useRef(null);
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <div
+      ref={ref}
+      className="relative"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <Link
+        to={to}
+        onClick={onClick}
+        className={cn(
+          "relative flex items-center rounded-lg text-xs font-medium transition-all duration-200",
+          collapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
+          isSubActive
+            ? "text-white bg-white/18 ring-1 ring-white/25"
+            : "text-white/65 hover:text-white hover:bg-white/12"
+        )}
+      >
+        <ChildIcon className="w-3 h-3" />
+        {!collapsed && <span>{label}</span>}
+      </Link>
+
+      {collapsed && (
+        <TooltipPortal label={label} targetRef={ref} visible={hovered} />
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+   Main Layout
+   ───────────────────────────────────────────────────────── */
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -194,7 +282,6 @@ export default function Layout() {
     }
     const lastSegment = location.pathname.split("/").filter(Boolean).pop();
     if (!lastSegment) return "Workspace";
-
     return lastSegment
       .replace(/[-_]/g, " ")
       .replace(/\b\w/g, (char) => char.toUpperCase());
@@ -205,14 +292,11 @@ export default function Layout() {
     const view = params.get("view");
     const isLogsView = view === "logs";
     const isHistoryView = view === "history";
-
     if (location.pathname === "/borrowing" && (isHistoryView || isLogsView)) {
       return "Borrowing - History";
     }
-
     if (!isLogsView) return sectionTitle;
     if (/logs?$/i.test(sectionTitle)) return sectionTitle;
-
     return `${sectionTitle} - Logs`;
   }, [location.pathname, location.search, sectionTitle]);
 
@@ -234,22 +318,9 @@ export default function Layout() {
     }
 
     const items = [
-      {
-        label: "Dashboard",
-        icon: Home,
-        path: "/",
-      },
-      {
-        label: "Inventory",
-        icon: Boxes,
-        path: "/manage/inventory",
-        children: inventoryChildren,
-      },
-      {
-        label: "Borrowing",
-        icon: ClipboardList,
-        path: "/borrowing",
-      },
+      { label: "Dashboard", icon: Home, path: "/" },
+      { label: "Inventory", icon: Boxes, path: "/manage/inventory", children: inventoryChildren },
+      { label: "Borrowing", icon: ClipboardList, path: "/borrowing" },
     ];
 
     if (isAdminSession(session)) {
@@ -258,21 +329,8 @@ export default function Layout() {
         icon: Users,
         path: "/manage/accounts",
         children: [
-          {
-            label: "User Accounts",
-            icon: Users,
-            path: "/manage/accounts",
-          },
-          {
-            label: "Inventory Manager",
-            icon: Boxes,
-            path: "/manage/inventory_manager",
-          },
-          //{
-          //  label: "Inventory Table Test",
-          //  icon: FlaskConical,
-          //  path: "/manage/inventory-table-test",
-          //},
+          { label: "User Accounts", icon: Users, path: "/manage/accounts" },
+          { label: "Inventory Manager", icon: Boxes, path: "/manage/inventory_manager" },
         ],
       });
     }
@@ -292,7 +350,6 @@ export default function Layout() {
 
   const handleLogout = async () => {
     await logout();
-
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(SESSION_KEY);
       window.dispatchEvent(new Event(SESSION_EVENT));
@@ -310,68 +367,98 @@ export default function Layout() {
         />
       )}
 
-      {/* Sidebar Sidebar */}
+      {/* ── SIDEBAR ─────────────────────────────────────── */}
       <aside
         className={cn(
-          "fixed lg:static z-50 h-full bg-[#2b0707]/95 backdrop-blur-xl border-r border-white/15 transition-all duration-300 flex flex-col shadow-xl overflow-visible",
-          collapsed ? "w-20" : "w-64",
+          "fixed lg:static z-50 h-full flex flex-col transition-all duration-300 ease-in-out",
+          collapsed ? "w-[72px]" : "w-64",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        {/* Sidebar Header */}
-        <div className={cn(
-          "relative flex items-center p-4 border-b border-white/10 bg-white/5 backdrop-blur-sm transition-all duration-300",
-          collapsed ? "justify-center" : "justify-between"
-        )}>
-          {!collapsed && (
-            <div className="flex items-center gap-3 min-w-0">
-              <img
-                src={arkLogo}
-                alt="Ark Logo"
-                className="w-9 h-9 bg-white rounded p-1 object-contain shrink-0"
-              />
-              <div className="overflow-hidden">
-                <p className="text-white font-bold text-sm leading-tight truncate">CSTA</p>
-                
+        <div className="relative flex flex-col h-full bg-[#411111] shadow-2xl shadow-black/30">
+          {/* Vignette overlay */}
+          <div
+            className="pointer-events-none absolute inset-0 z-0"
+            aria-hidden="true"
+            style={{
+              background:
+                "linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0) 65%, rgba(0,0,0,0.22) 100%)",
+            }}
+          />
+          {/* Subtle dot texture */}
+          <div
+            className="pointer-events-none absolute inset-0 z-0 opacity-[0.03]"
+            aria-hidden="true"
+            style={{
+              backgroundImage: "radial-gradient(circle at 1px 1px, white 0.5px, transparent 0.5px)",
+              backgroundSize: "20px 20px",
+            }}
+          />
+
+          {/* ── Header ──────────────────────────────────── */}
+          <div className={cn(
+            "relative flex items-center p-4 border-b border-white/10 bg-white/5 backdrop-blur-sm transition-all duration-300",
+            collapsed ? "justify-center" : "justify-between"
+          )}>
+            {!collapsed && (
+              <div className="flex items-center gap-3 min-w-0">
+                <img
+                  src={arkLogo}
+                  alt="Ark Logo"
+                  className="w-9 h-9 bg-white rounded p-1 object-contain shrink-0"
+                />
+                <div className="overflow-hidden">
+                  <p className="text-white font-bold text-sm leading-tight truncate">CSTA</p>
+                </div>
               </div>
-            </div>
-          )}
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="hidden lg:flex text-white/70 hover:text-white p-1 rounded hover:bg-white/10 transition-colors"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Navigation */}
-        <nav className="relative flex-1 overflow-y-auto overflow-x-visible p-3 space-y-1.5 scrollbar-hide">
-          {navItems.map((item) => (
-            <NavItem 
-                key={item.label} 
-                item={item} 
-                collapsed={collapsed} 
-                setMobileOpen={setMobileOpen} 
-            />
-          ))}
-        </nav>
-
-        {/* Sidebar Footer */}
-        <div className="relative p-3 border-t border-white/10 bg-gradient-to-t from-white/[0.04] to-transparent">
-          <button
-            onClick={() => setShowLogoutConfirm(true)}
-            className={cn(
-              "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ring-1 ring-white/15",
-              "text-white/85 bg-white/[0.06] hover:bg-red-500/20 hover:text-red-200"
             )}
-          >
-            <LogOut className="w-5 h-5 shrink-0" />
-            {!collapsed && <span>Logout</span>}
-          </button>
+
+            <button
+              onClick={() => setCollapsed(!collapsed)}
+              className="hidden lg:flex text-white/70 hover:text-white p-1 rounded hover:bg-white/10 transition-colors"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* ── Navigation ───────────────────────────────── */}
+          <nav className="relative z-10 flex-1 overflow-y-auto px-3 py-4 space-y-1 scrollbar-hide">
+            {navItems.map((item) => (
+              <NavItem
+                key={item.label}
+                item={item}
+                collapsed={collapsed}
+                setMobileOpen={setMobileOpen}
+              />
+            ))}
+          </nav>
+
+          {/* ── Footer: Logout ───────────────────────────── */}
+          <div className="relative z-10 mt-auto border-t border-white/[0.06] p-3">
+            <button
+              onClick={() => setShowLogoutConfirm(true)}
+              className={cn(
+                "group flex w-full items-center gap-3 rounded-xl text-[13px] font-medium transition-all duration-200",
+                collapsed ? "justify-center px-2 py-3" : "px-4 py-2.5",
+                "text-white/60 hover:text-rose-200 hover:bg-rose-500/10"
+              )}
+              title="Logout"
+            >
+              <span
+                className={cn(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
+                  "bg-white/[0.06] text-white/50 group-hover:bg-rose-500/15 group-hover:text-rose-300"
+                )}
+              >
+                <LogOut className="w-[18px] h-[18px]" />
+              </span>
+              {!collapsed && <span className="tracking-wide">Logout</span>}
+            </button>
+          </div>
         </div>
       </aside>
 
-      {/* Main Content Area */}
+      {/* ── MAIN CONTENT ───────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="bg-white/85 supports-[backdrop-filter]:bg-white/70 backdrop-blur-md border-b border-slate-200/80 px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-3 min-w-0">
@@ -388,29 +475,15 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Clock Section */}
             <div className="hidden md:flex flex-col items-end leading-tight border-r border-slate-200 pr-4 mr-1">
               <p className="text-sm font-semibold text-slate-900">
                 {new Intl.DateTimeFormat(undefined, {
-                  weekday: "short",
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
+                  weekday: "short", month: "short", day: "numeric", year: "numeric",
                 }).format(now)}
               </p>
-              <p className="text-xs font-mono text-slate-500">
-                {now.toLocaleTimeString()}
-              </p>
+              <p className="text-xs font-mono text-slate-500">{now.toLocaleTimeString()}</p>
             </div>
 
-            {/* Notification Button 
-            <button className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-full transition-colors">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 border-2 border-white rounded-full"></span>
-            </button>
-            */}
-
-            {/* User Profile */}
             <div className="flex items-center gap-3 pl-2">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2b0707,#5a1717)] text-sm font-bold text-white ring-4 ring-[#2b0707]/15 shadow-sm">
                 {initials || "U"}
@@ -423,13 +496,10 @@ export default function Layout() {
           </div>
         </header>
 
-        {/* Page Content */}
         <main className="flex-1 p-6 bg-[radial-gradient(circle_at_top_right,_rgba(148,163,184,0.16),_transparent_45%),linear-gradient(to_bottom,_#f8fafc,_#eef2f7)] overflow-y-auto scrollbar-hide">
           <Outlet />
         </main>
       </div>
-
-     
 
       {/* Logout Modal */}
       <AlertDialog open={showLogoutConfirm} onOpenChange={setShowLogoutConfirm}>
@@ -442,16 +512,12 @@ export default function Layout() {
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2">
             <AlertDialogCancel className="rounded-lg">Wait, stay</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleLogout}
-              className="bg-red-600 hover:bg-red-700 text-white rounded-lg px-6"
-            >
+            <AlertDialogAction onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white rounded-lg px-6">
               Confirm Logout
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
     </div>
   );
 }

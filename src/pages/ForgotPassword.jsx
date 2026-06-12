@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
-import { useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, ArrowLeft, Mail, Lock, KeyRound } from "lucide-react";
 import { CheckCircle2, Circle } from "lucide-react";
-import arkLogo from "@/assets/imgs/ark-logo.png";
+const arkLogo = "/folder/teresalogo-removebg-preview.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/api/supabaseClient";
@@ -27,52 +26,45 @@ export default function ForgotPassword() {
   const normalizedEmail = email.trim().toLowerCase();
   const otp = otpDigits.join("");
 
+  // ── Cooldown timer ──────────────────────────────────────────────
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
     const timer = window.setInterval(() => {
       setCooldownSeconds((current) => {
         if (current <= 1) {
           window.clearInterval(timer);
-          try {
-            localStorage.removeItem(COOLDOWN_STORAGE_KEY);
-          } catch (e) {}
+          try { localStorage.removeItem(COOLDOWN_STORAGE_KEY); } catch (e) {}
           return 0;
         }
         return current - 1;
       });
     }, 1000);
-
     return () => window.clearInterval(timer);
   }, [cooldownSeconds]);
 
-  // Initialize cooldown from previous session if present
+  // ── Restore cooldown from storage ──────────────────────────────
   useEffect(() => {
     try {
       const until = Number(localStorage.getItem(COOLDOWN_STORAGE_KEY) || 0);
       if (until && until > Date.now()) {
-        const seconds = Math.ceil((until - Date.now()) / 1000);
-        setCooldownSeconds(seconds);
+        setCooldownSeconds(Math.ceil((until - Date.now()) / 1000));
       }
     } catch (e) {}
   }, []);
 
+  // ── Helpers ────────────────────────────────────────────────────
   const maskEmail = (value) => {
-    const emailValue = String(value || "").trim().toLowerCase();
-    const atIndex = emailValue.indexOf("@");
-    if (atIndex <= 0) return "****";
-    const domain = emailValue.slice(atIndex);
-    return `****${domain}`;
+    const v = String(value || "").trim().toLowerCase();
+    const at = v.indexOf("@");
+    if (at <= 0) return "****";
+    return `****${v.slice(at)}`;
   };
 
   const formatCooldown = (value) => {
-    const total = Number(value || 0);
-    const minutes = Math.floor(total / 60)
-      .toString()
-      .padStart(2, "0");
-    const seconds = Math.floor(total % 60)
-      .toString()
-      .padStart(2, "0");
-    return `${minutes}:${seconds}`;
+    const t = Number(value || 0);
+    const m = Math.floor(t / 60).toString().padStart(2, "0");
+    const s = Math.floor(t % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
   };
 
   const extractRateLimitCooldown = (source) => {
@@ -82,12 +74,10 @@ export default function ForgotPassword() {
     const amount = Number(match[1] || 0);
     if (!amount) return 180;
     const unit = String(match[2] || "second").toLowerCase();
-    if (unit.startsWith("min")) {
-      return Math.max(1, amount) * 60;
-    }
-    return Math.max(1, amount);
+    return unit.startsWith("min") ? Math.max(1, amount) * 60 : Math.max(1, amount);
   };
 
+  // ── OTP handlers ───────────────────────────────────────────────
   const updateOtpDigit = (index, rawValue) => {
     const value = String(rawValue || "").replace(/\D/g, "").slice(-1);
     setOtpDigits((current) => {
@@ -95,184 +85,139 @@ export default function ForgotPassword() {
       next[index] = value;
       return next;
     });
-
     if (value && index < 7) {
-      const nextInput = document.getElementById(`otp-digit-${index + 1}`);
-      nextInput?.focus();
+      document.getElementById(`otp-${index + 1}`)?.focus();
     }
   };
 
   const handleOtpKeyDown = (event, index) => {
     if (event.key === "Backspace" && !otpDigits[index] && index > 0) {
-      const previousInput = document.getElementById(`otp-digit-${index - 1}`);
-      previousInput?.focus();
+      document.getElementById(`otp-${index - 1}`)?.focus();
     }
   };
 
+  const handleOtpPaste = (e) => {
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 8);
+    if (pasted.length === 0) return;
+    e.preventDefault();
+    setOtpDigits((prev) => {
+      const next = [...prev];
+      for (let i = 0; i < 8; i++) {
+        next[i] = pasted[i] || "";
+      }
+      return next;
+    });
+    // Focus the last filled or the first empty
+    const focusIdx = Math.min(pasted.length, 7);
+    document.getElementById(`otp-${focusIdx}`)?.focus();
+  };
+
+  // ── Step: Send OTP ─────────────────────────────────────────────
   const sendOtp = async () => {
     setError("");
     setMessage("");
-
-    if (!normalizedEmail) {
-      setError("Email is required.");
-      return;
-    }
+    if (!normalizedEmail) { setError("Email is required."); return; }
 
     setSubmitting(true);
     try {
-      const { data: existingAccount, error: accountLookupError } = await supabase
-        .from("user_accounts")
-        .select("id")
-        .ilike("email", normalizedEmail)
-        .limit(1)
-        .maybeSingle();
+      const { data: existingAccount, error: lookupErr } = await supabase
+        .from("user_accounts").select("id").ilike("email", normalizedEmail).limit(1).maybeSingle();
 
-      if (accountLookupError) {
-        setError(accountLookupError.message || "Failed to validate email.");
-        return;
-      }
+      if (lookupErr) { setError(lookupErr.message || "Failed to validate email."); return; }
+      if (!existingAccount?.id) { setError("There is no record with that email."); return; }
 
-      if (!existingAccount?.id) {
-        setError("There is no record with that email.");
-        return;
-      }
-
-      const { error: otpError } = await supabase.auth.signInWithOtp({
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
         email: normalizedEmail,
-        options: {
-          shouldCreateUser: false,
-        },
+        options: { shouldCreateUser: false },
       });
 
-      if (otpError) {
-        const otpErrorText = String(otpError.message || "");
-        if (otpErrorText.toLowerCase().includes("rate limit")) {
-          const waitSeconds = extractRateLimitCooldown(otpErrorText);
-          // exponential backoff to avoid repeated 429s
-          const backoff = Math.min(3600, Math.pow(2, rateLimitCount) * 60); // cap at 1 hour
+      if (otpErr) {
+        const msg = String(otpErr.message || "");
+        if (msg.toLowerCase().includes("rate limit")) {
+          const waitSeconds = extractRateLimitCooldown(msg);
+          const backoff = Math.min(3600, Math.pow(2, rateLimitCount) * 60);
           const total = Math.max(waitSeconds, backoff);
           setStep("otp");
           setCooldownSeconds(total);
           setRateLimitCount((c) => c + 1);
-          setError("");
-          setMessage("");
-          try {
-            localStorage.setItem(COOLDOWN_STORAGE_KEY, String(Date.now() + total * 1000));
-          } catch (e) {}
+          try { localStorage.setItem(COOLDOWN_STORAGE_KEY, String(Date.now() + total * 1000)); } catch (e) {}
           return;
         }
-        setError(otpError.message || "Failed to send OTP.");
-        return;
+        setError(otpErr.message || "Failed to send OTP."); return;
       }
 
       setStep("otp");
       setCooldownSeconds(180);
       setRateLimitCount(0);
       setOtpDigits(["", "", "", "", "", "", "", ""]);
-      setMessage(`We've sent an email to ${normalizedEmail}.`);
-      try {
-        localStorage.setItem(COOLDOWN_STORAGE_KEY, String(Date.now() + 180 * 1000));
-      } catch (e) {}
-    } catch (requestError) {
-      setError(requestError?.message || "Failed to send OTP.");
+      setMessage(`We've sent an 8-digit code to ${normalizedEmail}.`);
+      try { localStorage.setItem(COOLDOWN_STORAGE_KEY, String(Date.now() + 180 * 1000)); } catch (e) {}
+    } catch (err) {
+      setError(err?.message || "Failed to send OTP.");
     } finally {
       setSubmitting(false);
     }
   };
 
+  // ── Step: Resend OTP ───────────────────────────────────────────
   const handleResendOtp = async () => {
-    if (cooldownSeconds > 0) {
-      setError("");
-      setMessage("");
-      return;
-    }
+    if (cooldownSeconds > 0) return;
     await sendOtp();
   };
 
+  // ── Step: Verify OTP ───────────────────────────────────────────
   const verifyOtp = async () => {
     setError("");
     setMessage("");
-
     const normalizedOtp = String(otp || "").trim();
-    if (normalizedOtp.length !== 8) {
-      setError("Please enter the 8-digit OTP.");
-      return;
-    }
+    if (normalizedOtp.length !== 8) { setError("Please enter the 8-digit OTP."); return; }
 
     setSubmitting(true);
     try {
-      const { data, error: verifyError } = await supabase.auth.verifyOtp({
-        email: normalizedEmail,
-        token: normalizedOtp,
-        type: "email",
+      const { data, error: verifyErr } = await supabase.auth.verifyOtp({
+        email: normalizedEmail, token: normalizedOtp, type: "email",
       });
-
-      if (verifyError) {
-        setError(verifyError.message || "Invalid OTP.");
-        return;
-      }
-
-      if (!data?.session && !data?.user) {
-        setError("OTP verified but no active session was created.");
-        return;
-      }
-
+      if (verifyErr) { setError(verifyErr.message || "Invalid OTP."); return; }
+      if (!data?.session && !data?.user) { setError("OTP verified but no active session was created."); return; }
       setStep("password");
       setMessage("OTP verified. You can now set your new password.");
-    } catch (verifyException) {
-      setError(verifyException?.message || "Failed to verify OTP.");
+    } catch (err) {
+      setError(err?.message || "Failed to verify OTP.");
     } finally {
       setSubmitting(false);
     }
   };
 
+  // ── Step: Reset Password ───────────────────────────────────────
   const resetPassword = async () => {
     setError("");
     setMessage("");
-
-    if (!newPassword.trim()) {
-      setError("New password is required.");
-      return;
-    }
-
-    if (!isPasswordValid) {
-      setError("Please meet all password requirements.");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
+    if (!newPassword.trim()) { setError("New password is required."); return; }
+    if (!isPasswordValid) { setError("Please meet all password requirements."); return; }
+    if (newPassword !== confirmPassword) { setError("Passwords do not match."); return; }
 
     setSubmitting(true);
     try {
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-
-      if (updateError) {
-        setError(updateError.message || "Failed to reset password.");
-        return;
-      }
-
+      const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateErr) { setError(updateErr.message || "Failed to reset password."); return; }
       await supabase.auth.signOut();
       navigate("/login", { replace: true });
-    } catch (updateException) {
-      setError(updateException?.message || "Failed to reset password.");
+    } catch (err) {
+      setError(err?.message || "Failed to reset password.");
     } finally {
       setSubmitting(false);
     }
   };
 
+  // ── Password validation ────────────────────────────────────────
   const evaluatePassword = (password) => {
-    const value = String(password || "");
+    const v = String(password || "");
     return {
-      minLength: value.length >= 8,
-      hasLowercase: /[a-z]/.test(value),
-      hasUppercase: /[A-Z]/.test(value),
-      hasNumber: /\d/.test(value),
-      hasSymbol: /[^A-Za-z0-9]/.test(value),
+      minLength: v.length >= 8,
+      hasLowercase: /[a-z]/.test(v),
+      hasUppercase: /[A-Z]/.test(v),
+      hasNumber: /\d/.test(v),
+      hasSymbol: /[^A-Za-z0-9]/.test(v),
     };
   };
 
@@ -280,243 +225,339 @@ export default function ForgotPassword() {
   const passwordScore = useMemo(() => Object.values(passwordChecks).filter(Boolean).length, [passwordChecks]);
   const isPasswordValid = useMemo(() => passwordScore === 5, [passwordScore]);
 
+  // ── Step config ────────────────────────────────────────────────
+  const stepConfig = {
+    email: {
+      icon: Mail,
+      title: "Forgot Password",
+      subtitle: "Enter your email address and we'll send you an OTP to verify your identity.",
+    },
+    otp: {
+      icon: KeyRound,
+      title: "Verify OTP",
+      subtitle: `Enter the 8-digit code sent to ${normalizedEmail ? maskEmail(normalizedEmail) : "your email"}.`,
+    },
+    password: {
+      icon: Lock,
+      title: "Reset Password",
+      subtitle: "Create a strong new password for your account.",
+    },
+  };
+
+  const currentStep = stepConfig[step];
+  const StepIcon = currentStep.icon;
+
+  // ── Render ─────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-100 grid lg:grid-cols-2">
-      <div className="hidden lg:flex relative overflow-hidden bg-[#170000] p-10">
-        <div className="absolute -top-24 -left-10 w-72 h-72 rounded-full bg-white/10" />
-        <div className="absolute -bottom-16 right-10 w-64 h-64 rounded-full bg-black/10" />
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-slate-50 p-4 sm:p-6 lg:p-8">
+      {/* ── Ambient background accents ────────────────────────────── */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute -top-32 -left-24 w-[480px] h-[480px] rounded-full bg-[#411111]/[0.06] blur-3xl" />
+        <div className="absolute top-1/3 -right-20 w-[360px] h-[360px] rounded-full bg-[#411111]/[0.04] blur-3xl" />
+        <div className="absolute -bottom-28 -left-16 w-[300px] h-[300px] rounded-full bg-[#411111]/[0.03] blur-3xl" />
+        <div
+          className="absolute inset-0 opacity-[0.025]"
+          style={{
+            backgroundImage:
+              "linear-gradient(#411111 1px, transparent 1px), linear-gradient(90deg, #411111 1px, transparent 1px)",
+            backgroundSize: "48px 48px",
+          }}
+        />
+      </div>
 
-        <div className="relative z-10 flex flex-col justify-between h-full text-white">
-          <div className="flex items-center gap-3">
-            <img
-              src={arkLogo}
-              alt="St Teresa"
-              className="w-12 bg-white rounded p-1 object-contain"
-            />
-            <div>
-              <p className="text-2xl font-bold leading-tight">Colegio de Sta. Teresa de Avila</p>
-              <p className="text-white/80 text-sm">Management System</p>
-            </div>
-          </div>
+      {/* ── Decorative shapes ─────────────────────────────────────── */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute top-16 right-[12%] w-28 h-28 rounded-full border border-[#411111]/[0.06] rotate-12" />
+        <div className="absolute bottom-24 right-[18%] w-16 h-16 rounded-lg border border-[#411111]/[0.06] rotate-45" />
+        <div className="absolute top-[30%] left-8 w-1.5 h-20 rounded-full bg-[#411111]/[0.10]" />
+        <div className="absolute top-[30%] left-14 w-1 h-12 rounded-full bg-[#411111]/[0.06]" />
+      </div>
 
-          <div className="space-y-3 max-w-md">
-            <p className="text-4xl font-black leading-tight tracking-tight">
-              Reset Password
+      {/* ── Auth card ─────────────────────────────────────────────── */}
+      <div className="relative z-10 w-full max-w-md">
+        {/* Branding header (inside card area, above the white card) */}
+        <div className="flex flex-col items-center justify-center gap-2 mb-6">
+          <img
+            src={arkLogo}
+            alt="St Teresa"
+            className="h-20 w-20 object-contain drop-shadow-lg"
+          />
+          <div className="text-center">
+            <p className="text-base font-bold tracking-tight text-slate-900">
+              Colegio de Sta. Teresa de Avila
             </p>
-            <p className="text-white/85 text-base">
-              Verify your email with OTP and set a new password.
+            <p className="text-[11px] font-medium uppercase tracking-widest text-slate-400">
+              Management Information System
             </p>
           </div>
         </div>
-      </div>
 
-      <div className="flex items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-sm p-6 sm:p-8">
-          <div className="flex items-center gap-3 mb-6 lg:hidden">
-            <img
-              src={arkLogo}
-              alt="St Teresa"
-              className="w-10 h-10 bg-[#450c0c] rounded p-1 object-contain"
-            />
-            <div>
-              <p className="text-lg font-bold text-slate-900 leading-tight">St Teresa</p>
-              <p className="text-xs text-slate-500">Management System</p>
+        {/* Card */}
+        <div className="rounded-lg border border-slate-200/80 bg-white/95 shadow-xl shadow-slate-200/60 backdrop-blur-sm">
+          {/* Card header */}
+          <div className="px-8 pt-8 pb-2 text-center">
+            {/* Step indicator dots */}
+            <div className="flex items-center justify-center gap-2 mb-5">
+              {["email", "otp", "password"].map((s, i) => (
+                <div key={s} className="flex items-center gap-2">
+                  <div
+                    className={`h-2 rounded-full transition-all duration-300 ${
+                      step === s
+                        ? "w-6 bg-[#411111]"
+                        : ["email", "otp", "password"].indexOf(step) > i
+                        ? "w-2 bg-[#411111]/40"
+                        : "w-2 bg-slate-200"
+                    }`}
+                  />
+                  {i < 2 && <div className="w-4 h-px bg-slate-200" />}
+                </div>
+              ))}
             </div>
-          </div>
 
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-slate-900">Forgot Password</h1>
-            <p className="text-sm text-slate-500 mt-1">
-              {step === "email"
-                ? "Enter your email to receive an OTP."
-                : step === "otp"
-                ? "Enter the 8-digit code sent to your email."
-                : "Set your new password."}
+            {/* Step icon */}
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#411111]/10">
+              <StepIcon className="h-6 w-6 text-[#411111]" />
+            </div>
+
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+              {currentStep.title}
+            </h1>
+            <p className="mt-2 text-sm text-slate-500 leading-relaxed">
+              {currentStep.subtitle}
             </p>
           </div>
 
-          {error ? (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error}
-            </div>
-          ) : null}
-
-          {message ? (
-            <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-              {message}
-            </div>
-          ) : null}
-
-          {step === "email" ? (
-            <form
-              className="space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                sendOtp();
-              }}
-            >
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700">Email</label>
-                <Input
-                  type="email"
-                  placeholder="name@company.com"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  autoComplete="email"
-                />
+          {/* Card body */}
+          <div className="px-8 pb-8 pt-4">
+            {/* Error / success messages */}
+            {error ? (
+              <div className="mb-5 rounded-xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm text-red-700">
+                {error}
               </div>
+            ) : null}
+            {message ? (
+              <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-700">
+                {message}
+              </div>
+            ) : null}
 
-              <Button
-                type="submit"
-                className="w-full bg-[#450c0c] hover:bg-[#170000]"
-                disabled={submitting}
+            {/* ── STEP: Email ──────────────────────────────────────── */}
+            {step === "email" && (
+              <form
+                className="space-y-5"
+                onSubmit={(e) => { e.preventDefault(); sendOtp(); }}
               >
-                {submitting ? "Sending OTP..." : "Send OTP"}
-              </Button>
-            </form>
-          ) : null}
-
-          {step === "otp" ? (
-            <form
-              className="space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                verifyOtp();
-              }}
-            >
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700">OTP (8 digits)</label>
-                <div className="grid grid-cols-8 gap-3 justify-center mt-2">
-                  {otpDigits.map((digit, index) => (
-                    <Input
-                      key={`otp-${index}`}
-                      id={`otp-digit-${index}`}
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete={index === 0 ? "one-time-code" : "off"}
-                      value={digit}
-                      maxLength={1}
-                      onChange={(event) => updateOtpDigit(index, event.target.value)}
-                      onKeyDown={(event) => handleOtpKeyDown(event, index)}
-                      className="w-12 h-12 text-center text-lg font-semibold"
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleResendOtp}
-                  className="text-sm font-medium text-[#450c0c] hover:text-[#170000]"
-                  disabled={submitting || cooldownSeconds > 0}
-                >
-                  {cooldownSeconds > 0
-                    ? `Resend OTP in ${formatCooldown(cooldownSeconds)}`
-                    : "Resend OTP"}
-                </button>
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full bg-[#450c0c] hover:bg-[#170000]"
-                disabled={submitting}
-              >
-                {submitting ? "Verifying..." : "Verify OTP"}
-              </Button>
-            </form>
-          ) : null}
-
-          {step === "password" ? (
-            <form
-              className="space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                resetPassword();
-              }}
-            >
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700">New Password</label>
-                <div className="relative">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">
+                    Email address
+                  </label>
                   <Input
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Enter new password"
-                    value={newPassword}
-                    onChange={(event) => setNewPassword(event.target.value)}
-                    autoComplete="new-password"
-                    className="pr-10"
+                    type="email"
+                    placeholder="name@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
+                    className="h-11 rounded-xl border-slate-200 bg-slate-50 px-4 text-[15px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus-visible:ring-2 focus-visible:ring-[#411111]/40 focus-visible:border-[#411111]/40"
                   />
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full h-[46px] rounded-xl bg-[#411111] text-[15px] font-semibold tracking-wide text-white shadow-lg shadow-[#411111]/20 transition-all hover:bg-[#2e0b0b] hover:shadow-xl hover:shadow-[#411111]/25 active:scale-[0.98]"
+                >
+                  {submitting ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      Sending...
+                    </span>
+                  ) : (
+                    "Send OTP"
+                  )}
+                </Button>
+              </form>
+            )}
+
+            {/* ── STEP: OTP ────────────────────────────────────────── */}
+            {step === "otp" && (
+              <form
+                className="space-y-5"
+                onSubmit={(e) => { e.preventDefault(); verifyOtp(); }}
+              >
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-slate-700">
+                    Enter 8-digit OTP
+                  </label>
+                  <div className="grid grid-cols-8 gap-2" onPaste={handleOtpPaste}>
+                    {otpDigits.map((digit, index) => (
+                      <input
+                        key={`otp-${index}`}
+                        id={`otp-${index}`}
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete={index === 0 ? "one-time-code" : "off"}
+                        value={digit}
+                        maxLength={1}
+                        onChange={(e) => updateOtpDigit(index, e.target.value)}
+                        onKeyDown={(e) => handleOtpKeyDown(e, index)}
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 text-center text-lg font-semibold text-slate-900 transition-all focus:border-[#411111]/40 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#411111]/30"
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Resend */}
+                <div className="flex items-center justify-between pt-1">
+                  <p className="text-xs text-slate-400">
+                    Didn't receive it?
+                  </p>
                   <button
                     type="button"
-                    onClick={() => setShowPassword((prev) => !prev)}
-                    className="absolute inset-y-0 right-0 px-3 text-slate-500 hover:text-slate-700"
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    onClick={handleResendOtp}
+                    className="text-sm font-medium text-[#411111] transition hover:text-[#2a0b0b] disabled:cursor-not-allowed disabled:text-slate-300"
+                    disabled={submitting || cooldownSeconds > 0}
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {cooldownSeconds > 0
+                      ? `Resend in ${formatCooldown(cooldownSeconds)}`
+                      : "Resend OTP"}
                   </button>
                 </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1.5 mt-2">
+
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full h-[46px] rounded-xl bg-[#411111] text-[15px] font-semibold tracking-wide text-white shadow-lg shadow-[#411111]/20 transition-all hover:bg-[#2e0b0b] hover:shadow-xl hover:shadow-[#411111]/25 active:scale-[0.98]"
+                >
+                  {submitting ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      Verifying...
+                    </span>
+                  ) : (
+                    "Verify OTP"
+                  )}
+                </Button>
+              </form>
+            )}
+
+            {/* ── STEP: New Password ───────────────────────────────── */}
+            {step === "password" && (
+              <form
+                className="space-y-5"
+                onSubmit={(e) => { e.preventDefault(); resetPassword(); }}
+              >
+                {/* New password */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">
+                    New Password
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter new password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      autoComplete="new-password"
+                      className="h-11 rounded-xl border-slate-200 bg-slate-50 px-4 pr-12 text-[15px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus-visible:ring-2 focus-visible:ring-[#411111]/40 focus-visible:border-[#411111]/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((p) => !p)}
+                      className="absolute inset-y-0 right-0 flex items-center px-4 text-slate-400 transition hover:text-[#411111]"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Password strength checklist */}
+                <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                    Password requirements
+                  </p>
                   {[
                     { key: "minLength", label: "At least 8 characters" },
-                    { key: "hasLowercase", label: "Contains lowercase letter" },
-                    { key: "hasUppercase", label: "Contains uppercase letter" },
-                    { key: "hasNumber", label: "Contains number" },
-                    { key: "hasSymbol", label: "Contains symbol" },
+                    { key: "hasLowercase", label: "Lowercase letter (a-z)" },
+                    { key: "hasUppercase", label: "Uppercase letter (A-Z)" },
+                    { key: "hasNumber", label: "Number (0-9)" },
+                    { key: "hasSymbol", label: "Symbol (!@#$...)" },
                   ].map((rule) => (
-                    <p
+                    <div
                       key={rule.key}
-                      className={`text-xs flex items-center gap-2 ${passwordChecks[rule.key] ? "text-green-700" : "text-slate-500"}`}
+                      className={`flex items-center gap-2 text-xs transition-colors ${
+                        passwordChecks[rule.key] ? "text-emerald-700" : "text-slate-400"
+                      }`}
                     >
                       {passwordChecks[rule.key] ? (
-                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
                       ) : (
-                        <Circle className="w-3.5 h-3.5" />
+                        <Circle className="h-3.5 w-3.5" />
                       )}
-                      {rule.label}
-                    </p>
+                      <span>{rule.label}</span>
+                    </div>
                   ))}
                 </div>
-              </div>
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700">Confirm Password</label>
-                <div className="relative">
-                  <Input
-                    type={showConfirmPassword ? "text" : "password"}
-                    placeholder="Confirm new password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    autoComplete="new-password"
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword((prev) => !prev)}
-                    className="absolute inset-y-0 right-0 px-3 text-slate-500 hover:text-slate-700"
-                    aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
-                  >
-                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+                {/* Confirm password */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">
+                    Confirm Password
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="Confirm new password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      autoComplete="new-password"
+                      className="h-11 rounded-xl border-slate-200 bg-slate-50 px-4 pr-12 text-[15px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus-visible:ring-2 focus-visible:ring-[#411111]/40 focus-visible:border-[#411111]/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((p) => !p)}
+                      className="absolute inset-y-0 right-0 flex items-center px-4 text-slate-400 transition hover:text-[#411111]"
+                      aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              <Button
-                type="submit"
-                className="w-full bg-[#450c0c] hover:bg-[#170000]"
-                disabled={submitting}
-              >
-                {submitting ? "Updating Password..." : "Reset Password"}
-              </Button>
-            </form>
-          ) : null}
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full h-[46px] rounded-xl bg-[#411111] text-[15px] font-semibold tracking-wide text-white shadow-lg shadow-[#411111]/20 transition-all hover:bg-[#2e0b0b] hover:shadow-xl hover:shadow-[#411111]/25 active:scale-[0.98]"
+                >
+                  {submitting ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      Updating...
+                    </span>
+                  ) : (
+                    "Reset Password"
+                  )}
+                </Button>
+              </form>
+            )}
+          </div>
 
-          <div className="mt-6 text-center text-sm text-slate-600">
-            Back to{" "}
-            <Link to="/login" className="font-medium text-[#450c0c] hover:text-[#170000]">
-              Login
+          {/* Card footer */}
+          <div className="border-t border-slate-100 bg-slate-50/60 px-8 py-4 rounded-b-2xl">
+            <Link
+              to="/login"
+              className="flex items-center justify-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#411111]"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Login
             </Link>
           </div>
         </div>
+
+        {/* Bottom caption */}
+        <p className="mt-6 text-center text-[11px] text-slate-400">
+          &copy; {new Date().getFullYear()} Colegio de Sta. Teresa de Avila. All rights reserved.
+        </p>
       </div>
     </div>
   );

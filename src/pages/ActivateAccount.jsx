@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { CheckCircle2, Circle, Eye, EyeOff, ShieldCheck, XCircle } from "lucide-react";
+import { CheckCircle2, Circle, Eye, EyeOff, ShieldCheck, XCircle, UserPlus } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { hashInviteToken } from "@/lib/employeeInvites";
-import arkLogo from "@/assets/imgs/ark-logo.png";
+const arkLogo = "/folder/teresalogo-removebg-preview.png";
 import { useAuth } from "@/lib/AuthContext";
-//ive edited this file again
 
 function evaluatePassword(password) {
   const value = String(password || "");
@@ -53,7 +52,6 @@ export default function ActivateAccount() {
     const timer = setTimeout(() => {
       navigate("/login", { replace: true });
     }, 1500);
-
     return () => clearTimeout(timer);
   }, [success, navigate]);
 
@@ -69,36 +67,23 @@ export default function ActivateAccount() {
         const hashedToken = await hashInviteToken(token);
         setTokenHash(hashedToken);
 
-        console.log("[ActivateAccount] Token from URL:", token);
-        console.log("[ActivateAccount] Hashed token:", hashedToken);
-
-        // Fetch from user_auth_invites table
         const { data: inviteRecords, error: inviteError } = await supabase
           .from("user_auth_invites")
           .select("*")
           .eq("invite_token_hash", hashedToken)
           .maybeSingle();
 
-        console.log("[ActivateAccount] Query error:", inviteError);
-        console.log("[ActivateAccount] Query result:", inviteRecords);
-
-        // Debug: Check all records in the table
-        const { data: allRecords } = await supabase.from("user_auth_invites").select("*");
-        console.log("[ActivateAccount] All records in table:", allRecords);
-
         if (inviteError) throw inviteError;
         const inviteRecord = inviteRecords;
 
         if (!inviteRecord) {
-          throw new Error("This activation link is invalid.");
+          throw new Error("This activation link is invalid or has already been used.");
         }
         if (inviteRecord.used_at) {
           throw new Error("This activation link was already used.");
         }
 
-        // Check if this is for an employee or user_account
-        let inviteTarget = "employee";
-        
+        let target = "employee";
         if (inviteRecord.employee_id) {
           const { data: employeeRecord } = await supabase
             .from("employees")
@@ -107,7 +92,6 @@ export default function ActivateAccount() {
             .maybeSingle();
 
           if (!employeeRecord) {
-            // Try user_accounts
             const { data: accountRecord } = await supabase
               .from("user_accounts")
               .select("id")
@@ -117,11 +101,11 @@ export default function ActivateAccount() {
             if (!accountRecord) {
               throw new Error("This activation link is not linked to a valid account.");
             }
-            inviteTarget = "user_account";
+            target = "user_account";
           }
         }
 
-        setInviteTarget(inviteTarget);
+        setInviteTarget(target);
 
         const expiresAt = new Date(inviteRecord.expires_at);
         if (Number.isNaN(expiresAt.getTime()) || expiresAt < new Date()) {
@@ -148,23 +132,15 @@ export default function ActivateAccount() {
         apikey: anonKey,
         Authorization: `Bearer ${anonKey}`,
       },
-      body: JSON.stringify({
-        token,
-        password: form.password,
-      }),
+      body: JSON.stringify({ token, password: form.password }),
     });
 
     let payload = null;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
+    try { payload = await response.json(); } catch { /* ignore */ }
 
     if (!response.ok) {
       throw new Error(payload?.error || "Failed to activate account.");
     }
-
     if (!payload?.success) {
       throw new Error(payload?.error || "Failed to activate account.");
     }
@@ -172,16 +148,9 @@ export default function ActivateAccount() {
 
   const submit = async (event) => {
     event.preventDefault();
-
     if (!invite) return;
-    if (!isPasswordValid) {
-      setError("Please meet all password requirements.");
-      return;
-    }
-    if (!isMatch) {
-      setError("Password and confirm password do not match.");
-      return;
-    }
+    if (!isPasswordValid) { setError("Please meet all password requirements."); return; }
+    if (!isMatch) { setError("Password and confirm password do not match."); return; }
 
     setSubmitting(true);
     setError("");
@@ -198,11 +167,7 @@ export default function ActivateAccount() {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: invite.email,
         password: form.password,
-        options: {
-          data: {
-            employee_id: invite.employee_id,
-          },
-        },
+        options: { data: { employee_id: invite.employee_id } },
       });
 
       if (authError) throw authError;
@@ -228,18 +193,15 @@ export default function ActivateAccount() {
           .from("employees")
           .update({ auth_id: authUserId })
           .eq("id", invite.employee_id);
-
         if (employeeUpdateError) throw employeeUpdateError;
       }
 
-      // Mark the invite as consumed
       const { error: updateError } = await supabase
         .from("user_auth_invites")
         .update({ used_at: new Date().toISOString() })
         .eq("invite_token_hash", tokenHash);
 
       if (updateError) throw updateError;
-
       setSuccess(true);
     } catch (submitError) {
       setError(submitError.message || "Failed to activate account.");
@@ -250,176 +212,243 @@ export default function ActivateAccount() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 grid lg:grid-cols-2">
-      <div className="hidden lg:flex relative overflow-hidden bg-[#170000] p-10">
-        <div className="absolute -top-24 -left-10 w-72 h-72 rounded-full bg-white/10" />
-        <div className="absolute -bottom-16 right-10 w-64 h-64 rounded-full bg-black/10" />
-
-        <div className="relative z-10 flex flex-col justify-between h-full text-white">
-          <div className="flex items-center gap-3">
-            <img
-              src={arkLogo}
-              alt="St Teresa"
-              className="w-12 bg-white rounded p-1 object-contain"
-            />
-            <div>
-              <p className="text-2xl font-bold leading-tight">Colegio de Sta. Teresa de Avila</p>
-              <p className="text-white/80 text-sm">Management System</p>
-            </div>
-          </div>
-
-          <div className="space-y-3 max-w-md">
-            <p className="text-4xl font-black leading-tight tracking-tight">
-              Secure Account Setup
-            </p>
-            <p className="text-white/85 text-base">
-              Create your password to continue into St Teresa.
-            </p>
-          </div>
-        </div>
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-slate-50 p-4 sm:p-6 lg:p-8">
+      {/* ── Ambient background accents ────────────────────────────── */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute -top-32 -left-24 w-[480px] h-[480px] rounded-full bg-[#411111]/[0.06] blur-3xl" />
+        <div className="absolute top-1/3 -right-20 w-[360px] h-[360px] rounded-full bg-[#411111]/[0.04] blur-3xl" />
+        <div className="absolute -bottom-28 -left-16 w-[300px] h-[300px] rounded-full bg-[#411111]/[0.03] blur-3xl" />
+        <div
+          className="absolute inset-0 opacity-[0.025]"
+          style={{
+            backgroundImage:
+              "linear-gradient(#411111 1px, transparent 1px), linear-gradient(90deg, #411111 1px, transparent 1px)",
+            backgroundSize: "48px 48px",
+          }}
+        />
       </div>
 
-      <div className="flex items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-sm p-6 sm:p-8 space-y-6">
-          <div className="flex items-center gap-3 lg:hidden">
-            <img
-              src={arkLogo}
-              alt="St Teresa"
-              className="w-10 h-10 bg-[#450c0c] rounded p-1 object-contain"
-            />
-            <div>
-              <p className="text-lg font-bold text-slate-900 leading-tight">St Teresa</p>
-              <p className="text-xs text-slate-500">Management System</p>
-            </div>
-          </div>
+      {/* ── Decorative shapes ─────────────────────────────────────── */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute top-16 right-[12%] w-28 h-28 rounded-full border border-[#411111]/[0.06] rotate-12" />
+        <div className="absolute bottom-24 right-[18%] w-16 h-16 rounded-lg border border-[#411111]/[0.06] rotate-45" />
+        <div className="absolute top-[30%] left-8 w-1.5 h-20 rounded-full bg-[#411111]/[0.10]" />
+        <div className="absolute top-[30%] left-14 w-1 h-12 rounded-full bg-[#411111]/[0.06]" />
+      </div>
 
-          <div className="space-y-1">
-            <p className="text-xs font-semibold tracking-[0.18em] text-slate-500 uppercase">
-              Activation
+      {/* ── Auth card ─────────────────────────────────────────────── */}
+      <div className="relative z-10 w-full max-w-md">
+        {/* Branding header */}
+        <div className="flex flex-col items-center justify-center gap-2 mb-6">
+          <img
+            src={arkLogo}
+            alt="St Teresa"
+            className="h-20 w-20 object-contain drop-shadow-lg"
+          />
+          <div className="text-center">
+            <p className="text-base font-bold tracking-tight text-slate-900">
+              Colegio de Sta. Teresa de Avila
             </p>
-            <h1 className="text-2xl font-bold text-slate-900">Activate Your Account</h1>
-            <p className="text-sm text-slate-500">
-              Set your password to complete employee account setup.
+            <p className="text-[11px] font-medium uppercase tracking-widest text-slate-400">
+              Management Information System
             </p>
           </div>
-
-          {loading ? (
-            <div className="py-8 flex justify-center">
-              <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-            </div>
-          ) : success ? (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                Your account has been activated. You can now sign in.
-              </div>
-              {activationNotice ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-                  {activationNotice}
-                </div>
-              ) : null}
-              <Link to="/login" className="block">
-                <Button className="w-full bg-[#450c0c] hover:bg-[#170000]">Go To Login</Button>
-              </Link>
-            </div>
-          ) : (
-            <form onSubmit={submit} className="space-y-4">
-              {error ? (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 flex items-center gap-2">
-                  <XCircle className="w-4 h-4 shrink-0" />
-                  {error}
-                </div>
-              ) : null}
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700">Email</label>
-                <Input value={invite?.email || ""} disabled className="bg-slate-50" />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700">Password</label>
-                <div className="relative">
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    value={form.password}
-                    onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
-                    placeholder="Enter password"
-                    className="pr-10"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((prev) => !prev)}
-                    className="absolute inset-y-0 right-0 px-3 text-slate-500 hover:text-slate-700"
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1.5">
-                  {[
-                    { key: "minLength", label: "At least 8 characters" },
-                    { key: "hasLowercase", label: "Contains lowercase letter" },
-                    { key: "hasUppercase", label: "Contains uppercase letter" },
-                    { key: "hasNumber", label: "Contains number" },
-                    { key: "hasSymbol", label: "Contains symbol" },
-                  ].map((rule) => (
-                    <p
-                      key={rule.key}
-                      className={`text-xs flex items-center gap-2 ${passwordChecks[rule.key] ? "text-green-700" : "text-slate-500"}`}
-                    >
-                      {passwordChecks[rule.key] ? (
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                      ) : (
-                        <Circle className="w-3.5 h-3.5" />
-                      )}
-                      {rule.label}
-                    </p>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700">Confirm Password</label>
-                <div className="relative">
-                  <Input
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={form.confirmPassword}
-                    onChange={(event) => setForm((prev) => ({ ...prev, confirmPassword: event.target.value }))}
-                    placeholder="Confirm password"
-                    className="pr-10"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword((prev) => !prev)}
-                    className="absolute inset-y-0 right-0 px-3 text-slate-500 hover:text-slate-700"
-                    aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
-                  >
-                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-
-                {form.confirmPassword ? (
-                  <p className={`text-xs flex items-center gap-2 ${isMatch ? "text-green-700" : "text-red-600"}`}>
-                    {isMatch ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                    {isMatch ? "Passwords match" : "Passwords do not match"}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-[#450c0c] flex items-start gap-2">
-                <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0" />
-                Use a strong password that you do not reuse on other accounts.
-              </div>
-
-              <Button className="w-full bg-[#450c0c] hover:bg-[#170000]" disabled={!canSubmit}>
-                {submitting ? "Activating..." : "Activate Account"}
-              </Button>
-            </form>
-          )}
         </div>
+
+        {/* Card */}
+        <div className="rounded-lg border border-slate-200/80 bg-white/95 shadow-xl shadow-slate-200/60 backdrop-blur-sm">
+          {/* Card header */}
+          <div className="px-8 pt-8 pb-2 text-center">
+            {/* Step icon */}
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#411111]/10">
+              <UserPlus className="h-6 w-6 text-[#411111]" />
+            </div>
+
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+              Activate Account
+            </h1>
+            <p className="mt-2 text-sm text-slate-500 leading-relaxed">
+              Set your password to complete your account setup.
+            </p>
+          </div>
+
+          {/* Card body */}
+          <div className="px-8 pb-8 pt-4">
+            {/* ── Loading state ──────────────────────────────────── */}
+            {loading ? (
+              <div className="py-12 flex flex-col items-center gap-3">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#411111]" />
+                <p className="text-sm text-slate-400">Verifying your invitation...</p>
+              </div>
+            ) : success ? (
+              /* ── Success state ─────────────────────────────────── */
+              <div className="space-y-4 py-4">
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm text-emerald-700 flex items-center gap-3">
+                  <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
+                  <span>Your account has been activated successfully. You can now sign in.</span>
+                </div>
+                {activationNotice ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-700">
+                    {activationNotice}
+                  </div>
+                ) : null}
+                <Link to="/login" className="block">
+                  <Button className="w-full h-[46px] rounded-xl bg-[#411111] text-[15px] font-semibold tracking-wide text-white shadow-lg shadow-[#411111]/20 transition-all hover:bg-[#2e0b0b] hover:shadow-xl hover:shadow-[#411111]/25 active:scale-[0.98]">
+                    Go to Login
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              /* ── Form state ────────────────────────────────────── */
+              <form onSubmit={submit} className="space-y-5">
+                {error ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm text-red-700 flex items-center gap-2">
+                    <XCircle className="h-4 w-4 shrink-0" />
+                    {error}
+                  </div>
+                ) : null}
+
+                {/* Email (read-only) */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">
+                    Email address
+                  </label>
+                  <Input
+                    value={invite?.email || ""}
+                    disabled
+                    className="h-11 rounded-xl border-slate-200 bg-slate-100 px-4 text-[15px] text-slate-500"
+                  />
+                </div>
+
+                {/* Password */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Create a strong password"
+                      value={form.password}
+                      onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
+                      required
+                      className="h-11 rounded-xl border-slate-200 bg-slate-50 px-4 pr-12 text-[15px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus-visible:ring-2 focus-visible:ring-[#411111]/40 focus-visible:border-[#411111]/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((p) => !p)}
+                      className="absolute inset-y-0 right-0 flex items-center px-4 text-slate-400 transition hover:text-[#411111]"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                    </button>
+                  </div>
+
+                  {/* Password strength checklist */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                      Password requirements
+                    </p>
+                    {[
+                      { key: "minLength", label: "At least 8 characters" },
+                      { key: "hasLowercase", label: "Lowercase letter (a-z)" },
+                      { key: "hasUppercase", label: "Uppercase letter (A-Z)" },
+                      { key: "hasNumber", label: "Number (0-9)" },
+                      { key: "hasSymbol", label: "Symbol (!@#$...)" },
+                    ].map((rule) => (
+                      <div
+                        key={rule.key}
+                        className={`flex items-center gap-2 text-xs transition-colors ${
+                          passwordChecks[rule.key] ? "text-emerald-700" : "text-slate-400"
+                        }`}
+                      >
+                        {passwordChecks[rule.key] ? (
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                        ) : (
+                          <Circle className="h-3.5 w-3.5" />
+                        )}
+                        <span>{rule.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Confirm password */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">
+                    Confirm Password
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="Confirm your password"
+                      value={form.confirmPassword}
+                      onChange={(e) => setForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                      required
+                      className="h-11 rounded-xl border-slate-200 bg-slate-50 px-4 pr-12 text-[15px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus-visible:ring-2 focus-visible:ring-[#411111]/40 focus-visible:border-[#411111]/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((p) => !p)}
+                      className="absolute inset-y-0 right-0 flex items-center px-4 text-slate-400 transition hover:text-[#411111]"
+                      aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                    </button>
+                  </div>
+
+                  {form.confirmPassword.length > 0 ? (
+                    <p className={`flex items-center gap-2 text-xs transition-colors ${isMatch ? "text-emerald-700" : "text-red-600"}`}>
+                      {isMatch ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                      ) : (
+                        <XCircle className="h-3.5 w-3.5 text-red-500" />
+                      )}
+                      {isMatch ? "Passwords match" : "Passwords do not match"}
+                    </p>
+                  ) : null}
+                </div>
+
+                {/* Security notice */}
+                <div className="rounded-xl border border-[#411111]/10 bg-[#411111]/[0.03] p-3.5 flex items-start gap-2.5">
+                  <ShieldCheck className="h-4 w-4 mt-0.5 shrink-0 text-[#411111]/60" />
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Use a strong, unique password that you don't reuse on other accounts. Your password is encrypted and securely stored.
+                  </p>
+                </div>
+
+                {/* Submit */}
+                <Button
+                  type="submit"
+                  disabled={!canSubmit}
+                  className="w-full h-[46px] rounded-xl bg-[#411111] text-[15px] font-semibold tracking-wide text-white shadow-lg shadow-[#411111]/20 transition-all hover:bg-[#2e0b0b] hover:shadow-xl hover:shadow-[#411111]/25 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      Activating...
+                    </span>
+                  ) : (
+                    "Activate Account"
+                  )}
+                </Button>
+              </form>
+            )}
+          </div>
+
+          {/* Card footer */}
+          <div className="border-t border-slate-100 bg-slate-50/60 px-8 py-4 rounded-b-2xl">
+            <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              <span>Secured by CSTA &mdash; MIS Portal</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom caption */}
+        <p className="mt-6 text-center text-[11px] text-slate-400">
+          &copy; {new Date().getFullYear()} Colegio de Sta. Teresa de Avila. All rights reserved.
+        </p>
       </div>
     </div>
   );

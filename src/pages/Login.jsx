@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
-import arkLogo from "@/assets/imgs/ark-logo.png";
+import { Eye, EyeOff, ShieldCheck } from "lucide-react";
+const arkLogo = "/folder/teresalogo-removebg-preview.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/api/supabaseClient";
@@ -136,119 +136,160 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 grid lg:grid-cols-2">
-      <div className="hidden lg:flex relative overflow-hidden bg-[#170000] p-10">
-        <div className="absolute -top-24 -left-10 w-72 h-72 rounded-full bg-white/10" />
-        <div className="absolute -bottom-16 right-10 w-64 h-64 rounded-full bg-black/10" />
-
-        <div className="relative z-10 flex flex-col justify-between h-full text-white">
-          <div className="flex items-center gap-3">
-            <img
-              src={arkLogo}
-              alt="St Teresa"
-              className="w-12 bg-white rounded p-1 object-contain"
-            />
-            <div>
-              <p className="text-2xl font-bold leading-tight">Colegio de Sta. Teresa de Avila</p>
-              <p className="text-white/80 text-sm">Management System</p>
-            </div>
-          </div>
-
-          <div className="space-y-3 max-w-md">
-            <p className="text-4xl font-black leading-tight tracking-tight">
-              Welcome Back,
-            </p>
-            <p className="text-white/85 text-base">
-              Log in to continue into St Teresa.
-            </p>
-          </div>
-        </div>
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-slate-100 p-4 sm:p-6 lg:p-8">
+      {/* ── Ambient background accents ──────────────────────────────── */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        {/* Large top-left glow */}
+        <div className="absolute -top-32 -left-24 w-[480px] h-[480px] rounded-full bg-[#411111]/[0.07] blur-3xl" />
+        {/* Mid-right accent */}
+        <div className="absolute top-1/3 -right-20 w-[360px] h-[360px] rounded-full bg-[#411111]/[0.05] blur-3xl" />
+        {/* Bottom-left soft wash */}
+        <div className="absolute -bottom-28 -left-16 w-[300px] h-[300px] rounded-full bg-[#411111]/[0.04] blur-3xl" />
+        {/* Subtle grid texture */}
+        <div
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage:
+              "linear-gradient(#411111 1px, transparent 1px), linear-gradient(90deg, #411111 1px, transparent 1px)",
+            backgroundSize: "48px 48px",
+          }}
+        />
       </div>
 
-      <div className="flex items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-sm p-6 sm:p-8">
-          <div className="flex items-center gap-3 mb-6 lg:hidden">
-            <img
-              src={arkLogo}
-              alt="St Teresa"
-              className="w-10 h-10 bg-[#450c0c] rounded p-1 object-contain"
-            />
-            <div>
-              <p className="text-lg font-bold text-slate-900 leading-tight">
-                St Teresa
-              </p>
-              <p className="text-xs text-slate-500">Management System</p>
-            </div>
-          </div>
+      {/* ── Decorative geometric shapes ─────────────────────────────── */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        {/* Floating ring — top right */}
+        <div className="absolute top-16 right-[12%] w-28 h-28 rounded-full border border-[#411111]/[0.08] rotate-12" />
+        {/* Floating diamond — bottom right */}
+        <div className="absolute bottom-24 right-[18%] w-16 h-16 rounded-lg border border-[#411111]/[0.08] rotate-45" />
+        {/* Accent bar — left */}
+        <div className="absolute top-[30%] left-8 w-1.5 h-20 rounded-full bg-[#411111]/[0.12]" />
+        <div className="absolute top-[30%] left-14 w-1 h-12 rounded-full bg-[#411111]/[0.08]" />
+      </div>
 
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-slate-900">Login</h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Use your authorized credentials to continue.
+      {/* ── Login card ──────────────────────────────────────────────── */}
+      <div className="relative z-10 w-full max-w-md">
+        {/* Top branding strip */}
+        <div className="flex flex-col items-center justify-center gap-2 mb-6">
+          <img
+            src={arkLogo}
+            alt="St Teresa"
+            className="h-20 w-20 object-contain drop-shadow-lg"
+          />
+          <div className="text-center">
+            <p className="text-base font-bold tracking-tight text-slate-900">
+              Colegio de Sta. Teresa de Avila
+            </p>
+            <p className="text-[11px] font-medium uppercase tracking-widest text-slate-400">
+              Management Information System
+            </p>
+          </div>
+        </div>
+
+        {/* Card */}
+        <div className="rounded-lg border border-slate-200/80 bg-white/95 shadow-xl shadow-slate-200/60 backdrop-blur-sm">
+          {/* Card header */}
+          <div className="px-8 pt-8 pb-2 text-center">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+              Sign In
+            </h1>
+            <p className="mt-2 text-sm text-slate-500">
+              Use your authorized credentials to access the portal.
             </p>
           </div>
 
-          {error ? (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error}
-            </div>
-          ) : null}
+          {/* Card body */}
+          <div className="px-8 pb-8 pt-4">
+            {error ? (
+              <div className="mb-5 rounded-xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            ) : null}
 
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-slate-700">Email</label>
-              <Input
-                type="email"
-                placeholder="name@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-slate-700">Password</label>
-              <div className="relative">
+            <form className="space-y-5" onSubmit={handleSubmit}>
+              {/* Email */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Email address
+                </label>
                 <Input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                  className="pr-10"
+                  type="email"
+                  placeholder="name@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  className="h-11 rounded-xl border-slate-200 bg-slate-50 px-4 text-[15px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus-visible:ring-2 focus-visible:ring-[#411111]/40 focus-visible:border-[#411111]/40"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute inset-y-0 right-0 px-3 text-slate-500 hover:text-slate-700"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
               </div>
-              <div className="flex justify-end">
-                <Link
-                  to="/forgot-password"
-                  className="text-xs font-medium text-[#450c0c] hover:text-[#170000]"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-            </div>
 
-            <Button
-              type="submit"
-              className="w-full bg-[#450c0c] hover:bg-[#170000]"
-              disabled={submitting}
-            >
-              {submitting ? "Signing in..." : "Sign In"}
-            </Button>
-          </form>
+              {/* Password */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Password
+                </label>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    className="h-11 rounded-xl border-slate-200 bg-slate-50 px-4 pr-12 text-[15px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus-visible:ring-2 focus-visible:ring-[#411111]/40 focus-visible:border-[#411111]/40"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute inset-y-0 right-0 flex items-center px-4 text-slate-400 transition hover:text-[#411111]"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-[18px] w-[18px]" />
+                    ) : (
+                      <Eye className="h-[18px] w-[18px]" />
+                    )}
+                  </button>
+                </div>
+                <div className="flex justify-center pt-0.5">
+                  <Link
+                    to="/forgot-password"
+                    className="text-xs font-medium text-[#411111] transition hover:text-[#2a0b0b]"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+              </div>
+
+              {/* Submit */}
+              <Button
+                type="submit"
+                disabled={submitting}
+                className="mt-1 w-full h-[46px] rounded-xl bg-[#411111] text-[15px] font-semibold tracking-wide text-white shadow-lg shadow-[#411111]/20 transition-all hover:bg-[#2e0b0b] hover:shadow-xl hover:shadow-[#411111]/25 active:scale-[0.98]"
+              >
+                {submitting ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    Signing in...
+                  </span>
+                ) : (
+                  "Sign In"
+                )}
+              </Button>
+            </form>
+          </div>
+
+          {/* Card footer */}
+          <div className="border-t border-slate-100 bg-slate-50/60 px-8 py-4 rounded-b-2xl">
+            <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              <span>Secured by CSTA &mdash; MIS Portal</span>
+            </div>
+          </div>
         </div>
+
+        {/* Bottom caption */}
+        <p className="mt-6 text-center text-[11px] text-slate-400">
+          &copy; {new Date().getFullYear()} Colegio de Sta. Teresa de Avila. All rights reserved.
+        </p>
       </div>
     </div>
   );
