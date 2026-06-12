@@ -248,6 +248,47 @@ function NavChildLink({ to, icon: ChildIcon, label, isSubActive, collapsed, onCl
 }
 
 /* ─────────────────────────────────────────────────────────
+   Logout Button — tooltip via fixed portal
+   ───────────────────────────────────────────────────────── */
+function LogoutButton({ collapsed, onLogout }) {
+  const ref = useRef(null);
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <div
+      ref={ref}
+      className="relative"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <button
+        onClick={onLogout}
+        className={cn(
+          "group flex w-full items-center gap-3 rounded-xl text-[13px] font-medium transition-all duration-200",
+          collapsed ? "justify-center px-2 py-3" : "px-4 py-2.5",
+          "text-white/60 hover:text-rose-200 hover:bg-rose-500/10"
+        )}
+        title="Logout"
+      >
+        <span
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
+            "bg-white/[0.06] text-white/50 group-hover:bg-rose-500/15 group-hover:text-rose-300"
+          )}
+        >
+          <LogOut className="w-[18px] h-[18px]" />
+        </span>
+        {!collapsed && <span className="tracking-wide">Logout</span>}
+      </button>
+
+      {collapsed && (
+        <TooltipPortal label="Logout" targetRef={ref} visible={hovered} />
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
    Main Layout
    ───────────────────────────────────────────────────────── */
 export default function Layout() {
@@ -435,25 +476,7 @@ export default function Layout() {
 
           {/* ── Footer: Logout ───────────────────────────── */}
           <div className="relative z-10 mt-auto border-t border-white/[0.06] p-3">
-            <button
-              onClick={() => setShowLogoutConfirm(true)}
-              className={cn(
-                "group flex w-full items-center gap-3 rounded-xl text-[13px] font-medium transition-all duration-200",
-                collapsed ? "justify-center px-2 py-3" : "px-4 py-2.5",
-                "text-white/60 hover:text-rose-200 hover:bg-rose-500/10"
-              )}
-              title="Logout"
-            >
-              <span
-                className={cn(
-                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
-                  "bg-white/[0.06] text-white/50 group-hover:bg-rose-500/15 group-hover:text-rose-300"
-                )}
-              >
-                <LogOut className="w-[18px] h-[18px]" />
-              </span>
-              {!collapsed && <span className="tracking-wide">Logout</span>}
-            </button>
+            <LogoutButton collapsed={collapsed} onLogout={() => setShowLogoutConfirm(true)} />
           </div>
         </div>
       </aside>
