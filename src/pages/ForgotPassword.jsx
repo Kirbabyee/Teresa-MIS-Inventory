@@ -6,6 +6,7 @@ const arkLogo = "/folder/teresalogo-removebg-preview.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/api/supabaseClient";
+import { validatePasswordStrength, sanitizeEmail, sanitizeOtp } from "@/lib/security/sanitize";
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
@@ -23,8 +24,8 @@ export default function ForgotPassword() {
   const [rateLimitCount, setRateLimitCount] = useState(0);
   const COOLDOWN_STORAGE_KEY = "forgot_pwd_cooldown_until";
 
-  const normalizedEmail = email.trim().toLowerCase();
-  const otp = otpDigits.join("");
+  const normalizedEmail = sanitizeEmail(email) || email.trim().toLowerCase();
+  const otp = sanitizeOtp(otpDigits.join(""));
 
   // ── Cooldown timer ──────────────────────────────────────────────
   useEffect(() => {
@@ -79,7 +80,7 @@ export default function ForgotPassword() {
 
   // ── OTP handlers ───────────────────────────────────────────────
   const updateOtpDigit = (index, rawValue) => {
-    const value = String(rawValue || "").replace(/\D/g, "").slice(-1);
+    const value = sanitizeOtp(String(rawValue || ""), 1);
     setOtpDigits((current) => {
       const next = [...current];
       next[index] = value;
@@ -97,7 +98,7 @@ export default function ForgotPassword() {
   };
 
   const handleOtpPaste = (e) => {
-    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 8);
+    const pasted = sanitizeOtp(e.clipboardData.getData("text"), 8);
     if (pasted.length === 0) return;
     e.preventDefault();
     setOtpDigits((prev) => {
@@ -209,21 +210,10 @@ export default function ForgotPassword() {
     }
   };
 
-  // ── Password validation ────────────────────────────────────────
-  const evaluatePassword = (password) => {
-    const v = String(password || "");
-    return {
-      minLength: v.length >= 8,
-      hasLowercase: /[a-z]/.test(v),
-      hasUppercase: /[A-Z]/.test(v),
-      hasNumber: /\d/.test(v),
-      hasSymbol: /[^A-Za-z0-9]/.test(v),
-    };
-  };
-
-  const passwordChecks = useMemo(() => evaluatePassword(newPassword), [newPassword]);
-  const passwordScore = useMemo(() => Object.values(passwordChecks).filter(Boolean).length, [passwordChecks]);
-  const isPasswordValid = useMemo(() => passwordScore === 5, [passwordScore]);
+  // ── Password validation (centralized via sanitize.js) ──────────
+  const passwordChecks = useMemo(() => validatePasswordStrength(newPassword), [newPassword]);
+  const passwordScore = useMemo(() => passwordChecks.score, [passwordChecks]);
+  const isPasswordValid = useMemo(() => passwordChecks.isStrong, [passwordChecks]);
 
   // ── Step config ────────────────────────────────────────────────
   const stepConfig = {

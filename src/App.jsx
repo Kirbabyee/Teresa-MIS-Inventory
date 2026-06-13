@@ -22,118 +22,51 @@ import ActivateAccount from "./pages/ActivateAccount";
 import ForgotPassword from "./pages/ForgotPassword";
 import { LoadingPopup } from "@/components/loaders/LoadingPopUp";
 import { useAuth } from "@/lib/AuthContext";
+import SecurityRoute from "@/components/SecurityRoute";
 
-const SESSION_KEY = "app_session";
-const SESSION_EVENT = "app_session_change";
-let cachedSessionRaw = null;
-let cachedSessionParsed = null;
-
-const getSessionSnapshot = () => {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const raw = window.localStorage.getItem(SESSION_KEY);
-  if (!raw) {
-    cachedSessionRaw = null;
-    cachedSessionParsed = null;
-    return null;
-  }
-
-  if (raw !== cachedSessionRaw) {
-    cachedSessionRaw = raw;
-    try {
-      cachedSessionParsed = JSON.parse(raw);
-    } catch {
-      cachedSessionParsed = null;
-    }
-  }
-
-  const session = cachedSessionParsed;
-  if (!session?.email) return null;
-
-  if (session?.expiresAt && Date.now() > Number(session.expiresAt)) {
-    return null;
-  }
-
-  return session;
-};
-
-const subscribeToSessionChanges = (onStoreChange) => {
-  if (typeof window === "undefined") {
-    return () => {};
-  }
-
-  const notify = () => onStoreChange();
-  window.addEventListener(SESSION_EVENT, notify);
-  window.addEventListener("storage", notify);
-
-  return () => {
-    window.removeEventListener(SESSION_EVENT, notify);
-    window.removeEventListener("storage", notify);
-  };
-};
-
-const getServerSnapshot = () => null;
-
-const isAdminSession = (session) => {
-  const role = String(session?.role || session?.account_type || "").toLowerCase();
-  return role === "admin" || role === "superadmin";
-};
-
-function AdminRoute({ session, children }) {
-  if (!session) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (!isAdminSession(session)) {
-    return <Navigate to="/" replace />;
-  }
-
-  return children;
-}
-
-function AppContent({ session, authenticated }) {
-  const { isGlobalLoading, globalLoadingMessage } = useAuth();
+function AppContent() {
+  const { isAuthenticated, isGlobalLoading, globalLoadingMessage } = useAuth();
 
   return (
     <Router>
       <Routes>
-        <Route
-          path="/activate-account"
-          element={<ActivateAccount />}
-        />
+        <Route path="/activate-account" element={<ActivateAccount />} />
         <Route
           path="/login"
-          element={authenticated ? <Navigate to="/" replace /> : <Login />}
+          element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
         />
         <Route
           path="/forgot-password"
-          element={authenticated ? <Navigate to="/" replace /> : <ForgotPassword />}
+          element={isAuthenticated ? <Navigate to="/" replace /> : <ForgotPassword />}
         />
         <Route
           path="/"
           element={
-            authenticated ? <Layout /> : <Navigate to="/login" replace />
+            isAuthenticated ? <Layout /> : <Navigate to="/login" replace />
           }
         >
           <Route index element={<Dashboard />} />
+
+          {/* ── Admin-only: User Accounts ──────────────────────── */}
           <Route
             path="manage/accounts"
             element={
-              <AdminRoute session={session}>
+              <SecurityRoute requiredRole="admin">
                 <UserAccounts />
-              </AdminRoute>
+              </SecurityRoute>
             }
           />
+
+          {/* ── Admin-only: Inventory Manager ──────────────────── */}
           <Route
             path="manage/inventory_manager"
             element={
-              <AdminRoute session={session}>
+              <SecurityRoute requiredRole="admin">
                 <Inventory />
-              </AdminRoute>
+              </SecurityRoute>
             }
           />
+
           <Route path="borrowing" element={<Borrowing />} />
           <Route path="inventory" element={<Navigate to="/manage/inventory" replace />} />
           <Route path="inventory/manage" element={<Navigate to="/manage/inventory" replace />} />
@@ -146,7 +79,7 @@ function AppContent({ session, authenticated }) {
         </Route>
         <Route
           path="*"
-          element={<Navigate to={authenticated ? "/" : "/login"} replace />}
+          element={<Navigate to={isAuthenticated ? "/" : "/login"} replace />}
         />
       </Routes>
       <LoadingPopup show={isGlobalLoading} message={globalLoadingMessage} color="#ffffff" />
@@ -155,17 +88,10 @@ function AppContent({ session, authenticated }) {
 }
 
 function App() {
-  const session = useSyncExternalStore(
-    subscribeToSessionChanges,
-    getSessionSnapshot,
-    getServerSnapshot,
-  );
-  const authenticated = Boolean(session);
-
   return (
     <QueryClientProvider client={queryClientInstance}>
       <AuthProvider>
-        <AppContent session={session} authenticated={authenticated} />
+        <AppContent />
       </AuthProvider>
       <Toaster />
     </QueryClientProvider>

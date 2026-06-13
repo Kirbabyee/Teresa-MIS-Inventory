@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 const arkLogo = "/folder/teresalogo-removebg-preview.png";
@@ -6,9 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/api/supabaseClient";
 import { useAuth } from "@/lib/AuthContext";
+import { sanitizeEmail } from "@/lib/security/sanitize";
 
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
+
+// Generic auth error — never reveals whether email exists, is deactivated, etc.
+const GENERIC_AUTH_ERROR = "Invalid email or password.";
 
 const fetchAccountForUser = async (user) => {
   const normalizedUserId = String(user?.id || "").trim();
@@ -53,21 +57,57 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
+  // ── Client-side rate limiting ─────────────────────────────
+  const rateLimitRef = useRef({ attempts: 0, windowStart: Date.now(), lockedUntil: 0 });
+
+  const getRateLimitDelay = useCallback(() => {
+    const now = Date.now();
+    const rl = rateLimitRef.current;
+
+    // Reset window after 60 seconds
+    if (now - rl.windowStart > 60_000) {
+      rl.attempts = 0;
+      rl.windowStart = now;
+      rl.lockedUntil = 0;
+    }
+
+    // If locked, return remaining ms
+    if (rl.lockedUntil > now) {
+      return rl.lockedUntil - now;
+    }
+
+    // After 3 failures, apply progressive delay: 1s, 2s, 4s, 8s...
+    if (rl.attempts >= 3) {
+      const delay = Math.min(1000 * Math.pow(2, rl.attempts - 3), 30_000);
+      rl.lockedUntil = now + delay;
+      return delay;
+    }
+
+    return 0;
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    const normalizedEmail = email.trim().toLowerCase();
 
-    if (!normalizedEmail) {
-      setError("Email is required.");
+    // Sanitize email input before any processing
+    const sanitizedEmail = sanitizeEmail(email);
+    if (!sanitizedEmail) {
+      setError("Please enter a valid email address.");
       return;
     }
 
-    const normalizedPassword = password.trim();
-
-    if (!normalizedPassword) {
+    if (!password) {
       setError("Password is required.");
       return;
+    }
+
+    // Enforce rate limit delay
+    const delay = getRateLimitDelay();
+    if (delay > 0) {
+      setSubmitting(true);
+      showGlobalLoader("Too many attempts. Please wait...");
+      await new Promise((r) => setTimeout(r, delay));
     }
 
     setSubmitting(true);
@@ -79,29 +119,28 @@ export default function Login() {
 
     try {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email: normalizedEmail,
-        password: normalizedPassword,
+        email: sanitizedEmail,
+        password,
       });
 
-      if (signInError) {
-        setError(signInError.message || "Invalid email or password.");
+      // Track failed attempt for rate limiting
+      if (signInError || !data?.session || !data?.user) {
+        rateLimitRef.current.attempts++;
+        setError(GENERIC_AUTH_ERROR);
         return;
       }
 
-      const session = data?.session || null;
-      const user = data?.user || session?.user || null;
-
-      if (!session || !user) {
-        setError("Login succeeded but no session was returned.");
-        return;
-      }
+      const session = data.session;
+      const user = data.user;
 
       if (typeof window !== "undefined") {
         const now = Date.now();
         const accountRow = await fetchAccountForUser(user);
+
+        // Deactivated account — same generic error, don't reveal status
         if (accountRow?.is_active === false) {
           await supabase.auth.signOut();
-          setError("This account has been deactivated. Contact an administrator to restore access.");
+          setError(GENERIC_AUTH_ERROR);
           return;
         }
 
@@ -113,7 +152,7 @@ export default function Login() {
         window.localStorage.setItem(
           SESSION_KEY,
           JSON.stringify({
-            email: user.email || normalizedEmail,
+            email: user.email || sanitizedEmail,
             role,
             account_type: accountType || null,
             displayName,
@@ -126,8 +165,9 @@ export default function Login() {
       }
 
       navigate("/", { replace: true });
-    } catch (authError) {
-      setError(authError?.message || "Unable to sign in.");
+    } catch {
+      rateLimitRef.current.attempts++;
+      setError(GENERIC_AUTH_ERROR);
     } finally {
       window.clearTimeout(timeoutId);
       setSubmitting(false);

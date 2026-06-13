@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useInventoryCatalog } from "@/lib/inventoryApi";
@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 const arkLogo = "/folder/teresalogo-removebg-preview.png";
 import { useAuth } from "@/lib/AuthContext";
+import { useSessionTimeout } from "@/lib/security/sessionTimeout";
+import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
@@ -389,14 +391,21 @@ export default function Layout() {
     window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
   }, [collapsed]);
 
-  const handleLogout = async () => {
+  const doLogout = useCallback(async () => {
     await logout();
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(SESSION_KEY);
       window.dispatchEvent(new Event(SESSION_EVENT));
     }
     navigate("/login", { replace: true });
+  }, [logout, navigate]);
+
+  const handleLogout = async () => {
+    await doLogout();
   };
+
+  // ── Session idle detection ───────────────────────────────
+  const { isIdle, confirmActive } = useSessionTimeout();
 
   return (
     <div className="flex h-screen overflow-hidden font-sans bg-[linear-gradient(130deg,#f8fafc_0%,#eef2ff_35%,#ecfeff_100%)]">
@@ -541,6 +550,11 @@ export default function Layout() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Session Idle Confirmation Modal */}
+      {isIdle && (
+        <SessionTimeoutModal onConfirm={confirmActive} />
+      )}
     </div>
   );
 }

@@ -5,19 +5,9 @@ import { supabase } from "@/api/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { hashInviteToken } from "@/lib/employeeInvites";
+import { validatePasswordStrength } from "@/lib/security/sanitize";
 const arkLogo = "/folder/teresalogo-removebg-preview.png";
 import { useAuth } from "@/lib/AuthContext";
-
-function evaluatePassword(password) {
-  const value = String(password || "");
-  return {
-    minLength: value.length >= 8,
-    hasLowercase: /[a-z]/.test(value),
-    hasUppercase: /[A-Z]/.test(value),
-    hasNumber: /\d/.test(value),
-    hasSymbol: /[^A-Za-z0-9]/.test(value),
-  };
-}
 
 export default function ActivateAccount() {
   const navigate = useNavigate();
@@ -41,9 +31,9 @@ export default function ActivateAccount() {
   const token = useMemo(() => params.get("token") || "", [params]);
   const activationFunctionUrl =
     import.meta.env.VITE_ACTIVATE_USER_ACCOUNT_FN_URL || "";
-  const passwordChecks = useMemo(() => evaluatePassword(form.password), [form.password]);
-  const passwordScore = useMemo(() => Object.values(passwordChecks).filter(Boolean).length, [passwordChecks]);
-  const isPasswordValid = useMemo(() => passwordScore === 5, [passwordScore]);
+  const passwordChecks = useMemo(() => validatePasswordStrength(form.password), [form.password]);
+  const passwordScore = useMemo(() => passwordChecks.score, [passwordChecks]);
+  const isPasswordValid = useMemo(() => passwordChecks.isStrong, [passwordChecks]);
   const isMatch = form.confirmPassword.length > 0 && form.password === form.confirmPassword;
   const canSubmit = Boolean(invite) && isPasswordValid && isMatch && !submitting;
 

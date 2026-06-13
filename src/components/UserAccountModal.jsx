@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { sanitizeName, sanitizeEmail } from "@/lib/security/sanitize";
 
 // ─── Validation ────────────────────────────────────────────────────────────
 const validators = {
@@ -131,13 +132,16 @@ export default function UserAccountModal({ open, account, onClose, onSaved }) {
     });
   }, [touched]);
 
-  // ─── Blur: capitalize + validate ────────────────────────────────────
+  // ─── Blur: sanitize + capitalize + validate ─────────────────────────
   const handleBlur = useCallback((field, value, setter) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
 
     let finalValue = value;
     if (isNameField(field)) {
-      finalValue = capitalizeName(value);
+      finalValue = sanitizeName(capitalizeName(value));
+      setter(finalValue);
+    } else if (field === "email") {
+      finalValue = sanitizeEmail(value) || value;
       setter(finalValue);
     }
 
@@ -174,13 +178,18 @@ export default function UserAccountModal({ open, account, onClose, onSaved }) {
       showGlobalLoader(account?.id ? "Updating account..." : "Creating account...");
 
       const payload = {
-        first_name: capitalizeName(firstName.trim()),
-        last_name: capitalizeName(lastName.trim()),
-        middle_name: capitalizeName(middleName.trim()) || null,
-        suffix: capitalizeName(suffix.trim()) || null,
-        email: email.trim(),
+        first_name: sanitizeName(capitalizeName(firstName.trim())),
+        last_name: sanitizeName(capitalizeName(lastName.trim())),
+        middle_name: sanitizeName(capitalizeName(middleName.trim())) || null,
+        suffix: sanitizeName(capitalizeName(suffix.trim())) || null,
+        email: sanitizeEmail(email.trim()),
         account_type: accountType,
       };
+      // Reject if sanitization stripped everything
+      if (!payload.first_name || !payload.last_name || !payload.email) {
+        setError("First name, last name, and email are required.");
+        return;
+      }
 
       if (account?.id) {
         const { error } = await supabase
