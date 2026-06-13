@@ -521,7 +521,7 @@ export default function UserAccounts() {
                 {paginatedAccounts.map((acc) => (
                   <tr
                     key={acc.id}
-                    className={`transition-colors ${acc.is_active === false ? "bg-slate-100 text-slate-400 opacity-75 grayscale" : "hover:bg-slate-50"}`}
+                    className={`transition-colors even:bg-slate-50/50 ${acc.is_active === false ? "bg-slate-100 text-slate-400 opacity-75 grayscale" : "hover:bg-slate-50"}`}
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">

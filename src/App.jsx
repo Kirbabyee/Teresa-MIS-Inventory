@@ -18,6 +18,7 @@ import Inventory from "./pages/Inventory";
 import InventorySection from "./pages/InventorySection";
 import ComputerLaboratoryInventory from "./pages/ComputerLaboratoryInventory";
 import UserAccounts from "./pages/UserAccounts";
+import SecurityMonitor from "./pages/SecurityMonitor";
 import ActivateAccount from "./pages/ActivateAccount";
 import ForgotPassword from "./pages/ForgotPassword";
 import { LoadingPopup } from "@/components/loaders/LoadingPopUp";
@@ -63,6 +64,16 @@ function AppContent() {
             element={
               <SecurityRoute requiredRole="admin">
                 <Inventory />
+              </SecurityRoute>
+            }
+          />
+
+          {/* ── Admin-only: Security Monitor ───────────────────── */}
+          <Route
+            path="manage/security"
+            element={
+              <SecurityRoute requiredRole="admin">
+                <SecurityMonitor />
               </SecurityRoute>
             }
           />

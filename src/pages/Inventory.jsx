@@ -1477,7 +1477,7 @@ function TabModal({ tab, onClose, onSave }) {
                         </tr>
                       ) : (
                         sections.map((currentSection, index) => (
-                          <tr key={currentSection.id || currentSection.slug || index} className="hover:bg-slate-50">
+                          <tr key={currentSection.id || currentSection.slug || index} className="even:bg-slate-50/50 hover:bg-slate-50">
                             <td className="px-4 py-3 font-medium text-slate-900">{currentSection.name}</td>
                             <td className="px-4 py-3 text-slate-600">{currentSection.description || "—"}</td>
                             <td className="px-4 py-3">
@@ -1540,7 +1540,7 @@ function TabModal({ tab, onClose, onSave }) {
                         </tr>
                       ) : (
                         columns.map((currentColumn, index) => (
-                          <tr key={currentColumn.id || currentColumn.key || index} className="hover:bg-slate-50">
+                          <tr key={currentColumn.id || currentColumn.key || index} className="even:bg-slate-50/50 hover:bg-slate-50">
                             <td className="px-4 py-3 text-slate-600">{currentColumn.label}</td>
                             <td className="px-4 py-3">
                               <div className="flex justify-end gap-2">
@@ -2276,7 +2276,7 @@ export default function Inventory() {
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 <tr
-                  className="cursor-pointer hover:bg-slate-50"
+                  className="cursor-pointer even:bg-slate-50/50 hover:bg-slate-50"
                   onClick={() => navigate("/inventory/laboratory")}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
@@ -2297,7 +2297,7 @@ export default function Inventory() {
                 {paginatedTabs.map((tab) => (
                   <tr
                     key={tab.id}
-                    className="cursor-pointer hover:bg-slate-50"
+                    className="cursor-pointer even:bg-slate-50/50 hover:bg-slate-50"
                     onClick={() => navigate(getTabRoute(tab))}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
