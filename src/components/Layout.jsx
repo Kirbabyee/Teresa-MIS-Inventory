@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useInventoryCatalog } from "@/lib/inventoryApi";
@@ -52,39 +52,101 @@ const readSession = () => {
 
 /* ─────────────────────────────────────────────────────────
    Tooltip portal — renders at <body> to escape overflow:hidden
+   Uses a two-phase mount to eliminate first-render flicker:
+     Phase 1 (measuring): position is captured, element stays display:none
+     Phase 2 (visible):   position is set, element fades/slides in via CSS transition
    ───────────────────────────────────────────────────────── */
 function TooltipPortal({ label, targetRef, visible }) {
   const [pos, setPos] = useState({ top: 0, left: 0 });
+  const [phase, setPhase] = useState("hidden"); // "hidden" | "measured" | "visible"
+  const rafRef = useRef(null);
 
-  useEffect(() => {
-    if (!visible || !targetRef?.current) return;
+  // Phase 1: measure position immediately via useLayoutEffect (before paint)
+  // so the tooltip never appears at 0,0 or at the wrong coordinates.
+  useLayoutEffect(() => {
+    if (!visible || !targetRef?.current) {
+      setPhase("hidden");
+      return;
+    }
+
     const el = targetRef.current;
-    const update = () => {
+    const measure = () => {
       const r = el.getBoundingClientRect();
-      setPos({ top: r.top + r.height / 2, left: r.right + 12 });
+      setPos({ top: r.top + r.height / 2, left: r.right + 16 });
+      setPhase("measured");
     };
-    update();
-    window.addEventListener("scroll", update, true);
-    window.addEventListener("resize", update);
+
+    measure();
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+
     return () => {
-      window.removeEventListener("scroll", update, true);
-      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("resize", measure);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [visible, targetRef]);
 
-  if (!visible) return null;
+  // Phase 2: after the "measured" frame is painted, kick off the entrance
+  // animation on the next animation frame. This guarantees the browser has
+  // painted the element at the correct position with opacity-0 *before*
+  // the transition to opacity-1 begins — eliminating the flicker.
+  useEffect(() => {
+    if (phase !== "measured") return;
+
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = requestAnimationFrame(() => {
+        setPhase("visible");
+      });
+    });
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [phase]);
+
+  // When hover ends, snap back to hidden immediately (no exit animation
+  // needed — the element is pointer-events-none and disappears cleanly).
+  useEffect(() => {
+    if (!visible) setPhase("hidden");
+  }, [visible]);
+
+  // Don't render anything until we have a measured position
+  if (phase === "hidden") return null;
 
   return (
     <span
-      className="pointer-events-none fixed z-[9999] -translate-y-1/2 whitespace-nowrap rounded-lg border border-white/15 bg-[#2b0707] px-3.5 py-1.5 text-sm font-medium tracking-wide text-white shadow-2xl shadow-black/50"
+      className={cn(
+        "pointer-events-none fixed z-[9999] -translate-y-1/2 transition-all duration-200 ease-out",
+        phase === "visible"
+          ? "opacity-100 translate-x-0"
+          : "opacity-0 -translate-x-1.5"
+      )}
       style={{ top: pos.top, left: pos.left }}
       role="tooltip"
     >
-      <span
-        className="absolute right-full top-1/2 -translate-y-1/2 border-[5px] border-transparent border-r-[#2b0707]"
-        aria-hidden="true"
-      />
-      {label}
+      {/* Outer glow / shadow layer */}
+      <span className="absolute -inset-px -z-10 rounded-[10px] bg-gradient-to-r from-[#411111]/40 to-[#5a1a1a]/30 blur-md" />
+
+      {/* Main tooltip body */}
+      <span className="relative block whitespace-nowrap rounded-[10px] border border-white/10 bg-[#411111] px-3.5 py-2 text-xs font-medium tracking-wide text-white/90 shadow-xl shadow-[#1a0606]/60 antialiased">
+        {/* Inner highlight sheen */}
+        <span className="pointer-events-none absolute inset-0 rounded-[10px] bg-gradient-to-b from-white/[0.08] to-transparent" />
+
+        {/* Left-pointing caret arrow */}
+        <span
+          className="absolute right-full top-1/2 -translate-y-1/2"
+          aria-hidden="true"
+        >
+          {/* Arrow shadow / depth */}
+          <span className="absolute -inset-px rounded-sm border-[6px] border-transparent border-r-[#2a0a0a]/40 blur-[1px]" />
+          {/* Arrow body — seamless match with tooltip bg */}
+          <span className="block border-[6px] border-transparent border-r-[#411111]" />
+        </span>
+
+        {/* Label text */}
+        <span className="relative z-[1]">{label}</span>
+      </span>
     </span>
   );
 }
