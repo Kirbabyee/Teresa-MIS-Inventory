@@ -289,7 +289,7 @@ export default function ActivateAccount() {
           </div>
 
           {/* Card */}
-          <div className="rounded-lg border border-white/10 bg-white shadow-2xl shadow-black/30 backdrop-blur-sm">
+          <div className="rounded-lg border border-white/10 bg-white shadow-2xl shadow-black/30 backdrop-blur-sm mt-4">
           {/* Card header */}
           <div className="px-8 pt-8 pb-2 text-center">
             {/* Step icon */}
