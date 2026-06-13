@@ -1,12 +1,14 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, ShieldAlert, ShieldCheck, Lock } from "lucide-react";
 const arkLogo = "/folder/teresalogo-removebg-preview.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/api/supabaseClient";
 import { useAuth } from "@/lib/AuthContext";
 import { sanitizeEmail } from "@/lib/security/sanitize";
+import { cn } from "@/lib/utils";
+import { useSecuredCountdown } from "@/lib/security/useSecuredCountdown";
 
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
@@ -14,38 +16,6 @@ const SESSION_EVENT = "app_session_change";
 // Generic auth error — never reveals whether email exists, is deactivated, etc.
 const GENERIC_AUTH_ERROR = "Invalid email or password.";
 
-const fetchAccountForUser = async (user) => {
-  const normalizedUserId = String(user?.id || "").trim();
-  const normalizedEmail = String(user?.email || "").trim().toLowerCase();
-
-  if (normalizedUserId) {
-    const byId = await supabase
-      .from("user_accounts")
-      .select("account_type, is_active")
-      .eq("id", normalizedUserId)
-      .maybeSingle();
-
-    if (!byId.error && byId.data) {
-      return byId.data;
-    }
-  }
-
-  if (normalizedEmail) {
-    const byEmail = await supabase
-      .from("user_accounts")
-      .select("account_type, is_active")
-      .ilike("email", normalizedEmail)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (!byEmail.error && byEmail.data) {
-      return byEmail.data;
-    }
-  }
-
-  return null;
-};
 
 export default function Login() {
   const navigate = useNavigate();
@@ -57,33 +27,38 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
-  // ── Client-side rate limiting ─────────────────────────────
-  const rateLimitRef = useRef({ attempts: 0, windowStart: Date.now(), lockedUntil: 0 });
+  // ── Server-side exponential backoff rate limiter ───────────
+  const secured = useSecuredCountdown();
+  const isLocked = secured.locked;
 
-  const getRateLimitDelay = useCallback(() => {
-    const now = Date.now();
-    const rl = rateLimitRef.current;
+  // Restore lockout from server on mount and when email field loses focus
+  // (handles page refresh while locked — server is the source of truth)
+  // Debounced to avoid spamming the server on every keystroke.
+  const restoreTimeoutRef = useRef(null);
+  const handleEmailBlur = useCallback(() => {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed) return;
+    if (restoreTimeoutRef.current) clearTimeout(restoreTimeoutRef.current);
+    restoreTimeoutRef.current = window.setTimeout(() => {
+      secured.restoreLockout(trimmed);
+    }, 300);
+  }, [email, secured.restoreLockout]);
 
-    // Reset window after 60 seconds
-    if (now - rl.windowStart > 60_000) {
-      rl.attempts = 0;
-      rl.windowStart = now;
-      rl.lockedUntil = 0;
-    }
-
-    // If locked, return remaining ms
-    if (rl.lockedUntil > now) {
-      return rl.lockedUntil - now;
-    }
-
-    // After 3 failures, apply progressive delay: 1s, 2s, 4s, 8s...
-    if (rl.attempts >= 3) {
-      const delay = Math.min(1000 * Math.pow(2, rl.attempts - 3), 30_000);
-      rl.lockedUntil = now + delay;
-      return delay;
-    }
-
-    return 0;
+  // On mount: check if this IP is locked out (no email needed).
+  // This blocks the page immediately — attacker can't even see the form.
+  useEffect(() => {
+    (async () => {
+      const result = await secured.checkIpLockout();
+      if (result.locked && result.retryAfterMs > 0) {
+        secured.startCountdown(result.retryAfterMs);
+        // We don't have the email yet, so suppress the email-specific
+        // lockout message — the IP-level message is shown instead.
+      }
+    })();
+    return () => {
+      if (restoreTimeoutRef.current) clearTimeout(restoreTimeoutRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSubmit = async (e) => {
@@ -102,14 +77,6 @@ export default function Login() {
       return;
     }
 
-    // Enforce rate limit delay
-    const delay = getRateLimitDelay();
-    if (delay > 0) {
-      setSubmitting(true);
-      showGlobalLoader("Too many attempts. Please wait...");
-      await new Promise((r) => setTimeout(r, delay));
-    }
-
     setSubmitting(true);
     showGlobalLoader("Verifying Credentials...");
 
@@ -118,56 +85,28 @@ export default function Login() {
     }, 5000);
 
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email: sanitizedEmail,
-        password,
-      });
+      // ── Delegate to server-side rate limiter Edge Function ──
+      const result = await secured.retry(sanitizedEmail, password);
 
-      // Track failed attempt for rate limiting
-      if (signInError || !data?.session || !data?.user) {
-        rateLimitRef.current.attempts++;
-        setError(GENERIC_AUTH_ERROR);
+      if (result.success && result.user && result.session?.accessToken) {
+        // ── Successful login — restore Supabase session from Edge Function ──
+        // The Edge Function authenticated on its own client, so we need to
+        // set the session on the local Supabase client for AuthContext to work.
+        await supabase.auth.setSession({
+          access_token: result.session.accessToken,
+          refresh_token: result.session.refreshToken || "",
+        });
+
+        // Now the local Supabase client has a valid session.
+        // Let AuthContext pick it up by navigating.
+        navigate("/", { replace: true });
         return;
       }
 
-      const session = data.session;
-      const user = data.user;
-
-      if (typeof window !== "undefined") {
-        const now = Date.now();
-        const accountRow = await fetchAccountForUser(user);
-
-        // Deactivated account — same generic error, don't reveal status
-        if (accountRow?.is_active === false) {
-          await supabase.auth.signOut();
-          setError(GENERIC_AUTH_ERROR);
-          return;
-        }
-
-        const accountType = accountRow?.account_type || null;
-        const role = accountType || user.user_metadata?.role || user.app_metadata?.role || "employee";
-        const displayName = user.user_metadata?.name || user.user_metadata?.full_name || user.email || "User";
-        const expiresAt = session.expires_at ? Number(session.expires_at) * 1000 : now + 8 * 60 * 60 * 1000;
-
-        window.localStorage.setItem(
-          SESSION_KEY,
-          JSON.stringify({
-            email: user.email || sanitizedEmail,
-            role,
-            account_type: accountType || null,
-            displayName,
-            loggedInAt: now,
-            expiresAt,
-            supabaseUserId: user.id,
-          }),
-        );
-        window.dispatchEvent(new Event(SESSION_EVENT));
-      }
-
-      navigate("/", { replace: true });
+      // ── Failed login (locked or auth error) ────────────────
+      setError(result.error || GENERIC_AUTH_ERROR);
     } catch {
-      rateLimitRef.current.attempts++;
-      setError(GENERIC_AUTH_ERROR);
+      setError("An unexpected error occurred. Please try again.");
     } finally {
       window.clearTimeout(timeoutId);
       setSubmitting(false);
@@ -268,8 +207,60 @@ export default function Login() {
             </div>
           </div>
 
-          {/* Card — UNCHANGED */}
-          <div className="rounded-lg border border-white/10 bg-white/95 shadow-2xl shadow-black/30 backdrop-blur-sm">
+          <div className="relative rounded-lg border border-white/10 bg-white/95 shadow-2xl shadow-black/30 backdrop-blur-sm overflow-hidden">
+            {/* ── Premium brand-lockout overlay ───────────────────────────── */}
+            {isLocked && (
+              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center rounded-lg bg-[#411111]/95 backdrop-blur-md p-8 text-center animate-in fade-in duration-300 overflow-y-auto">
+
+                {/* Shield icon anchor — crimson glass circle */}
+                <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-white/10 border border-white/20 shadow-inner">
+                  <ShieldAlert className="h-8 w-8 text-red-400" />
+                </div>
+
+                {/* Permanent ban — remaining time exceeds ~2 years */}
+                {secured.isPermanentlyBanned ? (
+                  <>
+                    <p className="text-xl font-bold text-white tracking-wide mb-2">
+                      Device Permanently Locked
+                    </p>
+                    <p className="text-sm text-slate-300 max-w-xs leading-relaxed mb-6">
+                      This device has been permanently locked due to excessive failed login attempts.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    {/* Primary header — authoritative white type */}
+                    <p className="text-xl font-bold text-white tracking-wide mb-2">
+                      Login Temporarily Suspended
+                    </p>
+
+                    {/* Context micro-copy — muted silver-slate */}
+                    <p className="text-sm text-slate-300 max-w-xs leading-relaxed mb-6">
+                      Too many consecutive failed login attempts detected. To safeguard institutional user credentials, further attempts are blocked for:
+                    </p>
+
+                    {/* Tech timer block — terminal-style dark badge */}
+                    <span className="bg-black/40 border border-white/10 px-5 py-2.5 rounded-xl font-mono text-xl font-bold tracking-widest text-red-400 shadow-md shadow-black/30 mb-3">
+                      {secured.formatted}
+                    </span>
+                  </>
+                )}
+
+                {/* Tier indicator */}
+                {secured.tier > 0 && (
+                  <p className="text-xs text-red-400/70 font-medium tracking-wide mb-5">
+                    Escalation Tier {secured.tier} of 5
+                  </p>
+                )}
+
+                {/* Persistence footer — low-opacity border-top notice */}
+                <p className="text-xs text-slate-400 font-medium tracking-wide border-t border-white/10 pt-4 w-4/5">
+                  Please contact the administrator if there seems to be a mistake.
+                </p>
+
+              </div>
+            )}
+
             {/* Card header */}
             <div className="px-8 pt-8 pb-2 text-center">
               <h1 className="text-3xl font-bold tracking-tight text-slate-900">
@@ -299,8 +290,10 @@ export default function Login() {
                     placeholder="name@email.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    onBlur={handleEmailBlur}
                     autoComplete="email"
-                    className="h-11 rounded-lg border-slate-200 bg-slate-50 px-4 text-[15px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus-visible:ring-2 focus-visible:ring-[#411111]/40 focus-visible:border-[#411111]/40"
+                    disabled={isLocked}
+                    className="h-11 rounded-lg border-slate-200 bg-slate-50 px-4 text-[15px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus-visible:ring-2 focus-visible:ring-[#411111]/40 focus-visible:border-[#411111]/40 disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
 
@@ -316,12 +309,14 @@ export default function Login() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       autoComplete="current-password"
-                      className="h-11 rounded-lg border-slate-200 bg-slate-50 px-4 pr-12 text-[15px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus-visible:ring-2 focus-visible:ring-[#411111]/40 focus-visible:border-[#411111]/40"
+                      disabled={isLocked}
+                      className="h-11 rounded-lg border-slate-200 bg-slate-50 px-4 pr-12 text-[15px] text-slate-900 placeholder:text-slate-400 transition-colors focus:bg-white focus-visible:ring-2 focus-visible:ring-[#411111]/40 focus-visible:border-[#411111]/40 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((prev) => !prev)}
-                      className="absolute inset-y-0 right-0 flex items-center px-4 text-slate-400 transition hover:text-[#411111]"
+                      disabled={isLocked}
+                      className="absolute inset-y-0 right-0 flex items-center px-4 text-slate-400 transition hover:text-[#411111] disabled:pointer-events-none"
                       aria-label={showPassword ? "Hide password" : "Show password"}
                     >
                       {showPassword ? (
@@ -334,7 +329,12 @@ export default function Login() {
                   <div className="flex justify-center pt-0.5">
                     <Link
                       to="/forgot-password"
-                      className="text-xs font-medium text-[#411111] transition hover:text-[#2a0b0b]"
+                      className={cn(
+                        "text-xs font-medium transition",
+                        isLocked
+                          ? "pointer-events-none text-slate-300"
+                          : "text-[#411111] hover:text-[#2a0b0b]"
+                      )}
                     >
                       Forgot password?
                     </Link>
@@ -344,8 +344,8 @@ export default function Login() {
                 {/* Submit */}
                 <Button
                   type="submit"
-                  disabled={submitting}
-                  className="mt-1 w-full h-[46px] rounded-xl bg-[#411111] text-[15px] font-semibold tracking-wide text-white shadow-lg shadow-[#411111]/20 transition-all hover:bg-[#2e0b0b] hover:shadow-xl hover:shadow-[#411111]/25 active:scale-[0.98]"
+                  disabled={submitting || isLocked}
+                  className="mt-1 w-full h-[46px] rounded-xl bg-[#411111] text-[15px] font-semibold tracking-wide text-white shadow-lg shadow-[#411111]/20 transition-all hover:bg-[#2e0b0b] hover:shadow-xl hover:shadow-[#411111]/25 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#411111] disabled:active:scale-100"
                 >
                   {submitting ? (
                     <span className="flex items-center gap-2">
