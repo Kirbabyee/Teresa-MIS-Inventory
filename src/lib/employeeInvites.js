@@ -116,9 +116,7 @@ export async function createEmployeeInviteAndSendEmail({
   const inviteTokenHash = await hashInviteToken(inviteToken);
   const expiresAt = new Date(Date.now() + INVITE_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  console.log("[Invite] Creating invite with:", { employeeId, email: normalizedEmail, expiresAt });
-
-  const { error: inviteError, data: inviteData } = await supabase.from("user_auth_invites").insert([
+  const { error: inviteError } = await supabase.from("user_auth_invites").insert([
     {
       employee_id: employeeId,
       email: normalizedEmail,
@@ -126,8 +124,6 @@ export async function createEmployeeInviteAndSendEmail({
       expires_at: expiresAt,
     },
   ]);
-
-  console.log("[Invite] Insert response - error:", inviteError, "data:", inviteData);
 
   if (inviteError) {
     throw new Error(`Failed to create invite token: ${inviteError.message}`);

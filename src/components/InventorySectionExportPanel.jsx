@@ -555,7 +555,6 @@ export default function InventorySectionExportPanel({
             table_name: selectedTab?.tableName || null,
             metadata: { section_slug: selectedSection?.slug } || null,
           }).select();
-          console.debug('[InventorySectionExportPanel] dynamic_inventory_export_logs insert result:', { dynData, dynErr });
           if (!dynErr) {
             wroteRecord = true;
             onExported?.();
@@ -578,7 +577,6 @@ export default function InventorySectionExportPanel({
                 section_id: selectedSection?.id || null,
                 tab_id: selectedTab?.id || null,
               }).select();
-              console.debug('[InventorySectionExportPanel] per-table insert result:', { perData, insertErrorRes });
               insertError = insertErrorRes;
               if (!insertError) {
                 onExported?.();
@@ -600,7 +598,6 @@ export default function InventorySectionExportPanel({
                 section_id: selectedSection?.id || null,
                 tab_id: selectedTab?.id || null,
               }).select();
-              console.debug('[InventorySectionExportPanel] fallback insert result:', { fbData, fallbackErr });
               if (fallbackErr) {
                 console.warn('Failed to insert export record into dynamic/per-table and fallback inventory_section_exports:', fallbackErr);
               } else {

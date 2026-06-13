@@ -247,22 +247,34 @@ export default function UserAccounts() {
       setDeleting(true);
       showGlobalLoader("Deleting account...");
 
-      // Remove any invites first
-      try {
-        await removeAccountInvites(deleteCandidate);
-      } catch (inviteErr) {
-        console.error("Failed to remove invites during delete:", inviteErr?.message || inviteErr);
+      // Call the admin Edge Function — this handles:
+      //   1. Verifying the caller is an active admin/superadmin
+      //   2. Preventing self-deletion
+      //   3. Preventing non-superadmin from deleting other admins
+      //   4. Deleting the Supabase auth user (service_role)
+      //   5. Deleting the user_accounts row
+      //   6. Cleaning up all related invites
+      const { data: { session } } = await supabase.auth.getSession();
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-delete-user`;
+
+      const response = await fetch(fnUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token || ""}`,
+        },
+        body: JSON.stringify({ account_id: deleteCandidate.id }),
+      });
+
+      let payload = null;
+      try { payload = await response.json(); } catch { /* ignore */ }
+
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || "Failed to delete account.");
       }
 
-      const { error } = await supabase
-        .from("user_accounts")
-        .delete()
-        .eq("id", deleteCandidate.id);
-
-      if (error) throw error;
-
       setDeleteCandidate(null);
-      toast.success(`Account for ${deleteCandidate.first_name || ""} ${deleteCandidate.last_name || ""} has been deleted.`);
+      toast.success(payload.message || "Account has been permanently deleted.");
       await load();
     } catch (error) {
       console.error("Delete account failed:", error.message);

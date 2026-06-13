@@ -1394,13 +1394,10 @@ export default function InventorySection() {
         }
       }
 
-      console.log("[handleRemarkChange] foundTarget:", foundTarget?.id ?? null, "newSourceQty:", newSourceQty);
-
       if (foundTarget) {
         // Merge path: update state AND persist to DB
         const tbl = tabTableName || null;
         const newTargetQty = (Number(foundTarget[quantityKey]) || 0) + qty;
-        console.log("[MERGE DB] targetId:", foundTarget.id, "newQty:", newTargetQty, "sourceId:", item.id, "tbl:", tbl);
 
         // Update UI state
         if (newSourceQty <= 0) {
@@ -1419,13 +1416,11 @@ export default function InventorySection() {
           if (updErr) throw new Error("Update target failed: " + updErr.message);
           const { error: delErr } = await supabase.from(tbl).delete().eq("id", item.id);
           if (delErr) throw new Error("Delete source failed: " + delErr.message);
-          console.log("[MERGE DB] success — target updated, source deleted");
         } else {
           const { error: e1 } = await supabase.from(tbl).update({ [quantityKey]: newTargetQty }).eq("id", foundTarget.id);
           if (e1) throw new Error("Update target failed: " + e1.message);
           const { error: e2 } = await supabase.from(tbl).update({ [quantityKey]: newSourceQty }).eq("id", item.id);
           if (e2) throw new Error("Update source failed: " + e2.message);
-          console.log("[MERGE DB] success — both rows updated");
         }
       } else if (newSourceQty <= 0) {
         // No target, source fully consumed — update remark in-place
@@ -2145,7 +2140,6 @@ export default function InventorySection() {
             table_name: tabTableName || null,
             metadata: { section_slug: selectedSection?.slug } || null,
           }).select();
-          console.debug('[InventorySection] dynamic_inventory_export_logs insert result:', { dynData, dynErr });
           if (!dynErr) {
             wroteRecord = true;
           }
@@ -2165,7 +2159,6 @@ export default function InventorySection() {
                 section_id: selectedSection?.id || null,
                 tab_id: tab?.id || null,
               }).select();
-              console.debug('[InventorySection] inventory_section_exports insert result:', { fbData, fallbackErr });
               if (!fallbackErr) wroteRecord = true;
             } catch (e) {
               console.warn('[InventorySection] fallback insert threw:', e);

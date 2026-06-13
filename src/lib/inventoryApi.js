@@ -382,9 +382,7 @@ export const deleteInventoryTab = async (id) => {
   if (tableName) {
     try {
       const dropEndpoint = getInventoryDropTableEndpoint();
-      console.log("[deleteInventoryTab] Calling drop endpoint:", dropEndpoint, "for table:", tableName);
       const result = await callDropInventoryTable(dropEndpoint, tableName);
-      console.info(`[deleteInventoryTab] Successfully dropped physical table: ${tableName}`, result);
       // If the drop reported that the table did not exist, try probing a few candidate names
       if (result && result.existed === false) {
         // Physical table reported as not existing. Rather than probing candidate table names
@@ -398,9 +396,7 @@ export const deleteInventoryTab = async (id) => {
         if (tabRow?.slug) {
           suggestions.push(`inventory_${String(tabRow.slug || '').toLowerCase().trim().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')}`);
         }
-        if (suggestions.length > 0) {
-          console.info('[deleteInventoryTab] Physical table did not exist. Candidate table names to inspect manually:', suggestions);
-        }
+        // Table did not exist; candidate names available for manual inspection if needed
       }
     } catch (dropErr) {
       console.error("[deleteInventoryTab] Error during table drop:", {
@@ -421,9 +417,7 @@ export const deleteInventoryTab = async (id) => {
     // Delete the corresponding logs table (non-critical: if it fails, we warn but continue)
     try {
       const dropLogsEndpoint = getInventoryDropLogsTableEndpoint();
-      console.log("[deleteInventoryTab] Calling drop logs endpoint:", dropLogsEndpoint, "for table:", `${tableName}_logs`);
       const logsResult = await callDropInventoryLogsTable(dropLogsEndpoint, tableName);
-      console.info(`[deleteInventoryTab] Successfully dropped logs table: ${tableName}_logs`, logsResult);
     } catch (logsDropErr) {
       console.warn("[deleteInventoryTab] Failed to drop logs table (non-critical):", {
         message: logsDropErr?.message,
@@ -451,9 +445,7 @@ export const deleteInventoryTab = async (id) => {
   for (const candidate of tableNamesToTry) {
     try {
       const dropEndpoint = getInventoryDropTableEndpoint();
-      console.log('[deleteInventoryTab] Attempting to drop table:', candidate);
       await callDropInventoryTable(dropEndpoint, candidate);
-      console.info('[deleteInventoryTab] Dropped physical table:', candidate);
 
       // Also attempt to drop logs tied to candidate.
       // Export logs are shared in dynamic_inventory_export_logs, so there is no per-table exports table to drop.
@@ -500,8 +492,6 @@ export const deleteInventoryTab = async (id) => {
       .eq("tab_id", id);
 
     if (!fetchLogsError && exportLogs && exportLogs.length > 0) {
-      console.log("[deleteInventoryTab] Found export logs to delete:", exportLogs.length);
-
       // Delete files from Supabase Storage
       for (const log of exportLogs) {
         if (log.file_path) {
@@ -511,8 +501,6 @@ export const deleteInventoryTab = async (id) => {
               .remove([log.file_path]);
             if (storageError) {
               console.warn("[deleteInventoryTab] Failed to delete export file:", log.file_path, storageError);
-            } else {
-              console.log("[deleteInventoryTab] Deleted export file:", log.file_path);
             }
           } catch (storageErr) {
             console.warn("[deleteInventoryTab] Error deleting export file:", log.file_path, storageErr);
@@ -528,8 +516,6 @@ export const deleteInventoryTab = async (id) => {
 
       if (deleteLogsError) {
         console.warn("[deleteInventoryTab] Failed to delete export logs:", deleteLogsError);
-      } else {
-        console.log("[deleteInventoryTab] Deleted export log entries:", exportLogs.length);
       }
     }
   } catch (exportCleanupErr) {
@@ -1499,12 +1485,6 @@ export const callDropInventoryTable = async (edgeFunctionUrl, tableName) => {
     }
   }
 
-  console.log("[callDropInventoryTable] Starting fetch:", {
-    url: edgeFunctionUrl,
-    tableName,
-    headersKeys: Object.keys(headers),
-  });
-
   try {
     const res = await fetch(edgeFunctionUrl, {
       method: "POST",
@@ -1512,11 +1492,8 @@ export const callDropInventoryTable = async (edgeFunctionUrl, tableName) => {
       body: JSON.stringify({ tableName }),
     });
 
-    console.log("[callDropInventoryTable] Response status:", res.status, res.statusText);
-
     if (!res.ok) {
       const text = await res.text();
-      console.error("[callDropInventoryTable] Response not ok:", { status: res.status, text });
       const errorMsg = res.status === 404 
         ? `Drop table function not deployed. See EDGE_FUNCTIONS_DEPLOYMENT.md for deployment instructions.`
         : `Drop table failed: ${res.status} ${text}`;
@@ -1524,7 +1501,6 @@ export const callDropInventoryTable = async (edgeFunctionUrl, tableName) => {
     }
 
     const result = await res.json();
-    console.log("[callDropInventoryTable] Success:", result);
     return result;
   } catch (error) {
     console.error("[callDropInventoryTable] Fetch error:", error);
@@ -1561,15 +1537,11 @@ export const callDropInventoryColumns = async (edgeFunctionUrl, tableName, colum
     body: JSON.stringify({ tableName, columnNames }),
   });
 
-  console.log("[callDropInventoryColumns] Response status:", res.status, res.statusText);
-
   if (!res.ok) {
     const text = await res.text();
-    console.error("[callDropInventoryColumns] Response not ok:", { status: res.status, text });
     throw new Error(`Drop columns failed: ${res.status} ${text}`);
   }
   const result = await res.json();
-  console.log("[callDropInventoryColumns] Success:", result);
   return result;
 };
 
@@ -1650,12 +1622,6 @@ export const callDropInventoryLogsTable = async (edgeFunctionUrl, inventoryTable
     }
   }
 
-  console.log("[callDropInventoryLogsTable] Starting fetch:", {
-    url: edgeFunctionUrl,
-    inventoryTableName,
-    headersKeys: Object.keys(headers),
-  });
-
   try {
     const res = await fetch(edgeFunctionUrl, {
       method: "POST",
@@ -1663,11 +1629,8 @@ export const callDropInventoryLogsTable = async (edgeFunctionUrl, inventoryTable
       body: JSON.stringify({ tableName: `${inventoryTableName}_logs` }),
     });
 
-    console.log("[callDropInventoryLogsTable] Response status:", res.status, res.statusText);
-
     if (!res.ok) {
       const text = await res.text();
-      console.error("[callDropInventoryLogsTable] Response not ok:", { status: res.status, text });
       const errorMsg = res.status === 404
         ? `Drop logs table function not deployed. See EDGE_FUNCTIONS_DEPLOYMENT.md for deployment instructions.`
         : `Drop logs table failed: ${res.status} ${text}`;
@@ -1675,7 +1638,6 @@ export const callDropInventoryLogsTable = async (edgeFunctionUrl, inventoryTable
     }
 
     const result = await res.json();
-    console.log("[callDropInventoryLogsTable] Success:", result);
     return result;
   } catch (error) {
     console.error("[callDropInventoryLogsTable] Fetch error:", error);
@@ -1706,12 +1668,6 @@ export const callDropInventoryExportsTable = async (edgeFunctionUrl, inventoryTa
     }
   }
 
-  console.log("[callDropInventoryExportsTable] Starting fetch:", {
-    url: edgeFunctionUrl,
-    inventoryTableName,
-    headersKeys: Object.keys(headers),
-  });
-
   try {
     const res = await fetch(edgeFunctionUrl, {
       method: "POST",
@@ -1719,11 +1675,8 @@ export const callDropInventoryExportsTable = async (edgeFunctionUrl, inventoryTa
       body: JSON.stringify({ tableName: `${inventoryTableName}_exports` }),
     });
 
-    console.log("[callDropInventoryExportsTable] Response status:", res.status, res.statusText);
-
     if (!res.ok) {
       const text = await res.text();
-      console.error("[callDropInventoryExportsTable] Response not ok:", { status: res.status, text });
       const errorMsg = res.status === 404
         ? `Drop exports table function not deployed. See EDGE_FUNCTIONS_DEPLOYMENT.md for deployment instructions.`
         : `Drop exports table failed: ${res.status} ${text}`;
@@ -1731,7 +1684,6 @@ export const callDropInventoryExportsTable = async (edgeFunctionUrl, inventoryTa
     }
 
     const result = await res.json();
-    console.log("[callDropInventoryExportsTable] Success:", result);
     return result;
   } catch (error) {
     console.error("[callDropInventoryExportsTable] Fetch error:", error);

@@ -1736,13 +1736,9 @@ function TabModal({ tab, onClose, onSave }) {
             }}
             onSave={(form) => {
               try {
-                console.log("SectionModal onSave called with:", form);
-
                 const name = form.name.trim();
-                console.log("Section name:", name);
 
                 if (!name) {
-                  console.warn("Section name is empty, returning");
                   alert("Section name is required.");
                   return;
                 }
@@ -1761,18 +1757,14 @@ function TabModal({ tab, onClose, onSave }) {
 
                   const nextSections = [...currentSections];
                   if (editingSectionIndex !== null && nextSections[editingSectionIndex]) {
-                    console.log("Updating existing section at index:", editingSectionIndex);
                     nextSections[editingSectionIndex] = nextSection;
                   } else {
-                    console.log("Adding new section to sections array");
                     nextSections.push(nextSection);
                   }
 
-                  console.log("Updated sections:", nextSections);
                   return nextSections;
                 });
 
-                console.log("Section saved successfully, closing modal");
                 setShowSectionModal(false);
                 setSectionToEdit(null);
                 setEditingSectionIndex(null);
@@ -1794,13 +1786,9 @@ function TabModal({ tab, onClose, onSave }) {
             }}
             onSave={(colForm) => {
               try {
-                console.log("ColumnRowModal onSave called with:", colForm);
-
                 const label = (colForm.label || "").trim();
-                console.log("Column label:", label);
 
                 if (!label) {
-                  console.warn("Column label is empty, returning");
                   alert("Column name is required.");
                   return;
                 }
@@ -1808,32 +1796,24 @@ function TabModal({ tab, onClose, onSave }) {
                 // Auto-generate key from label if not provided
                 const labelToKey = (l) => l.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
                 const key = labelToKey(label);
-                console.log("Generated column key:", key);
 
                 if (!key) {
-                  console.warn("Column key generated from label is invalid");
                   alert("Column name contains only special characters. Please use alphanumeric characters.");
                   return;
                 }
 
-                console.log("Normalizing column config...");
                 const nextColumn = normalizeColumnConfig({ ...colForm, key, label });
-                console.log("Normalized column:", nextColumn);
 
                 setColumns((currentColumns) => {
                   const next = [...currentColumns];
                   if (editingColumnIndex !== null && next[editingColumnIndex]) {
-                    console.log("Updating existing column at index:", editingColumnIndex);
                     next[editingColumnIndex] = nextColumn;
                   } else {
-                    console.log("Adding new column to columns array");
                     next.push(nextColumn);
                   }
-                  console.log("Updated columns array:", next);
                   return next;
                 });
 
-                console.log("Column saved successfully, closing modal");
                 setShowColumnModal(false);
                 setColumnToEdit(null);
                 setEditingColumnIndex(null);
@@ -1972,32 +1952,24 @@ export default function Inventory() {
             // Add new columns
             if (columnsToAdd.length > 0) {
               const flattenedAdd = flattenColumnsForDDL(columnsToAdd);
-              console.log("Adding columns to table:", tableName, "with columns:", flattenedAdd);
               await callModifyInventoryTable(modifyEndpoint, tableName, "add", flattenedAdd);
-              console.log("Columns added successfully");
             }
 
             // Remove deleted columns
             if (columnsToRemove.length > 0) {
-              console.log("Removing columns from table:", tableName, "columns:", columnsToRemove);
               await callModifyInventoryTable(modifyEndpoint, tableName, "remove", columnsToRemove);
-              console.log("Columns removed successfully");
             }
-
-            console.log("Table columns modified successfully");
           }
 
           // Always persist the latest column config, including nested field metadata.
           try {
             window.localStorage.setItem(`inventory.tab_table.${currentTab.id}`, JSON.stringify(tabConfig));
-            console.log("Tab config saved to localStorage");
           } catch (storageErr) {
             console.warn("Failed to update localStorage config:", storageErr);
           }
 
           try {
             const settingResult = await upsertSetting(`inventory.tab_table.${currentTab.id}`, tabConfig);
-            console.log("Tab config persisted to inventory_settings:", settingResult);
           } catch (settingErr) {
             console.error("Failed to update inventory_settings config:", settingErr);
             alert(`Warning: Column config may not have saved. Error: ${settingErr.message}`);
@@ -2026,20 +1998,15 @@ export default function Inventory() {
 
         const endpoint = ddlEndpoint;
         const logsEndpoint = getInventoryLogsTableEndpoint();
-        console.log("Creating inventory table:", tableName, "with columns:", cols);
-
         // Flatten columns so the Edge Function creates physical sub-columns in the DB
         const flattened = flattenColumnsForDDL(cols);
-        console.log("Flattened columns for DDL:", flattened);
 
         // Create the main inventory table
         await callCreateInventoryTable(endpoint, tableName, flattened);
-        console.log("Physical inventory table created successfully");
 
         // Create the corresponding logs table (non-critical: if it fails, we warn but continue)
         try {
           await callCreateInventoryLogsTable(logsEndpoint, tableName, cols);
-          console.log(`Physical logs table created successfully: ${tableName}_logs`);
         } catch (logsError) {
           console.warn("Failed to create logs table (non-critical):", logsError);
           alert(`Warning: Inventory table created but logs table creation failed. Error: ${logsError.message}`);
@@ -2051,14 +2018,12 @@ export default function Inventory() {
         const tabConfig = { tableName, columns: cols };
         try {
           window.localStorage.setItem(`inventory.tab_table.${savedTab.id}`, JSON.stringify(tabConfig));
-          console.log("Tab config saved to localStorage");
         } catch (storageError) {
           console.warn("Failed to write tab config to localStorage:", storageError);
         }
 
         try {
           const settingResult = await upsertSetting(`inventory.tab_table.${savedTab.id}`, tabConfig);
-          console.log("Tab config persisted to inventory_settings:", settingResult);
         } catch (settingError) {
           console.error("Failed to persist tab config to inventory_settings:", settingError);
           // Don't rollback on settings error - the physical table was created successfully
