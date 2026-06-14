@@ -29,6 +29,7 @@ import {
 const arkLogo = "/folder/teresalogo-removebg-preview.png";
 import { useAuth } from "@/lib/AuthContext";
 import { useSessionTimeout } from "@/lib/security/sessionTimeout";
+import { useLockoutCheck } from "@/lib/security/useLockoutCheck";
 import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 
 const SESSION_KEY = "app_session";
@@ -470,6 +471,9 @@ export default function Layout() {
 
   // ── Session idle detection ───────────────────────────────
   const { isIdle, confirmActive } = useSessionTimeout();
+
+  // ── Lockout guard — force logout if account/IP/device is locked ──
+  useLockoutCheck();
 
   return (
     <div className="flex h-screen overflow-hidden font-sans bg-[linear-gradient(130deg,#f8fafc_0%,#eef2ff_35%,#ecfeff_100%)]">

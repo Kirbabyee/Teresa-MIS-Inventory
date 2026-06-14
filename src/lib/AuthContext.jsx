@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from "react";
 import { supabase } from "@/api/supabaseClient";
+import { getDeviceFingerprint } from "@/lib/security/deviceFingerprint";
 
 const AuthContext = createContext(null);
 const SESSION_KEY = "app_session";
@@ -122,6 +123,37 @@ export const AuthProvider = ({ children }) => {
           await supabase.auth.signOut();
           return;
         }
+
+        // ── Lockout check: is this user's email or device currently locked out? ──
+        try {
+          const email = sessionUser.email?.toLowerCase().trim();
+          const fingerprint = getDeviceFingerprint();
+          const now = new Date().toISOString();
+          const { data: lockoutRows } = await supabase
+            .from("login_attempts_tracker")
+            .select("id")
+            .gt("suspended_until", now)
+            .or(
+              `email.eq.${email},` +
+              `fingerprint_hash.eq.${fingerprint},` +
+              `identifier_hash.eq.${fingerprint}`
+            )
+            .limit(1);
+          if (lockoutRows && lockoutRows.length > 0) {
+            setUser(null);
+            setIsAuthenticated(false);
+            setAuthError({ type: "account_locked", message: "Your account has been locked due to excessive failed login attempts. Please contact an administrator." });
+            if (typeof window !== "undefined") {
+              window.localStorage.removeItem(SESSION_KEY);
+              window.dispatchEvent(new Event(SESSION_EVENT));
+            }
+            await supabase.auth.signOut();
+            return;
+          }
+        } catch (_e) {
+          // If the lockout check fails, don't block the user
+        }
+
         setUser(buildAuthUser(sessionUser, accountRow));
         setIsAuthenticated(true);
         // persist lightweight session for layout and other components
