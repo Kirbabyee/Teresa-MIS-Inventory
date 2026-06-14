@@ -326,7 +326,7 @@ export default function SecurityMonitor() {
                   </th>
                 ))}
                 <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  Action
+                  
                 </th>
               </tr>
             </thead>
