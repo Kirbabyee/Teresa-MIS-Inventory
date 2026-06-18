@@ -41,6 +41,7 @@ const mapBorrowingRecord = (record = {}) => ({
   role: record.borrower_role || "",
   date: record.borrowed_at || record.created_at,
   returnedAt: record.returned_at || null,
+  expectedReturnAt: record.expected_return_at || null,
   status: record.status || "borrowed",
   items: (record.borrowing_items || []).map((item) => ({
     id: item.id,
@@ -170,17 +171,24 @@ export const fetchBorrowingVelocity = async ({ days = 30 } = {}) => {
 };
 
 export const markOverdueBorrowingRecords = async ({ days = 3 } = {}) => {
+  const now = new Date();
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
 
+  // Mark as not_returned if:
+  //   1. expected_return_at is set AND has passed, OR
+  //   2. no expected_return_at AND borrowed_at is older than `days` days
   const { data, error } = await supabase
     .from("borrowing_records")
     .update({
       status: "not_returned",
-      updated_at: new Date().toISOString(),
+      updated_at: now.toISOString(),
     })
     .eq("status", "borrowed")
-    .lte("borrowed_at", cutoff.toISOString())
+    .or(
+      `expected_return_at.lte.${now.toISOString()},` +
+      `and(expected_return_at.is.null,borrowed_at.lte.${cutoff.toISOString()})`
+    )
     .select("id");
 
   if (error) throw error;
@@ -192,6 +200,7 @@ export const createBorrowingRecord = async ({
   borrowerIdNumber,
   borrowerRole,
   items = [],
+  expectedReturnAt = null,
 }) => {
   const { data: record, error: recordError } = await supabase
     .from("borrowing_records")
@@ -201,9 +210,10 @@ export const createBorrowingRecord = async ({
         borrower_id_number: borrowerIdNumber,
         borrower_role: borrowerRole,
         status: "borrowed",
+        expected_return_at: expectedReturnAt,
       },
     ])
-    .select("id, borrower_name, borrower_id_number, borrower_role, borrowed_at, returned_at, status, created_at")
+    .select("id, borrower_name, borrower_id_number, borrower_role, borrowed_at, returned_at, expected_return_at, status, created_at")
     .single();
 
   if (recordError) throw recordError;

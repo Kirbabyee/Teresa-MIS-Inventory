@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Download, History, Minus, Package, Plus, Search, User, X } from "lucide-react";
+import { Calendar as CalendarIcon, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Download, History, Minus, Package, Plus, Search, User, X } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
@@ -13,6 +13,12 @@ import { useAuth } from "@/lib/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -69,6 +75,8 @@ const initialForm = {
   name: "",
   studentId: "",
   role: "",
+  borrowDate: "",
+  expectedReturnAt: "",
 };
 
 const hiddenItemDetailKeys = new Set([
@@ -608,6 +616,7 @@ const borrowingExportColumnOptions = [
   { key: "role", label: "Role" },
   { key: "status", label: "Status" },
   { key: "date", label: "Borrowed At" },
+  { key: "expectedReturnAt", label: "Expected Return" },
   { key: "returnedAt", label: "Returned At" },
   { key: "item", label: "Item" },
   { key: "quantity", label: "Quantity" },
@@ -1177,6 +1186,10 @@ export default function Borrowing() {
   const [dateRange, setDateRange] = useState({ from: undefined, to: undefined });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const datePickerRef = useRef(null);
+  const [showReturnDatePicker, setShowReturnDatePicker] = useState(false);
+  const returnDatePickerRef = useRef(null);
+  const [showBorrowDatePicker, setShowBorrowDatePicker] = useState(false);
+  const borrowDatePickerRef = useRef(null);
   const [customItems, setCustomItems] = useState([]);
   const [customItemForm, setCustomItemForm] = useState({
     name: "",
@@ -1311,9 +1324,7 @@ export default function Borrowing() {
     setBorrowingsError("");
 
     try {
-      if (statusFilter === "borrowed") {
-        await markOverdueBorrowingRecords({ days: 3 });
-      }
+      await markOverdueBorrowingRecords({ days: 3 });
       const records = await fetchBorrowingRecords({ status: statusFilter === "all" ? null : "borrowed" });
       const visibleRecords =
         statusFilter === "all"
@@ -1379,6 +1390,28 @@ export default function Borrowing() {
       document.removeEventListener("mousedown", handlePointerDown);
     };
   }, [showDatePicker]);
+
+  useEffect(() => {
+    if (!showReturnDatePicker) return undefined;
+    const handlePointerDown = (event) => {
+      if (returnDatePickerRef.current && !returnDatePickerRef.current.contains(event.target)) {
+        setShowReturnDatePicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [showReturnDatePicker]);
+
+  useEffect(() => {
+    if (!showBorrowDatePicker) return undefined;
+    const handlePointerDown = (event) => {
+      if (borrowDatePickerRef.current && !borrowDatePickerRef.current.contains(event.target)) {
+        setShowBorrowDatePicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [showBorrowDatePicker]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1706,6 +1739,7 @@ export default function Borrowing() {
             status: formatBorrowingStatus(record.status || statusFilter),
             date: `${formatExportDate(record.date)}${formatExportTime(record.date) ? ` ${formatExportTime(record.date)}` : ""}`,
             returnedAt: record.returnedAt ? `${formatExportDate(record.returnedAt)}${formatExportTime(record.returnedAt) ? ` ${formatExportTime(record.returnedAt)}` : ""}` : "",
+            expectedReturnAt: record.expectedReturnAt ? formatExportDate(record.expectedReturnAt) : "",
             item: itemLabels[itemIndex] || "",
             quantity: itemQuantities[itemIndex] || "",
             condition: itemConditions[itemIndex] || "",
@@ -1733,7 +1767,7 @@ export default function Borrowing() {
         }
 
         if (rowCount > 1) {
-          const mergedColumns = ["name", "studentId", "role", "status", "date", "returnedAt"]
+          const mergedColumns = ["name", "studentId", "role", "status", "date", "expectedReturnAt", "returnedAt"]
             .map((key) => columns.findIndex((column) => column.key === key))
             .filter((colIndex) => colIndex >= 0);
 
@@ -2468,6 +2502,21 @@ export default function Borrowing() {
   const confirmBorrow = async () => {
     if (savingBorrow) return;
 
+    // ── Compute timestamps ────────────────────────────────────
+    const borrowDate = form.borrowDate
+      ? new Date(form.borrowDate)
+      : new Date();
+
+    let expectedReturnAt = null;
+    if (form.expectedReturnAt) {
+      // User provided a return date — set to end of that day
+      expectedReturnAt = new Date(form.expectedReturnAt + "T23:59:59");
+    } else {
+      // Default: 3 days from borrow date
+      expectedReturnAt = new Date(borrowDate.getTime() + 3 * 24 * 60 * 60 * 1000);
+      expectedReturnAt.setHours(23, 59, 59, 0);
+    }
+
     setSavingBorrow(true);
     showGlobalLoader("Processing borrow...");
     try {
@@ -2574,6 +2623,7 @@ export default function Borrowing() {
           borrowerIdNumber: form.studentId.trim(),
           borrowerRole: form.role,
           items: borrowingItems,
+          expectedReturnAt: expectedReturnAt.toISOString(),
         });
 
         setData((prev) => [savedRecord, ...prev]);
@@ -2881,6 +2931,17 @@ export default function Borrowing() {
               <button
                 type="button"
                 onClick={() => {
+                  const now = new Date();
+                  const threeDays = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+                  // Format for datetime-local: YYYY-MM-DDTHH:mm
+                  const pad = (n) => String(n).padStart(2, "0");
+                  const borrowDateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                  const returnDateStr = `${threeDays.getFullYear()}-${pad(threeDays.getMonth() + 1)}-${pad(threeDays.getDate())}`;
+                  setForm((prev) => ({
+                    ...prev,
+                    borrowDate: borrowDateStr,
+                    expectedReturnAt: returnDateStr,
+                  }));
                   setShowModal(true);
                   setActiveStep(1);
                   setBorrowCart([]);
@@ -3114,10 +3175,10 @@ export default function Borrowing() {
                             {[
                               "Borrower",
                               "Borrowed At",
+                              "Expected Return",
                               "Returned At",
                               "Items",
                               "Quantity",
-                              //"Return Condition",
                             ].map((h) => (
                               <th
                                 key={h}
@@ -3153,6 +3214,13 @@ export default function Borrowing() {
                                 <td className="px-4 py-3 text-sm text-slate-600">
                                   <div>{formatExportDate(record.date)}</div>
                                   <div className="text-xs text-slate-400">{formatExportTime(record.date)}</div>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  {record.expectedReturnAt ? (
+                                    <div>{formatExportDate(record.expectedReturnAt)}</div>
+                                  ) : (
+                                    <span className="text-xs text-slate-400">—</span>
+                                  )}
                                 </td>
                                 <td className="px-4 py-3 text-sm text-slate-600">
                                   {record.returnedAt ? (
@@ -3555,6 +3623,12 @@ export default function Borrowing() {
                       <p className="mt-0.5 text-base font-semibold text-slate-900">{formatExportDate(selectedRecord.date)}</p>
                       <p className="text-sm text-slate-400">{formatExportTime(selectedRecord.date)}</p>
                     </div>
+                    {selectedRecord.expectedReturnAt && (
+                      <div>
+                        <p className="text-xs font-medium text-slate-400">Expected Return</p>
+                        <p className="mt-0.5 text-base font-semibold text-slate-900">{formatExportDate(selectedRecord.expectedReturnAt)}</p>
+                      </div>
+                    )}
                     {selectedRecord.returnedAt ? (
                       <div>
                         <p className="text-xs font-medium text-slate-400">Returned At</p>
@@ -4193,6 +4267,263 @@ export default function Borrowing() {
                         <p id="role-error" className="mt-1 text-xs font-medium text-destructive">{formErrors.role}</p>
                       )}
                     </div>
+
+                    {/* ── Time Frame ─────────────────────────────────────── */}
+                    <div className="pt-2 border-t border-slate-200">
+                      <p className="text-sm font-medium text-slate-700 mb-3">Time Frame</p>
+                      <div className="grid grid-cols-2 gap-3">
+
+                        {/* ── Borrow Date & Time ── */}
+                        <div>
+                          <Label className="mb-1 block text-sm font-medium text-slate-700">
+                            Borrow Date &amp; Time
+                          </Label>
+                          <div ref={borrowDatePickerRef} className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setShowBorrowDatePicker((open) => !open)}
+                              className="flex w-full items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm shadow-sm transition hover:border-slate-300 focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20 h-10"
+                            >
+                              <CalendarIcon className="h-4 w-4 shrink-0 text-slate-400" />
+                              <span className={`flex-1 truncate ${form.borrowDate ? "text-slate-700 font-medium" : "text-slate-400"}`}>
+                                {form.borrowDate
+                                  ? new Date(form.borrowDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                  : "Select date & time"}
+                              </span>
+                              <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showBorrowDatePicker ? "rotate-180" : ""}`} />
+                            </button>
+
+                            {showBorrowDatePicker && (
+                              <div className="absolute left-1/2 top-full z-[100] mt-3 w-[360px] -translate-x-1/2 rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_24px_80px_rgba(15,23,42,0.18)] ring-1 ring-white/60 backdrop-blur-sm">
+                                {/* Header */}
+                                <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
+                                  <CalendarIcon className="h-4 w-4 text-slate-400" />
+                                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Borrow Date &amp; Time</span>
+                                </div>
+
+                                {/* Calendar */}
+                                <div className="px-3 pt-2">
+                                  <DayPicker
+                                    className="rdp-sidebar-picker text-sm"
+                                    mode="single"
+                                    selected={form.borrowDate ? new Date(form.borrowDate) : undefined}
+                                    onSelect={(date) => {
+                                      if (date) {
+                                        const pad = (n) => String(n).padStart(2, "0");
+                                        const now = new Date(form.borrowDate ? new Date(form.borrowDate) : new Date());
+                                        const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                                        const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${timeStr}`;
+                                        setForm({ ...form, borrowDate: dateStr });
+                                      }
+                                    }}
+                                  />
+                                </div>
+
+                                {/* Time selector — Hour / Minute / AM-PM */}
+                                <div className="border-t border-slate-100 px-4 py-3">
+                                  <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Time</p>
+                                  <div className="flex items-center gap-2">
+                                    {/* Hour */}
+                                    <div className="relative flex-1">
+                                      <select
+                                        value={form.borrowDate ? String(new Date(form.borrowDate).getHours()).padStart(2, "0") : "08"}
+                                        onChange={(e) => {
+                                          const pad = (n) => String(n).padStart(2, "0");
+                                          const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
+                                          base.setHours(parseInt(e.target.value));
+                                          const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
+                                          setForm({ ...form, borrowDate: dateStr });
+                                        }}
+                                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 pr-8 text-center text-sm font-semibold text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+                                      >
+                                        {Array.from({ length: 12 }, (_, i) => {
+                                          const v = String(i + 1).padStart(2, "0");
+                                          return <option key={i} value={v}>{v}</option>;
+                                        })}
+                                      </select>
+                                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                                    </div>
+
+                                    <span className="text-lg font-bold text-slate-300">:</span>
+
+                                    {/* Minute */}
+                                    <div className="relative flex-1">
+                                      <select
+                                        value={form.borrowDate ? String(new Date(form.borrowDate).getMinutes()).padStart(2, "0") : "00"}
+                                        onChange={(e) => {
+                                          const pad = (n) => String(n).padStart(2, "0");
+                                          const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
+                                          base.setMinutes(parseInt(e.target.value));
+                                          const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
+                                          setForm({ ...form, borrowDate: dateStr });
+                                        }}
+                                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 pr-8 text-center text-sm font-semibold text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+                                      >
+                                        {Array.from({ length: 60 }, (_, i) => {
+                                          const v = String(i).padStart(2, "0");
+                                          return <option key={i} value={v}>{v}</option>;
+                                        })}
+                                      </select>
+                                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                                    </div>
+
+                                    {/* AM / PM */}
+                                    <div className="relative w-20">
+                                      <select
+                                        value={form.borrowDate ? (new Date(form.borrowDate).getHours() >= 12 ? "PM" : "AM") : "AM"}
+                                        onChange={(e) => {
+                                          const pad = (n) => String(n).padStart(2, "0");
+                                          const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
+                                          const wasPM = base.getHours() >= 12;
+                                          const goingPM = e.target.value === "PM";
+                                          if (wasPM && !goingPM) base.setHours(base.getHours() - 12);
+                                          else if (!wasPM && goingPM) base.setHours(base.getHours() + 12);
+                                          const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
+                                          setForm({ ...form, borrowDate: dateStr });
+                                        }}
+                                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 pr-8 text-center text-sm font-semibold text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
+                                      >
+                                        <option value="AM">AM</option>
+                                        <option value="PM">PM</option>
+                                      </select>
+                                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Footer */}
+                                <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setForm({ ...form, borrowDate: "" })}
+                                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                                  >
+                                    Clear
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowBorrowDatePicker(false)}
+                                    className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]"
+                                  >
+                                    Done
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <p className="mt-1 text-xs text-slate-400">Defaults to current date &amp; time</p>
+                        </div>
+
+                        {/* ── Expected Return Date ── */}
+                        <div>
+                          <Label className="mb-1 block text-sm font-medium text-slate-700">
+                            Expected Return Date
+                          </Label>
+                          <div ref={returnDatePickerRef} className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setShowReturnDatePicker((open) => !open)}
+                              className="flex w-full items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm shadow-sm transition hover:border-slate-300 focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20 h-10"
+                            >
+                              <CalendarIcon className="h-4 w-4 shrink-0 text-slate-400" />
+                              <span className={`flex-1 truncate ${form.expectedReturnAt ? "text-slate-700 font-medium" : "text-slate-400"}`}>
+                                {form.expectedReturnAt
+                                  ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                  : "Select return date"}
+                              </span>
+                              <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showReturnDatePicker ? "rotate-180" : ""}`} />
+                            </button>
+
+                            {showReturnDatePicker && (
+                              <div className="absolute left-1/2 top-full z-[100] mt-3 w-[320px] -translate-x-1/2 rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_24px_80px_rgba(15,23,42,0.18)] ring-1 ring-white/60 backdrop-blur-sm">
+                                {/* Header */}
+                                <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
+                                  <CalendarIcon className="h-4 w-4 text-slate-400" />
+                                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Expected Return Date</span>
+                                </div>
+
+                                {/* Calendar */}
+                                <div className="px-3 pt-2">
+                                  <DayPicker
+                                    className="rdp-sidebar-picker text-sm"
+                                    mode="single"
+                                    selected={form.expectedReturnAt ? new Date(form.expectedReturnAt + "T00:00:00") : undefined}
+                                    onSelect={(date) => {
+                                      if (date) {
+                                        const y = date.getFullYear();
+                                        const m = String(date.getMonth() + 1).padStart(2, "0");
+                                        const d = String(date.getDate()).padStart(2, "0");
+                                        setForm({ ...form, expectedReturnAt: `${y}-${m}-${d}` });
+                                      }
+                                      setShowReturnDatePicker(false);
+                                    }}
+                                    fromDate={new Date()}
+                                    footer={
+                                      form.expectedReturnAt
+                                        ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                        : ""
+                                    }
+                                  />
+                                </div>
+
+                                {/* Quick date presets */}
+                                <div className="border-t border-slate-100 px-4 py-2.5">
+                                  <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Quick Select</p>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {[
+                                      { label: "3 days", days: 3 },
+                                      { label: "1 week", days: 7 },
+                                      { label: "2 weeks", days: 14 },
+                                      { label: "1 month", days: 30 },
+                                    ].map((preset) => (
+                                      <button
+                                        key={preset.label}
+                                        type="button"
+                                        onClick={() => {
+                                          const d = new Date();
+                                          d.setDate(d.getDate() + preset.days);
+                                          const y = d.getFullYear();
+                                          const m = String(d.getMonth() + 1).padStart(2, "0");
+                                          const dd = String(d.getDate()).padStart(2, "0");
+                                          setForm({ ...form, expectedReturnAt: `${y}-${m}-${dd}` });
+                                          setShowReturnDatePicker(false);
+                                        }}
+                                        className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 transition hover:border-[#4a1111]/30 hover:bg-[#4a1111]/5 hover:text-[#4a1111]"
+                                      >
+                                        {preset.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* Footer */}
+                                <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setForm({ ...form, expectedReturnAt: "" });
+                                      setShowReturnDatePicker(false);
+                                    }}
+                                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                                  >
+                                    Clear
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowReturnDatePicker(false)}
+                                    className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]"
+                                  >
+                                    Done
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <p className="mt-1 text-xs text-slate-400">Defaults to 3 days from borrow date</p>
+                        </div>
+
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -4626,6 +4957,37 @@ export default function Borrowing() {
                           <div>
                             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Role</p>
                             <p className="mt-1 text-sm font-semibold text-slate-800">{form.role}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Time Frame Block */}
+                    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                      <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
+                        <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">Time Frame</h3>
+                      </div>
+                      <div className="px-5 py-4">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Borrow Date &amp; Time</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-800">
+                              {form.borrowDate
+                                ? new Date(form.borrowDate).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                                : new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Expected Return</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-800">
+                              {form.expectedReturnAt
+                                ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                : (() => {
+                                    const d = new Date();
+                                    d.setDate(d.getDate() + 3);
+                                    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                                  })()}
+                            </p>
                           </div>
                         </div>
                       </div>

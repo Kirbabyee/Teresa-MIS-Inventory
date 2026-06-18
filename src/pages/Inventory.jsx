@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Edit, MoreVertical, Plus, Trash2, X, CheckCircle, Monitor, Armchair, Wrench, FileText, Box, Tv, Cable, ChevronLeft, ChevronRight, Columns2, FolderOpen, LayoutTemplate } from "lucide-react";
+import { Edit, MoreVertical, Plus, Trash2, X, CheckCircle, Monitor, Armchair, Wrench, FileText, Box, Tv, Cable, ChevronLeft, ChevronRight, Columns2, FolderOpen, LayoutTemplate, Upload, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,26 +75,13 @@ const getTabRoute = (tab) => {
 // Pre-built templates for common inventory types
 const INVENTORY_TEMPLATES = [
   {
-    id: "computer-lab",
-    name: "Computer Lab",
-    description: "Track computers and peripherals in a lab setting",
-    icon: Monitor,
-    sections: [
-      { name: "Desktops", description: "Desktop computers" },
-      { name: "Laptops", description: "Portable computers" },
-      { name: "Peripherals", description: "Monitors, keyboards, mice" },
-    ],
-    columns: [
-      { key: "computer_number", label: "Computer #", data_type: "int" },
-      { key: "type", label: "Type", data_type: "text", options: ["Desktop", "Laptop", "All-in-One"] },
-      { key: "brand", label: "Brand", data_type: "text" },
-      { key: "model", label: "Model", data_type: "text" },
-      { key: "serial_number", label: "Serial Number", data_type: "text" },
-      { key: "processor", label: "Processor", data_type: "text" },
-      { key: "ram", label: "RAM", data_type: "text" },
-      { key: "storage", label: "Storage", data_type: "text" },
-      { key: "status", label: "Status", data_type: "text", options: ["Working", "Defective", "Missing"] },
-    ],
+    id: "import-csv",
+    name: "Import CSV / File",
+    description: "Upload a CSV or Excel file to auto-create your inventory structure",
+    icon: Upload,
+    sections: [],
+    columns: [],
+    isImportTemplate: true,
   },
   {
     id: "furniture",
@@ -959,15 +946,31 @@ function TabModal({ tab, onClose, onSave }) {
   const [wizardStep, setWizardStep] = useState(tab?.id ? 4 : 1);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
 
+  // CSV / File import state
+  const [importFile, setImportFile] = useState(null);
+  const [importPreview, setImportPreview] = useState(null); // { headers: string[], rows: string[][] }
+  const [importError, setImportError] = useState("");
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef(null);
+
   const isNewTab = !tab?.id;
+  const isImportTemplate = selectedTemplate?.isImportTemplate === true;
   const STEPS = isNewTab
-    ? [
-      { num: 1, label: "Choose Template" },
-      { num: 2, label: "Basic Info" },
-      { num: 3, label: "Sections" },
-      { num: 4, label: "Columns" },
-      { num: 5, label: "Review" },
-    ]
+    ? isImportTemplate
+      ? [
+        { num: 1, label: "Choose Template" },
+        { num: 2, label: "Basic Info" },
+        { num: 3, label: "Upload File" },
+        { num: 4, label: "Map Columns" },
+        { num: 5, label: "Review" },
+      ]
+      : [
+        { num: 1, label: "Choose Template" },
+        { num: 2, label: "Basic Info" },
+        { num: 3, label: "Sections" },
+        { num: 4, label: "Columns" },
+        { num: 5, label: "Review" },
+      ]
     : [
       { num: 1, label: "Basic Info" },
       { num: 2, label: "Sections" },
@@ -976,13 +979,21 @@ function TabModal({ tab, onClose, onSave }) {
     ];
 
   const stepIcons = isNewTab
-    ? [
-      { key: "template", Icon: LayoutTemplate },
-      { key: "basic", Icon: FileText },
-      { key: "sections", Icon: FolderOpen },
-      { key: "columns", Icon: Columns2 },
-      { key: "review", Icon: CheckCircle },
-    ]
+    ? isImportTemplate
+      ? [
+        { key: "template", Icon: LayoutTemplate },
+        { key: "basic", Icon: FileText },
+        { key: "upload", Icon: Upload },
+        { key: "columns", Icon: Columns2 },
+        { key: "review", Icon: CheckCircle },
+      ]
+      : [
+        { key: "template", Icon: LayoutTemplate },
+        { key: "basic", Icon: FileText },
+        { key: "sections", Icon: FolderOpen },
+        { key: "columns", Icon: Columns2 },
+        { key: "review", Icon: CheckCircle },
+      ]
     : [
       { key: "basic", Icon: FileText },
       { key: "sections", Icon: FolderOpen },
@@ -1000,9 +1011,16 @@ function TabModal({ tab, onClose, onSave }) {
       return name && hasOnlyLettersNumbers(name);
     }
     if (currentStep === 3) {
+      if (isImportTemplate) {
+        return importPreview !== null && importPreview.headers.length > 0;
+      }
       return sections.length > 0;
     }
-    if (currentStep === 4 && isNewTab) {
+    if (currentStep === 4) {
+      if (isImportTemplate) {
+        // In import template, step 4 is review — always allow
+        return true;
+      }
       return columns.length > 0;
     }
     return true;
@@ -1013,6 +1031,11 @@ function TabModal({ tab, onClose, onSave }) {
     if (template.id === "custom") {
       setSections([]);
       setColumns([]);
+    } else if (template.isImportTemplate) {
+      setSections([]);
+      setColumns([]);
+      setImportPreview(null);
+      setImportFile(null);
     } else {
       setSections(template.sections.map((s, i) => ({ ...s, sort_order: i + 1 })));
       setColumns(template.columns);
@@ -1020,7 +1043,117 @@ function TabModal({ tab, onClose, onSave }) {
     setWizardStep(2);
   };
 
+  // ── CSV / File import helpers ──
+  const parseCSV = (text) => {
+    const lines = text.split(/\r?\n/).filter((line) => line.trim());
+    if (lines.length === 0) return { headers: [], rows: [] };
+
+    const parseLine = (line) => {
+      const result = [];
+      let current = "";
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === "," && !inQuotes) {
+          result.push(current.trim());
+          current = "";
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+
+    const headers = parseLine(lines[0]);
+    const rows = lines.slice(1, 6).map(parseLine); // preview first 5 data rows
+    return { headers, rows };
+  };
+
+  const handleImportFile = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImportError("");
+    setImportPreview(null);
+    setImportFile(file);
+
+    const isCSV = file.name.toLowerCase().endsWith(".csv");
+    const isExcel = file.name.toLowerCase().endsWith(".xlsx") || file.name.toLowerCase().endsWith(".xls");
+
+    if (!isCSV && !isExcel) {
+      setImportError("Please upload a .csv, .xlsx, or .xls file.");
+      return;
+    }
+
+    if (isCSV) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const text = e.target?.result;
+          if (typeof text !== "string") {
+            setImportError("Failed to read file.");
+            return;
+          }
+          const parsed = parseCSV(text);
+          if (parsed.headers.length === 0) {
+            setImportError("No headers found in the CSV file.");
+            return;
+          }
+          setImportPreview(parsed);
+        } catch {
+          setImportError("Failed to parse CSV file.");
+        }
+      };
+      reader.onerror = () => setImportError("Failed to read file.");
+      reader.readAsText(file);
+    } else {
+      // For Excel files, we parse as CSV by reading the first sheet
+      // Since we can't add a heavy dependency, we'll instruct the user to save as CSV
+      setImportError("For Excel files, please save as .csv format first, or use the CSV upload option.");
+    }
+
+    // Reset input so the same file can be re-selected
+    event.target.value = "";
+  };
+
+  const applyImportToWizard = () => {
+    if (!importPreview) return;
+
+    const headerToKey = (h) =>
+      h.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+
+    // Use first header as the section name, rest become columns
+    // Or: create one section and all headers become columns
+    const sectionName = tabForm.name.trim() || "Imported Section";
+    const newSections = [{ name: sectionName, description: "Imported from file", sort_order: 1 }];
+    const newColumns = importPreview.headers.map((header) => ({
+      key: headerToKey(header),
+      label: header,
+      data_type: "text",
+      visible: true,
+      fieldType: "text",
+      options: [],
+    }));
+
+    setSections(newSections);
+    setColumns(newColumns);
+  };
+
   const handleNext = () => {
+    // If on the import step (step 3) and using import template, apply the import before moving on
+    if (isNewTab && wizardStep === 3 && selectedTemplate?.isImportTemplate) {
+      if (importPreview && importPreview.headers.length > 0) {
+        applyImportToWizard();
+      }
+    }
     if (wizardStep < STEPS.length) {
       setWizardStep((step) => step + 1);
     }
@@ -1357,9 +1490,13 @@ function TabModal({ tab, onClose, onSave }) {
                     : wizardStep === 2
                       ? "Give your inventory a name"
                       : wizardStep === 3
-                        ? "Organize items into sections"
+                        ? isImportTemplate
+                          ? "Upload a CSV file to import your inventory structure"
+                          : "Organize items into sections"
                         : wizardStep === 4
-                          ? "Define what information to track"
+                          ? isImportTemplate
+                            ? "Review auto-mapped columns from your file"
+                            : "Define what information to track"
                           : "Review and save your inventory"}
                 </p>
               )}
@@ -1382,9 +1519,14 @@ function TabModal({ tab, onClose, onSave }) {
                       {template.icon && <template.icon className="mb-2 h-8 w-8 text-slate-600" />}
                       <h4 className="font-semibold text-slate-900">{template.name}</h4>
                       <p className="mt-1 text-sm text-slate-500">{template.description}</p>
-                      {template.id !== "custom" && (
+                      {template.id !== "custom" && !template.isImportTemplate && (
                         <span className="mt-3 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
                           {template.sections.length} sections, {template.columns.length} columns
+                        </span>
+                      )}
+                      {template.isImportTemplate && (
+                        <span className="mt-3 rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-600">
+                          CSV / Excel upload
                         </span>
                       )}
                     </button>
@@ -1436,128 +1578,327 @@ function TabModal({ tab, onClose, onSave }) {
               </div>
             )}
 
+            {/* Step 3: Sections (normal) or Upload File (import template) */}
             {((!isNewTab) || wizardStep === 3 || wizardStep === 5) && tabType === "legacy" && (
               <div className="border-t border-slate-200 px-5 py-5">
-                <div className="flex items-center justify-between gap-3">
+                {isNewTab && isImportTemplate && wizardStep === 3 ? (
+                  // ── File Upload UI for Import Template ──
                   <div>
-                    <h4 className="text-sm font-semibold text-slate-900">Sections</h4>
-                    {hasUserInteracted && tabValidation.sections ? (
-                      <p className="mt-1 text-sm text-rose-600">{tabValidation.sections}</p>
-                    ) : null}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSectionToEdit(null);
-                      setEditingSectionIndex(null);
-                      setShowSectionModal(true);
-                    }}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add Section
-                  </button>
-                </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900">Upload File</h4>
+                        <p className="mt-1 text-xs text-slate-500">Upload a CSV file. Column headers will become your inventory fields.</p>
+                      </div>
+                    </div>
 
-                <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                  <table className="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      <tr>
-                        <th className="px-4 py-3">Section Name</th>
-                        <th className="px-4 py-3">Description</th>
-                        <th className="px-4 py-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {sections.length === 0 ? (
-                        <tr>
-                          <td className="px-4 py-8 text-center text-slate-500" colSpan={3}>
-                            Add atleast one or more sections.
-                          </td>
-                        </tr>
-                      ) : (
-                        sections.map((currentSection, index) => (
-                          <tr key={currentSection.id || currentSection.slug || index} className="even:bg-slate-50/50 hover:bg-slate-50">
-                            <td className="px-4 py-3 font-medium text-slate-900">{currentSection.name}</td>
-                            <td className="px-4 py-3 text-slate-600">{currentSection.description || "—"}</td>
-                            <td className="px-4 py-3">
-                              <div className="flex justify-end gap-2">
-                                <button type="button" onClick={() => editSection(index)} className={iconButtonClass} title="Edit Section">
-                                  <Edit className="h-4 w-4" />
-                                </button>
-                                <button type="button" onClick={() => deleteSection(index)} className={iconButtonClass} title="Delete Section">
-                                  <Trash2 className="h-4 w-4 text-rose-500" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
+                    {/* Drop zone */}
+                    <div
+                      className="mt-4 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center transition hover:border-[#4a1111] hover:bg-rose-50/30 cursor-pointer"
+                      onClick={() => fileInputRef.current?.click()}
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) {
+                          const fakeEvent = { target: { files: [file], value: "" } };
+                          handleImportFile(fakeEvent);
+                        }
+                      }}
+                    >
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".csv,.xlsx,.xls"
+                        onChange={handleImportFile}
+                        className="hidden"
+                      />
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100">
+                        <FileSpreadsheet className="h-7 w-7 text-slate-500" />
+                      </div>
+                      <p className="mt-3 text-sm font-medium text-slate-700">
+                        {importFile ? importFile.name : "Click to upload or drag & drop"}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-400">Supports .csv files (max 10MB)</p>
+                      {importFile && !importError && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fileInputRef.current?.click();
+                          }}
+                          className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                        >
+                          Choose different file
+                        </button>
                       )}
-                    </tbody>
+                    </div>
+
+                    {/* Error message */}
+                    {importError && (
+                      <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                        {importError}
+                      </div>
+                    )}
+
+                    {/* Preview table */}
+                    {importPreview && importPreview.headers.length > 0 && (
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <h5 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            Preview — {importPreview.headers.length} columns found
+                          </h5>
+                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                            {importPreview.headers.length} fields mapped
+                          </span>
+                        </div>
+                        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                          <table className="min-w-full divide-y divide-slate-200 text-sm">
+                            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                              <tr>
+                                {importPreview.headers.map((header, i) => (
+                                  <th key={i} className="px-4 py-3 whitespace-nowrap">
+                                    {header}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 bg-white">
+                              {importPreview.rows.map((row, rowIdx) => (
+                                <tr key={rowIdx} className="even:bg-slate-50/50">
+                                  {importPreview.headers.map((_, colIdx) => (
+                                    <td key={colIdx} className="px-4 py-2 text-slate-600 whitespace-nowrap">
+                                      {row[colIdx] || "—"}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <p className="mt-2 text-xs text-slate-400">
+                          These column headers will be used as your inventory fields. You can review and edit them in the next step.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  // ── Normal Sections UI ──
+                  <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900">Sections</h4>
+                        {hasUserInteracted && tabValidation.sections ? (
+                          <p className="mt-1 text-sm text-rose-600">{tabValidation.sections}</p>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSectionToEdit(null);
+                          setEditingSectionIndex(null);
+                          setShowSectionModal(true);
+                        }}
+                        className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add Section
+                      </button>
+                    </div>
+
+                    <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                      <table className="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          <tr>
+                            <th className="px-4 py-3">Section Name</th>
+                            <th className="px-4 py-3">Description</th>
+                            <th className="px-4 py-3 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {sections.length === 0 ? (
+                            <tr>
+                              <td className="px-4 py-8 text-center text-slate-500" colSpan={3}>
+                                Add atleast one or more sections.
+                              </td>
+                            </tr>
+                          ) : (
+                            sections.map((currentSection, index) => (
+                              <tr key={currentSection.id || currentSection.slug || index} className="even:bg-slate-50/50 hover:bg-slate-50">
+                                <td className="px-4 py-3 font-medium text-slate-900">{currentSection.name}</td>
+                                <td className="px-4 py-3 text-slate-600">{currentSection.description || "—"}</td>
+                                <td className="px-4 py-3">
+                                  <div className="flex justify-end gap-2">
+                                    <button type="button" onClick={() => editSection(index)} className={iconButtonClass} title="Edit Section">
+                                      <Edit className="h-4 w-4" />
+                                    </button>
+                                    <button type="button" onClick={() => deleteSection(index)} className={iconButtonClass} title="Delete Section">
+                                      <Trash2 className="h-4 w-4 text-rose-500" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
                   </table>
                 </div>
+              </div>
+              )}
               </div>
             )}
 
             {((isNewTab && wizardStep >= 4) || !isNewTab) && tabType === "legacy" && (
               <div className="border-t border-slate-200 px-5 py-5">
-                <div className="flex items-center justify-between gap-3">
+                {isNewTab && isImportTemplate ? (
+                  // ── Import Template: Mapped Columns Review ──
                   <div>
-                    <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
-                    {hasUserInteracted && tabValidation.columns ? (
-                      <p className="mt-1 text-sm text-rose-600">{tabValidation.columns}</p>
-                    ) : null}
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900">Mapped Columns</h4>
+                        <p className="mt-1 text-xs text-slate-500">These fields were detected from your file. Toggle visibility or remove columns you don't need.</p>
+                      </div>
+                      <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                        {columns.length} fields
+                      </span>
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                      {columns.map((col, index) => (
+                        <div
+                          key={col.key || index}
+                          className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <FileText className="h-4 w-4 text-slate-400" />
+                            <div>
+                              <p className="text-sm font-medium text-slate-800">{col.label}</p>
+                              <p className="text-xs text-slate-400">key: {col.key}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-500">
+                              <Checkbox
+                                checked={col.visible !== false}
+                                onCheckedChange={(checked) => {
+                                  setColumns((prev) =>
+                                    prev.map((c, i) => (i === index ? { ...c, visible: !!checked } : c))
+                                  );
+                                }}
+                                className="h-3.5 w-3.5 border-slate-300 data-[state=checked]:bg-[#4a1111] data-[state=checked]:border-[#4a1111]"
+                              />
+                              Visible
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setColumns((prev) => prev.filter((_, i) => i !== index));
+                              }}
+                              className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-500"
+                              title="Remove column"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {columns.length === 0 && (
+                      <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 py-8 text-center">
+                        <p className="text-sm text-slate-500">No columns mapped. Go back to upload a file.</p>
+                      </div>
+                    )}
+
+                    {importPreview && importPreview.rows.length > 0 && (
+                      <div className="mt-5">
+                        <h5 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 mb-2">Data Preview</h5>
+                        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                          <table className="min-w-full divide-y divide-slate-200 text-sm">
+                            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                              <tr>
+                                {columns.filter((c) => c.visible !== false).map((col, i) => (
+                                  <th key={i} className="px-4 py-3 whitespace-nowrap">{col.label}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 bg-white">
+                              {importPreview.rows.slice(0, 3).map((row, rowIdx) => (
+                                <tr key={rowIdx} className="even:bg-slate-50/50">
+                                  {columns.filter((c) => c.visible !== false).map((col, colIdx) => (
+                                    <td key={colIdx} className="px-4 py-2 text-slate-600 whitespace-nowrap">
+                                      {row[colIdx] || "—"}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setColumnToEdit(null);
-                      setEditingColumnIndex(null);
-                      setShowColumnModal(true);
-                    }}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add Column
-                  </button>
-                </div>
+                ) : (
+                  // ── Normal Columns Editor ──
+                  <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
+                        {hasUserInteracted && tabValidation.columns ? (
+                          <p className="mt-1 text-sm text-rose-600">{tabValidation.columns}</p>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setColumnToEdit(null);
+                          setEditingColumnIndex(null);
+                          setShowColumnModal(true);
+                        }}
+                        className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add Column
+                      </button>
+                    </div>
 
-                <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                  <table className="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      <tr>
-
-                        <th className="px-4 py-3">Name</th>
-                        <th className="px-4 py-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {columns.length === 0 ? (
-                        <tr>
-                          <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
-                            Add at least one column.
-                          </td>
-                        </tr>
-                      ) : (
-                        columns.map((currentColumn, index) => (
-                          <tr key={currentColumn.id || currentColumn.key || index} className="even:bg-slate-50/50 hover:bg-slate-50">
-                            <td className="px-4 py-3 text-slate-600">{currentColumn.label}</td>
-                            <td className="px-4 py-3">
-                              <div className="flex justify-end gap-2">
-                                <button type="button" onClick={() => editColumn(index)} className={iconButtonClass} title="Edit Column">
-                                  <Edit className="h-4 w-4" />
-                                </button>
-                                <button type="button" onClick={() => deleteColumn(index)} className={iconButtonClass} title="Delete Column">
-                                  <Trash2 className="h-4 w-4 text-rose-500" />
-                                </button>
-                              </div>
-                            </td>
+                    <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                      <table className="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          <tr>
+                            <th className="px-4 py-3">Name</th>
+                            <th className="px-4 py-3 text-right">Actions</th>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {columns.length === 0 ? (
+                            <tr>
+                              <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
+                                Add at least one column.
+                              </td>
+                            </tr>
+                          ) : (
+                            columns.map((currentColumn, index) => (
+                              <tr key={currentColumn.id || currentColumn.key || index} className="even:bg-slate-50/50 hover:bg-slate-50">
+                                <td className="px-4 py-3 text-slate-600">{currentColumn.label}</td>
+                                <td className="px-4 py-3">
+                                  <div className="flex justify-end gap-2">
+                                    <button type="button" onClick={() => editColumn(index)} className={iconButtonClass} title="Edit Column">
+                                      <Edit className="h-4 w-4" />
+                                    </button>
+                                    <button type="button" onClick={() => deleteColumn(index)} className={iconButtonClass} title="Delete Column">
+                                      <Trash2 className="h-4 w-4 text-rose-500" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
