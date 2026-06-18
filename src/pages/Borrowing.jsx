@@ -1110,7 +1110,7 @@ const ItemCard = ({
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
       {/* ── Header strip ─────────────────────────────────────────── */}
       <div className="bg-slate-50/60 border-b border-slate-100 px-5 py-4">
         <div className="flex items-center gap-3 min-w-0">
@@ -3691,7 +3691,7 @@ export default function Borrowing() {
                 const hasSegregation = borrowedItems.length > 0 && returnedItems.length > 0;
 
                 return (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-6">
+                  <div className="rounded-lg border border-slate-200 bg-white p-6">
                     <div className="mb-6">
                       <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Items
@@ -4417,7 +4417,6 @@ export default function Borrowing() {
                               </>
                             )}
                           </div>
-                          <p className="mt-1 text-xs text-slate-400">Defaults to current date &amp; time</p>
                         </div>
 
                         {/* ── Expected Return Date ── */}
@@ -4503,7 +4502,6 @@ export default function Borrowing() {
                               </>
                             )}
                           </div>
-                          <p className="mt-1 text-xs text-slate-400">Defaults to 3 days from borrow date</p>
                         </div>
 
                       </div>
