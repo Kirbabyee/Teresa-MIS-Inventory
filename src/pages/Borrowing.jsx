@@ -2886,7 +2886,7 @@ export default function Borrowing() {
                 <ChevronDown className="h-4 w-4 text-slate-400" />
               </button>
               {showDatePicker && (
-                <div className="absolute left-0 top-full z-50 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
+                <div className="absolute left-0 top-full z-50 mt-2 w-fit rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
                   <DayPicker
                     className="rdp-sidebar-picker text-sm"
                     mode="range"
@@ -3594,7 +3594,7 @@ export default function Borrowing() {
             <div className="flex-1 space-y-8 overflow-y-auto px-8 py-8 sm:px-10">
 
               {/* Transaction Overview — Borrower + Timeline */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-6">
+              <div className="rounded-lg border border-slate-200 bg-white p-6">
                 <h3 className="mb-5 text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">
                   Transaction Details
                 </h3>
@@ -4278,11 +4278,11 @@ export default function Borrowing() {
                           <Label className="mb-1 block text-sm font-medium text-slate-700">
                             Borrow Date &amp; Time
                           </Label>
-                          <div ref={borrowDatePickerRef} className="relative">
+                          <div className="relative">
                             <button
                               type="button"
                               onClick={() => setShowBorrowDatePicker((open) => !open)}
-                              className="flex w-full items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm shadow-sm transition hover:border-slate-300 focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20 h-10"
+                              className="flex w-full items-center gap-2.5 rounded-lg border border-input bg-white px-3 text-left text-sm shadow-sm transition hover:border-slate-300 h-9"
                             >
                               <CalendarIcon className="h-4 w-4 shrink-0 text-slate-400" />
                               <span className={`flex-1 truncate ${form.borrowDate ? "text-slate-700 font-medium" : "text-slate-400"}`}>
@@ -4290,125 +4290,131 @@ export default function Borrowing() {
                                   ? new Date(form.borrowDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                                   : "Select date & time"}
                               </span>
-                              <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showBorrowDatePicker ? "rotate-180" : ""}`} />
                             </button>
 
                             {showBorrowDatePicker && (
-                              <div className="absolute left-1/2 top-full z-[100] mt-3 w-[360px] -translate-x-1/2 rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_24px_80px_rgba(15,23,42,0.18)] ring-1 ring-white/60 backdrop-blur-sm">
-                                {/* Header */}
-                                <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
-                                  <CalendarIcon className="h-4 w-4 text-slate-400" />
-                                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Borrow Date &amp; Time</span>
-                                </div>
+                              <>
+                                {/* Backdrop */}
+                                <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowBorrowDatePicker(false)} />
+                                {/* Floating window */}
+                                <div className="fixed left-1/2 top-1/2 z-[201] w-[320px] -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
+                                  {/* Header */}
+                                  <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
+                                    <CalendarIcon className="h-4 w-4 text-slate-400" />
+                                    <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Borrow Date &amp; Time</span>
+                                    <button type="button" onClick={() => setShowBorrowDatePicker(false)} className="ml-auto rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
 
-                                {/* Calendar */}
-                                <div className="px-3 pt-2">
-                                  <DayPicker
-                                    className="rdp-sidebar-picker text-sm"
-                                    mode="single"
-                                    selected={form.borrowDate ? new Date(form.borrowDate) : undefined}
-                                    onSelect={(date) => {
-                                      if (date) {
-                                        const pad = (n) => String(n).padStart(2, "0");
-                                        const now = new Date(form.borrowDate ? new Date(form.borrowDate) : new Date());
-                                        const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-                                        const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${timeStr}`;
-                                        setForm({ ...form, borrowDate: dateStr });
-                                      }
-                                    }}
-                                  />
-                                </div>
-
-                                {/* Time selector — Hour / Minute / AM-PM */}
-                                <div className="border-t border-slate-100 px-4 py-3">
-                                  <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Time</p>
-                                  <div className="flex items-center gap-2">
-                                    {/* Hour */}
-                                    <div className="relative flex-1">
-                                      <select
-                                        value={form.borrowDate ? String(new Date(form.borrowDate).getHours()).padStart(2, "0") : "08"}
-                                        onChange={(e) => {
+                                  {/* Calendar */}
+                                  <div className="px-3 pt-2">
+                                    <DayPicker
+                                      className="rdp-sidebar-picker text-sm"
+                                      mode="single"
+                                      selected={form.borrowDate ? new Date(form.borrowDate) : undefined}
+                                      disabled={{ before: (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })() }}
+                                      fromDate={new Date()}
+                                      onSelect={(date) => {
+                                        if (date) {
                                           const pad = (n) => String(n).padStart(2, "0");
-                                          const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
-                                          base.setHours(parseInt(e.target.value));
-                                          const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
+                                          const now = new Date(form.borrowDate ? new Date(form.borrowDate) : new Date());
+                                          const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                                          const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${timeStr}`;
                                           setForm({ ...form, borrowDate: dateStr });
-                                        }}
-                                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 pr-8 text-center text-sm font-semibold text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
-                                      >
-                                        {Array.from({ length: 12 }, (_, i) => {
-                                          const v = String(i + 1).padStart(2, "0");
-                                          return <option key={i} value={v}>{v}</option>;
-                                        })}
-                                      </select>
-                                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                                    </div>
+                                        }
+                                      }}
+                                    />
+                                  </div>
 
-                                    <span className="text-lg font-bold text-slate-300">:</span>
+                                  {/* Time selector — Hour / Minute / AM-PM */}
+                                  <div className="border-t border-slate-100 px-4 py-3">
+                                    <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Time</p>
+                                    <div className="flex items-center gap-1.5">
+                                      {/* Hour */}
+                                      <div className="relative w-16">
+                                        <select
+                                          value={form.borrowDate ? String(new Date(form.borrowDate).getHours()).padStart(2, "0") : "08"}
+                                          onChange={(e) => {
+                                            const pad = (n) => String(n).padStart(2, "0");
+                                            const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
+                                            base.setHours(parseInt(e.target.value));
+                                            const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
+                                            setForm({ ...form, borrowDate: dateStr });
+                                          }}
+                                          className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        >
+                                          {Array.from({ length: 12 }, (_, i) => {
+                                            const v = String(i + 1).padStart(2, "0");
+                                            return <option key={i} value={v}>{v}</option>;
+                                          })}
+                                        </select>
+                                      </div>
 
-                                    {/* Minute */}
-                                    <div className="relative flex-1">
-                                      <select
-                                        value={form.borrowDate ? String(new Date(form.borrowDate).getMinutes()).padStart(2, "0") : "00"}
-                                        onChange={(e) => {
-                                          const pad = (n) => String(n).padStart(2, "0");
-                                          const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
-                                          base.setMinutes(parseInt(e.target.value));
-                                          const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
-                                          setForm({ ...form, borrowDate: dateStr });
-                                        }}
-                                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 pr-8 text-center text-sm font-semibold text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
-                                      >
-                                        {Array.from({ length: 60 }, (_, i) => {
-                                          const v = String(i).padStart(2, "0");
-                                          return <option key={i} value={v}>{v}</option>;
-                                        })}
-                                      </select>
-                                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                                    </div>
+                                      <span className="text-lg font-bold text-slate-300">:</span>
 
-                                    {/* AM / PM */}
-                                    <div className="relative w-20">
-                                      <select
-                                        value={form.borrowDate ? (new Date(form.borrowDate).getHours() >= 12 ? "PM" : "AM") : "AM"}
-                                        onChange={(e) => {
-                                          const pad = (n) => String(n).padStart(2, "0");
-                                          const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
-                                          const wasPM = base.getHours() >= 12;
-                                          const goingPM = e.target.value === "PM";
-                                          if (wasPM && !goingPM) base.setHours(base.getHours() - 12);
-                                          else if (!wasPM && goingPM) base.setHours(base.getHours() + 12);
-                                          const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
-                                          setForm({ ...form, borrowDate: dateStr });
-                                        }}
-                                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 pr-8 text-center text-sm font-semibold text-slate-700 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
-                                      >
-                                        <option value="AM">AM</option>
-                                        <option value="PM">PM</option>
-                                      </select>
-                                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                                      {/* Minute */}
+                                      <div className="relative w-16">
+                                        <select
+                                          value={form.borrowDate ? String(new Date(form.borrowDate).getMinutes()).padStart(2, "0") : "00"}
+                                          onChange={(e) => {
+                                            const pad = (n) => String(n).padStart(2, "0");
+                                            const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
+                                            base.setMinutes(parseInt(e.target.value));
+                                            const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
+                                            setForm({ ...form, borrowDate: dateStr });
+                                          }}
+                                          className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        >
+                                          {Array.from({ length: 60 }, (_, i) => {
+                                            const v = String(i).padStart(2, "0");
+                                            return <option key={i} value={v}>{v}</option>;
+                                          })}
+                                        </select>
+                                      </div>
+
+                                      {/* AM / PM */}
+                                      <div className="relative w-[60px]">
+                                        <select
+                                          value={form.borrowDate ? (new Date(form.borrowDate).getHours() >= 12 ? "PM" : "AM") : "AM"}
+                                          onChange={(e) => {
+                                            const pad = (n) => String(n).padStart(2, "0");
+                                            const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
+                                            const wasPM = base.getHours() >= 12;
+                                            const goingPM = e.target.value === "PM";
+                                            if (wasPM && !goingPM) base.setHours(base.getHours() - 12);
+                                            else if (!wasPM && goingPM) base.setHours(base.getHours() + 12);
+                                            const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
+                                            setForm({ ...form, borrowDate: dateStr });
+                                          }}
+                                          className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        >
+                                          <option value="AM">AM</option>
+                                          <option value="PM">PM</option>
+                                        </select>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
 
-                                {/* Footer */}
-                                <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => setForm({ ...form, borrowDate: "" })}
-                                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                                  >
-                                    Clear
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowBorrowDatePicker(false)}
-                                    className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]"
-                                  >
-                                    Done
-                                  </button>
+                                  {/* Footer */}
+                                  <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => setForm({ ...form, borrowDate: "" })}
+                                      className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                                    >
+                                      Clear
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowBorrowDatePicker(false)}
+                                      className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]"
+                                    >
+                                      Done
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
+                              </>
                             )}
                           </div>
                           <p className="mt-1 text-xs text-slate-400">Defaults to current date &amp; time</p>
@@ -4419,11 +4425,11 @@ export default function Borrowing() {
                           <Label className="mb-1 block text-sm font-medium text-slate-700">
                             Expected Return Date
                           </Label>
-                          <div ref={returnDatePickerRef} className="relative">
+                          <div className="relative">
                             <button
                               type="button"
                               onClick={() => setShowReturnDatePicker((open) => !open)}
-                              className="flex w-full items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm shadow-sm transition hover:border-slate-300 focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20 h-10"
+                              className="flex w-full items-center gap-2.5 rounded-lg border border-input bg-white px-3 text-left text-sm shadow-sm transition hover:border-slate-300 h-9"
                             >
                               <CalendarIcon className="h-4 w-4 shrink-0 text-slate-400" />
                               <span className={`flex-1 truncate ${form.expectedReturnAt ? "text-slate-700 font-medium" : "text-slate-400"}`}>
@@ -4431,92 +4437,70 @@ export default function Borrowing() {
                                   ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                                   : "Select return date"}
                               </span>
-                              <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showReturnDatePicker ? "rotate-180" : ""}`} />
                             </button>
 
                             {showReturnDatePicker && (
-                              <div className="absolute left-1/2 top-full z-[100] mt-3 w-[320px] -translate-x-1/2 rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_24px_80px_rgba(15,23,42,0.18)] ring-1 ring-white/60 backdrop-blur-sm">
-                                {/* Header */}
-                                <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
-                                  <CalendarIcon className="h-4 w-4 text-slate-400" />
-                                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Expected Return Date</span>
-                                </div>
+                              <>
+                                {/* Backdrop */}
+                                <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowReturnDatePicker(false)} />
+                                {/* Floating window */}
+                                <div className="fixed left-1/2 top-1/2 z-[201] w-[320px] -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
+                                  {/* Header */}
+                                  <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
+                                    <CalendarIcon className="h-4 w-4 text-slate-400" />
+                                    <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Expected Return Date</span>
+                                    <button type="button" onClick={() => setShowReturnDatePicker(false)} className="ml-auto rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
 
-                                {/* Calendar */}
-                                <div className="px-3 pt-2">
-                                  <DayPicker
-                                    className="rdp-sidebar-picker text-sm"
-                                    mode="single"
-                                    selected={form.expectedReturnAt ? new Date(form.expectedReturnAt + "T00:00:00") : undefined}
-                                    onSelect={(date) => {
-                                      if (date) {
-                                        const y = date.getFullYear();
-                                        const m = String(date.getMonth() + 1).padStart(2, "0");
-                                        const d = String(date.getDate()).padStart(2, "0");
-                                        setForm({ ...form, expectedReturnAt: `${y}-${m}-${d}` });
+                                  {/* Calendar */}
+                                  <div className="px-3 pt-2">
+                                    <DayPicker
+                                      className="rdp-sidebar-picker text-sm"
+                                      mode="single"
+                                      selected={form.expectedReturnAt ? new Date(form.expectedReturnAt + "T00:00:00") : undefined}
+                                      onSelect={(date) => {
+                                        if (date) {
+                                          const y = date.getFullYear();
+                                          const m = String(date.getMonth() + 1).padStart(2, "0");
+                                          const d = String(date.getDate()).padStart(2, "0");
+                                          setForm({ ...form, expectedReturnAt: `${y}-${m}-${d}` });
+                                        }
+                                        setShowReturnDatePicker(false);
+                                      }}
+                                      disabled={form.borrowDate ? { before: new Date(form.borrowDate) } : undefined}
+                                      fromDate={form.borrowDate ? new Date(form.borrowDate) : new Date()}
+                                      footer={
+                                        form.expectedReturnAt
+                                          ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                          : ""
                                       }
-                                      setShowReturnDatePicker(false);
-                                    }}
-                                    fromDate={new Date()}
-                                    footer={
-                                      form.expectedReturnAt
-                                        ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                                        : ""
-                                    }
-                                  />
-                                </div>
+                                    />
+                                  </div>
 
-                                {/* Quick date presets */}
-                                <div className="border-t border-slate-100 px-4 py-2.5">
-                                  <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Quick Select</p>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {[
-                                      { label: "3 days", days: 3 },
-                                      { label: "1 week", days: 7 },
-                                      { label: "2 weeks", days: 14 },
-                                      { label: "1 month", days: 30 },
-                                    ].map((preset) => (
-                                      <button
-                                        key={preset.label}
-                                        type="button"
-                                        onClick={() => {
-                                          const d = new Date();
-                                          d.setDate(d.getDate() + preset.days);
-                                          const y = d.getFullYear();
-                                          const m = String(d.getMonth() + 1).padStart(2, "0");
-                                          const dd = String(d.getDate()).padStart(2, "0");
-                                          setForm({ ...form, expectedReturnAt: `${y}-${m}-${dd}` });
-                                          setShowReturnDatePicker(false);
-                                        }}
-                                        className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 transition hover:border-[#4a1111]/30 hover:bg-[#4a1111]/5 hover:text-[#4a1111]"
-                                      >
-                                        {preset.label}
-                                      </button>
-                                    ))}
+                                  {/* Footer */}
+                                  <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setForm({ ...form, expectedReturnAt: "" });
+                                        setShowReturnDatePicker(false);
+                                      }}
+                                      className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                                    >
+                                      Clear
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowReturnDatePicker(false)}
+                                      className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]"
+                                    >
+                                      Done
+                                    </button>
                                   </div>
                                 </div>
-
-                                {/* Footer */}
-                                <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setForm({ ...form, expectedReturnAt: "" });
-                                      setShowReturnDatePicker(false);
-                                    }}
-                                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                                  >
-                                    Clear
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowReturnDatePicker(false)}
-                                    className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]"
-                                  >
-                                    Done
-                                  </button>
-                                </div>
-                              </div>
+                              </>
                             )}
                           </div>
                           <p className="mt-1 text-xs text-slate-400">Defaults to 3 days from borrow date</p>
@@ -4679,22 +4663,22 @@ export default function Borrowing() {
 
                     {/* ── Quantity Dialog (nested) ───────────────────────────── */}
                     {qtyDialogItem && (
-                      <Dialog open={!!qtyDialogItem} onOpenChange={(open) => !open && setQtyDialogItem(null)}>
-                        <DialogContent
-                          className="max-w-sm rounded-2xl p-6"
-                          onPointerDownOutside={(e) => e.preventDefault()}
-                        >
-                          <DialogHeader>
-                            <DialogTitle className="text-base font-semibold text-slate-900">How many to borrow?</DialogTitle>
-                            <DialogDescription className="mt-1 flex items-center gap-2 text-sm text-slate-500">
+                      <>
+                        {/* Backdrop — negative top extends upward to cover the gap above the modal */}
+                        <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setQtyDialogItem(null)} />
+                        {/* Floating window */}
+                        <div className="fixed left-1/2 top-1/2 z-[201] w-[320px] -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
+                          <div>
+                            <h3 className="text-base font-semibold text-slate-900">How many to borrow?</h3>
+                            <p className="mt-1 flex items-center gap-2 text-sm text-slate-500">
                               {getItemLabel(qtyDialogItem)}
                               {getItemRemark(qtyDialogItem) && (
                                 <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-600">
                                   {getItemRemark(qtyDialogItem)}
                                 </span>
                               )}
-                            </DialogDescription>
-                          </DialogHeader>
+                            </p>
+                          </div>
                           <div className="mt-4 flex flex-col items-center gap-3">
                             <span className="text-xs text-slate-400">Available: {Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 0)}</span>
                             <div className="flex items-center gap-3">
@@ -4708,7 +4692,7 @@ export default function Borrowing() {
                               >
                                 <Minus className="h-4 w-4" />
                               </Button>
-                              <Input
+                              <input
                                 type="number"
                                 min="1"
                                 max={Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1)}
@@ -4720,7 +4704,7 @@ export default function Borrowing() {
                                     setQtyDialogValue(Math.max(1, Math.min(v, max)));
                                   }
                                 }}
-                                className="no-number-spinner h-10 w-20 text-center text-lg font-semibold"
+                                className="no-number-spinner h-10 w-20 rounded-md border border-input bg-white text-center text-lg font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                               />
                               <Button
                                 type="button"
@@ -4737,7 +4721,7 @@ export default function Borrowing() {
                               </Button>
                             </div>
                           </div>
-                          <DialogFooter className="mt-5 gap-2 sm:gap-3">
+                          <div className="mt-5 flex items-center justify-end gap-2">
                             <Button
                               type="button"
                               variant="outline"
@@ -4758,9 +4742,9 @@ export default function Borrowing() {
                             >
                               Add to List
                             </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
+                          </div>
+                        </div>
+                      </>
                     )}
 
                     {/* ── Custom Item Form ───────────────────────────────────── */}
@@ -4852,14 +4836,15 @@ export default function Borrowing() {
                             Cart ({borrowCart.length} {borrowCart.length === 1 ? "item" : "items"})
                           </h3>
                         </div>
-                        <div className="grid grid-cols-[1fr_80px_120px] gap-3 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                        <div className="grid grid-cols-[1fr_80px_120px_32px] gap-3 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                           <span>Item</span>
                           <span className="text-center">Status</span>
                           <span className="text-center">Quantity</span>
+                          <span />
                         </div>
                         <div className="divide-y divide-slate-100 max-h-[180px] overflow-y-auto">
                           {borrowCart.map((item) => (
-                            <div key={item.cartId} className="grid grid-cols-[1fr_80px_120px] gap-3 items-center px-3 py-2.5">
+                            <div key={item.cartId} className="grid grid-cols-[1fr_80px_120px_32px] gap-3 items-center px-3 py-2.5">
                               <div className="min-w-0">
                                 <p className="text-sm font-medium text-slate-800 truncate">
                                   {item.label || getItemLabel(item)}
@@ -4870,45 +4855,38 @@ export default function Borrowing() {
                               </div>
                               <div className="text-center">
                                 {getItemRemark(item) ? (
-                                  <span className="rounded-md px-2 py-1 text-xs font-semibold  text-slate-600">
+                                  <span className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600">
                                     {getItemRemark(item)}
                                   </span>
                                 ) : (
                                   <span className="text-xs text-slate-400">—</span>
                                 )}
                               </div>
-                              {!item.isCustom && (
-                                <div className="flex items-center gap-1.5">
-                                  <Button
-                                    type="button"
-                                    size="icon"
-                                    variant="outline"
-                                    className="h-6 w-6 rounded-full border-slate-200"
-                                    onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)}
-                                    disabled={item.quantity <= 1}
-                                  >
-                                    <Minus className="h-3 w-3" />
-                                  </Button>
-                                  <span className="w-8 text-center text-sm font-semibold text-slate-700">
-                                    {item.quantity}
-                                  </span>
-                                  <Button
-                                    type="button"
-                                    size="icon"
-                                    variant="outline"
-                                    className="h-6 w-6 rounded-full border-slate-200"
-                                    onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)}
-                                    disabled={item.quantity >= item.maxQuantity}
-                                  >
-                                    <Plus className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              )}
-                              {item.isCustom && (
-                                <span className="px-2 py-0.5 text-sm font-semibold text-slate-600">
-                                  ×{item.quantity}
+                              <div className="flex items-center gap-1.5">
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-6 w-6 rounded-full border-slate-200"
+                                  onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)}
+                                  disabled={item.quantity <= 1}
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="w-8 text-center text-sm font-semibold text-slate-700">
+                                  {item.quantity}
                                 </span>
-                              )}
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-6 w-6 rounded-full border-slate-200"
+                                  onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)}
+                                  disabled={item.quantity >= (item.maxQuantity || 999)}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => removeFromCart(item.cartId)}
@@ -5000,14 +4978,15 @@ export default function Borrowing() {
                           Items ({borrowCart.length})
                         </h3>
                       </div>
-                      <div className="grid grid-cols-[1fr_80px_120px] gap-4 bg-slate-100 px-5 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      <div className="grid grid-cols-[1fr_80px_120px_32px] gap-4 bg-slate-100 px-5 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                         <span>Item</span>
                         <span className="text-center">Status</span>
                         <span className="text-center">Quantity</span>
+                        <span />
                       </div>
                       <div className="divide-y divide-slate-100">
                         {borrowCart.map((item) => (
-                          <div key={item.cartId} className="grid grid-cols-[1fr_80px_120px] gap-4 items-center px-5 py-3.5">
+                          <div key={item.cartId} className="grid grid-cols-[1fr_80px_120px_32px] gap-4 items-center px-5 py-3.5">
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-slate-800">{item.label || getItemLabel(item)}</p>
                               <p className="mt-0.5 text-xs text-slate-400">
@@ -5023,48 +5002,39 @@ export default function Borrowing() {
                                 <span className="text-xs text-slate-400">—</span>
                               )}
                             </div>
-                            <div className="flex items-center gap-3">
-                              {!item.isCustom && (
-                                <div className="flex items-center gap-1.5">
-                                  <Button
-                                    type="button"
-                                    size="icon"
-                                    variant="outline"
-                                    className="h-7 w-7 rounded-full border-slate-200"
-                                    onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)}
-                                    disabled={item.quantity <= 1}
-                                  >
-                                    <Minus className="h-3 w-3" />
-                                  </Button>
-                                  <span className="w-8 text-center text-sm font-semibold text-slate-700">
-                                    {item.quantity}
-                                  </span>
-                                  <Button
-                                    type="button"
-                                    size="icon"
-                                    variant="outline"
-                                    className="h-7 w-7 rounded-full border-slate-200"
-                                    onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)}
-                                    disabled={item.quantity >= item.maxQuantity}
-                                  >
-                                    <Plus className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              )}
-                              {item.isCustom && (
-                                <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                                  Qty: {item.quantity}
-                                </span>
-                              )}
-                              <button
+                            <div className="flex items-center gap-1.5">
+                              <Button
                                 type="button"
-                                onClick={() => removeFromCart(item.cartId)}
-                                className="rounded-md p-1.5 text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
-                                title="Remove item"
+                                size="icon"
+                                variant="outline"
+                                className="h-7 w-7 rounded-full border-slate-200"
+                                onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)}
+                                disabled={item.quantity <= 1}
                               >
-                                <X className="h-4 w-4" />
-                              </button>
+                                <Minus className="h-3 w-3" />
+                              </Button>
+                              <span className="w-8 text-center text-sm font-semibold text-slate-700">
+                                {item.quantity}
+                              </span>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="outline"
+                                className="h-7 w-7 rounded-full border-slate-200"
+                                onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)}
+                                disabled={item.quantity >= (item.maxQuantity || 999)}
+                              >
+                                <Plus className="h-3 w-3" />
+                              </Button>
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => removeFromCart(item.cartId)}
+                              className="rounded-md p-1.5 text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
+                              title="Remove item"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
                           </div>
                         ))}
                       </div>

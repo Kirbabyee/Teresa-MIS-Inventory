@@ -2434,7 +2434,7 @@ export default function InventorySection() {
                 <ChevronDown className="h-4 w-4 text-slate-400" />
               </button>
               {showHistoryDatePicker && (
-                <div className="absolute left-0 top-full z-50 mt-2 w-fit rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
+                <div className="absolute left-0 top-full z-50 mt-2 w-fit rounded-lg border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/90 px-2 py-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)] ring-1 ring-white/60 backdrop-blur-sm">
                   <style>{`
                     .rdp-sidebar-picker {
                       --rdp-accent-color: #4a1111;

@@ -157,6 +157,17 @@
   }
 }
 
+@keyframes calPopIn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
 /* Hide native number input spinners where unnecessary (used in borrowing modal) */
 @layer utilities {
   .no-number-spinner::-webkit-outer-spin-button,
