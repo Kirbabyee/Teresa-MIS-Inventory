@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Calendar as CalendarIcon, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Download, History, Minus, Package, Plus, Search, User, X } from "lucide-react";
+import { Calendar as CalendarIcon, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Download, History, Minus, Package, Plus, Search, Trash2, User, X } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
@@ -4965,7 +4965,7 @@ export default function Borrowing() {
                                 className="shrink-0 rounded-md p-1.5 text-rose-500 transition hover:bg-rose-50"
                                 title="Remove"
                               >
-                                <X className="h-4 w-4" />
+                                <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
                           ))}
@@ -5105,7 +5105,7 @@ export default function Borrowing() {
                               className="rounded-md p-1.5 text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
                               title="Remove item"
                             >
-                              <X className="h-4 w-4" />
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           </div>
                         ))}

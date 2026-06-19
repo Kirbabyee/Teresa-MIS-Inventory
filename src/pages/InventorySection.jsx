@@ -1257,6 +1257,7 @@ export default function InventorySection() {
   const [remarkChangeModal, setRemarkChangeModal] = useState(null);
   const [remarkSaving, setRemarkSaving] = useState(false);
   const [remarkInlineEdit, setRemarkInlineEdit] = useState(null);
+  const [defectiveConfirmModal, setDefectiveConfirmModal] = useState(null);
   // { item, currentRemark, allRemarkOptions, remarkColumnKey, quantityKey }
 
   const historyDatePickerRef = useRef(null);
@@ -1353,11 +1354,10 @@ export default function InventorySection() {
     }
   };
 
-  const handleRemarkChange = async () => {
-    if (!remarkChangeModal) return;
-    const { item, currentRemark, targetRemark, quantity, remarkColumnKey, quantityKey, itemQty } = remarkChangeModal;
+  const isDefectiveRemark = (remark) => String(remark || "").toLowerCase().includes("defective");
+
+  const executeRemarkChange = async ({ item, targetRemark, quantity, remarkColumnKey, quantityKey, itemQty }) => {
     const qty = Math.max(1, Math.floor(Number(quantity) || 1));
-    if (currentRemark === targetRemark) { setRemarkChangeModal(null); return; }
     setRemarkSaving(true);
     try {
       const newSourceQty = Math.max(0, itemQty - qty);
@@ -1438,6 +1438,18 @@ export default function InventorySection() {
       setRemarkChangeModal(null);
     } catch (err) { console.error("Remark change failed:", err); alert("Remark change failed: " + (err.message || err)); }
     finally { setRemarkSaving(false); }
+  };
+
+  const handleRemarkChange = () => {
+    if (!remarkChangeModal) return;
+    const { item, currentRemark, targetRemark, quantity, remarkColumnKey, quantityKey, itemQty } = remarkChangeModal;
+    if (currentRemark === targetRemark) { setRemarkChangeModal(null); return; }
+    if (isDefectiveRemark(targetRemark)) {
+      setDefectiveConfirmModal({ item, currentRemark, targetRemark, quantity, remarkColumnKey, quantityKey, itemQty });
+      setRemarkChangeModal(null);
+      return;
+    }
+    executeRemarkChange({ item, targetRemark, quantity, remarkColumnKey, quantityKey, itemQty });
   };
 
   useEffect(() => {
@@ -3307,6 +3319,49 @@ export default function InventorySection() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Defective Status Confirmation Modal ──────────────────────────── */}
+      <AlertDialog
+        open={Boolean(defectiveConfirmModal)}
+        onOpenChange={(open) => {
+          if (!open) setDefectiveConfirmModal(null);
+        }}
+      >
+        <AlertDialogContent className="rounded-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark item as defective?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {defectiveConfirmModal && (
+                <>
+                  This will move <strong>{defectiveConfirmModal.quantity}</strong> unit{defectiveConfirmModal.quantity > 1 ? "s" : ""} from{" "}
+                  <strong>"{defectiveConfirmModal.currentRemark}"</strong> to <strong>"{defectiveConfirmModal.targetRemark}"</strong>.
+                  <br /><br />
+                  Defective items are flagged for repair or replacement. This action cannot be undone easily.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-3 sm:gap-4">
+            <AlertDialogCancel
+              onClick={() => setDefectiveConfirmModal(null)}
+              className="rounded-lg"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (defectiveConfirmModal) {
+                  executeRemarkChange(defectiveConfirmModal);
+                  setDefectiveConfirmModal(null);
+                }
+              }}
+              className="rounded-lg bg-[#4a1111] text-white hover:bg-[#3f0f0f]"
+            >
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmExitEditMode} onOpenChange={setConfirmExitEditMode}>
         <AlertDialogContent className="rounded-xl">
