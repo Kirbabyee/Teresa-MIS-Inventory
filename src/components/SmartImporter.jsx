@@ -364,9 +364,6 @@ export default function SmartImporter({ onSave, onCancel }) {
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="px-2 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-10">
-                    #
-                  </th>
                   {currentSection.headers.map((header, hIdx) => (
                     <th
                       key={hIdx}
@@ -382,7 +379,7 @@ export default function SmartImporter({ onSave, onCancel }) {
                 {currentSection.rows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={currentSection.headers.length + 2}
+                      colSpan={currentSection.headers.length + 1}
                       className="px-4 py-8 text-center text-slate-400"
                     >
                       No data rows detected in this section.
@@ -394,9 +391,6 @@ export default function SmartImporter({ onSave, onCancel }) {
                       key={rIdx}
                       className="hover:bg-slate-50/50 transition-colors group"
                     >
-                      <td className="px-2 py-0.5 text-xs text-slate-400 font-mono text-center">
-                        {rIdx + 1}
-                      </td>
                       {row.map((cell, cIdx) => (
                         <td
                           key={cIdx}

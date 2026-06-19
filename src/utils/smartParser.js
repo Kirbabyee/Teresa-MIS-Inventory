@@ -3,16 +3,29 @@ import * as XLSX from "xlsx";
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 /**
- * Core inventory column identifiers used for anchor-row detection.
- * A row scoring high on these keywords is likely the real table header.
+ * Patterns for column headers that should be skipped during import
+ * (auto-generated identifiers that don't represent real inventory data).
  */
-const ANCHOR_KEYWORDS = [
-  "sku", "item", "quantity", "qty", "price", "part", "product",
-  "description", "name", "code", "stock", "inventory", "supplier",
-  "unit", "cost", "status", "category", "weight", "serial",
-  "location", "barcode", "model", "manufacturer", "condition",
-  "minimum", "reorder", "total", "amount",
+const SKIP_COLUMN_PATTERNS = [
+  /^serial\s*(number|#|no\.?|num\.?)?$/i,
+  /^s\/n$/i,
+  /^no\.?$/i,
+  /^#$/,
+  /^row\s*(number|#|no\.?|num\.?)$/i,
+  /^id$/i,
+  /^record\s*(number|#|no\.?|num\.?)$/i,
+  /^line\s*(number|#|no\.?|num\.?)$/i,
+  /^__row(n|num|index|idx|count)__?$/i,
+  /^__rownum__$/i,
+  /^rowindex$/i,
+  /^rowid$/i,
 ];
+
+function shouldSkipColumn(header) {
+  const str = String(header ?? "").trim();
+  if (!str) return false;
+  return SKIP_COLUMN_PATTERNS.some((p) => p.test(str));
+}
 
 /**
  * Patterns that indicate a non-data row (metadata, footer, summary, etc.).
@@ -42,27 +55,7 @@ const NOISE_PATTERNS = [
   /^\s*disclaimer/i,
 ];
 
-// ─── Anchor Row Detection ────────────────────────────────────────────────────
-
-/**
- * Score a row by how many of its cells match anchor keywords.
- * Returns a score from 0 to 1 (fraction of non-empty cells that are anchors).
- */
-function scoreRowAsHeader(row) {
-  const cells = Array.isArray(row) ? row : Object.values(row);
-  const nonEmptyCells = cells.filter(
-    (c) => c !== null && c !== undefined && String(c).trim() !== ""
-  );
-  if (nonEmptyCells.length === 0) return 0;
-
-  const matchCount = nonEmptyCells.filter((cell) =>
-    ANCHOR_KEYWORDS.some((kw) =>
-      String(cell).toLowerCase().trim().includes(kw)
-    )
-  ).length;
-
-  return matchCount / nonEmptyCells.length;
-}
+// ─── Noise / Footer Detection ────────────────────────────────────────────────
 
 /**
  * Detect if a row is "noise" — metadata, footer, page info, etc.
@@ -71,13 +64,11 @@ function isNoiseRow(row) {
   const cells = Array.isArray(row) ? row : Object.values(row);
   const rowText = cells.map((c) => String(c ?? "")).join(" ");
 
-  // Entirely empty → treated as separator, not noise per se
   const nonEmpty = cells.filter(
     (c) => c !== null && c !== undefined && String(c).trim() !== ""
   );
   if (nonEmpty.length === 0) return "separator";
 
-  // Only 1 non-empty cell that matches a noise pattern → likely a banner/metadata
   if (nonEmpty.length <= 2) {
     for (const cell of nonEmpty) {
       for (const pattern of NOISE_PATTERNS) {
@@ -86,7 +77,6 @@ function isNoiseRow(row) {
     }
   }
 
-  // Check if the joined row text itself matches noise
   for (const pattern of NOISE_PATTERNS) {
     if (pattern.test(rowText)) return "noise";
   }
@@ -94,39 +84,114 @@ function isNoiseRow(row) {
   return null;
 }
 
+// ─── Dynamic Header Detection ────────────────────────────────────────────────
+
 /**
- * Find the anchor row index in a 2D array of raw cell values.
- * Scans rows and picks the first one scoring ≥ `threshold` on anchor keywords.
+ * Compute the column count of the sheet: the maximum row length seen in the
+ * first `scanLimit` rows.  This is the "width" of the table area, used to
+ * evaluate how densely each row is populated.
  */
-function findAnchorRowIndex(rawRows, threshold = 0.35) {
+function getSheetColumnCount(rawRows, scanLimit = 30) {
+  let max = 0;
+  const end = Math.min(rawRows.length, scanLimit);
+  for (let i = 0; i < end; i++) {
+    const len = Array.isArray(rawRows[i]) ? rawRows[i].length : 0;
+    if (len > max) max = len;
+  }
+  return max;
+}
+
+/**
+ * Classify every cell in a row as "text", "number", or "empty".
+ * Used to measure how "header-like" a row is — headers are predominantly
+ * short text strings, whereas data rows often contain numbers.
+ */
+function classifyCell(cell) {
+  if (cell === null || cell === undefined || String(cell).trim() === "") return "empty";
+  const n = Number(cell);
+  if (!isNaN(n) && String(cell).trim() !== "") return "number";
+  return "text";
+}
+
+/**
+ * Score a row as a potential header using two signals combined:
+ *
+ *   1.  **Fill density** — fraction of the sheet's total columns that are
+ *       non-empty.  A real header row is usually fully populated (or close
+ *       to it).  A data row with many blanks scores lower.
+ *
+ *   2.  **Text dominance** — fraction of non-empty cells that are text
+ *       (not numbers).  Headers are almost always text; data rows often
+ *       contain numbers (quantities, prices, etc.).
+ *
+ * Returns a score from 0 to 1.
+ */
+function scoreRowAsHeader(row, sheetColCount) {
+  const cells = Array.isArray(row) ? row : Object.values(row);
+  if (cells.length === 0) return 0;
+
+  const nonEmpty = cells.filter(
+    (c) => c !== null && c !== undefined && String(c).trim() !== ""
+  );
+  if (nonEmpty.length === 0) return 0;
+
+  const effectiveWidth = Math.max(sheetColCount, cells.length);
+
+  // Signal 1: fill density (how many of the sheet's columns have a value)
+  const fillDensity = nonEmpty.length / effectiveWidth;
+
+  // Signal 2: text dominance (headers are text, data rows are often numeric)
+  const textCount = nonEmpty.filter(
+    (c) => classifyCell(c) === "text"
+  ).length;
+  const textDominance = textCount / nonEmpty.length;
+
+  // Weighted combination — text dominance matters more because a row with
+  // many blank cells but all text in the filled cells is very likely a header.
+  return fillDensity * 0.4 + textDominance * 0.6;
+}
+
+/**
+ * Find the header row index in a 2D array of raw cell values.
+ *
+ * Strategy:
+ *   1.  Determine the sheet's column width (max row length in the top rows).
+ *   2.  Scan every non-noise, non-separator row and compute a combined
+ *       fill-density + text-dominance score.
+ *   3.  The row with the highest score wins — provided it clears a minimum
+ *       absolute threshold (must have at least 2 non-empty cells and a
+ *       score ≥ 0.30).
+ *   4.  Among ties the *first* such row wins (closer to the top = more
+ *       likely the real header).
+ */
+function findAnchorRowIndex(rawRows) {
+  if (!rawRows || rawRows.length === 0) return -1;
+
+  const sheetColCount = getSheetColumnCount(rawRows);
+
   let bestIdx = -1;
   let bestScore = 0;
 
   for (let i = 0; i < rawRows.length; i++) {
     const noiseType = isNoiseRow(rawRows[i]);
-    if (noiseType === "noise") continue;
-    if (noiseType === "separator") continue;
+    if (noiseType === "noise" || noiseType === "separator") continue;
 
-    const score = scoreRowAsHeader(rawRows[i]);
-    if (score >= threshold && score > bestScore) {
+    const cells = Array.isArray(rawRows[i]) ? rawRows[i] : Object.values(rawRows[i]);
+    const nonEmptyCount = cells.filter(
+      (c) => c !== null && c !== undefined && String(c).trim() !== ""
+    ).length;
+
+    // A header must have at least 2 populated cells
+    if (nonEmptyCount < 2) continue;
+
+    const score = scoreRowAsHeader(rawRows[i], sheetColCount);
+
+    // Require a minimum quality bar — otherwise we'd pick a sparse data row
+    if (score < 0.30) continue;
+
+    if (score > bestScore) {
       bestScore = score;
       bestIdx = i;
-    }
-  }
-
-  // Fallback: if no row scored high, pick the first non-empty, non-noise row
-  if (bestIdx === -1) {
-    for (let i = 0; i < rawRows.length; i++) {
-      const noiseType = isNoiseRow(rawRows[i]);
-      if (noiseType !== "noise" && noiseType !== "separator") {
-        const nonEmpty = rawRows[i].filter(
-          (c) => c !== null && c !== undefined && String(c).trim() !== ""
-        );
-        if (nonEmpty.length >= 2) {
-          bestIdx = i;
-          break;
-        }
-      }
     }
   }
 
@@ -183,6 +248,31 @@ function splitByEmptyRowGaps(rawRows, minGap = 2) {
 // ─── Core Section Parser ────────────────────────────────────────────────────
 
 /**
+ * Resolve a blank header cell by looking at the cell directly below it.
+ *
+ *   - If the next row has a non-empty text value at the same column index,
+ *     that value becomes the column name.
+ *   - Otherwise the column is named `Column_[index+1]` as a fallback.
+ *
+ * @param {string|null|undefined} headerCell  - The raw header cell value
+ * @param {string|null|undefined} cellBelow    - The cell in the row immediately below
+ * @param {number} colIdx                      - Zero-based column index
+ * @returns {string|null} Resolved header string, or null if the column should be skipped
+ */
+function resolveBlankHeader(headerCell, cellBelow, colIdx) {
+  const str = String(headerCell ?? "").trim();
+  if (str && shouldSkipColumn(str)) return null;
+  if (str) return str;
+
+  // Header cell is blank — try the cell directly below
+  const below = String(cellBelow ?? "").trim();
+  if (below) return below;
+
+  // Both blank — generate a positional name
+  return `Column_${colIdx + 1}`;
+}
+
+/**
  * Given a 2D array of raw cell values for one section, extract the cleaned table.
  * Returns `{ headers: string[], rows: string[][] }`.
  */
@@ -196,31 +286,40 @@ function parseSection(rawRows) {
     return { headers: [], rows: [] };
   }
 
-  // Header row: trim and sanitize
   const rawHeader = rawRows[anchorIdx];
+  const nextRow = rawRows[anchorIdx + 1] || [];
+
+  // Build headers: resolve blanks by looking at the cell below
+  const skipCols = new Set();
   const headers = rawHeader.map((cell, idx) => {
-    const str = String(cell ?? "").trim();
-    return str || `Column ${idx + 1}`;
+    const resolved = resolveBlankHeader(cell, nextRow[idx], idx);
+    if (resolved === null) {
+      skipCols.add(idx);
+      return null;
+    }
+    return resolved;
   });
 
   // Data rows: everything after anchor until next noise/footer
   const dataRows = [];
   for (let i = anchorIdx + 1; i < rawRows.length; i++) {
     const noiseType = isNoiseRow(rawRows[i]);
-    if (noiseType === "noise") break; // stop at first footer
+    if (noiseType === "noise") break;
 
-    if (noiseType === "separator") continue; // skip blank rows inside table
+    if (noiseType === "separator") continue;
 
     const row = rawRows[i];
-    // Normalize row length to match header count
     const normalized = [];
-    for (let j = 0; j < headers.length; j++) {
+    for (let j = 0; j < rawHeader.length; j++) {
+      if (skipCols.has(j)) continue;
       normalized.push(String(row[j] ?? "").trim());
     }
     dataRows.push(normalized);
   }
 
-  return { headers, rows: dataRows };
+  const cleanHeaders = headers.filter((h) => h !== null);
+
+  return { headers: cleanHeaders, rows: dataRows };
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────

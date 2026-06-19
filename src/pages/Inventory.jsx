@@ -1144,12 +1144,13 @@ function TabModal({ tab, onClose, onSave }) {
       : [{ name: tabForm.name.trim() || "Imported Section", description: "Imported from file", sort_order: 1 }];
 
     // Build columns: merge all unique headers across all sections
+    // Skip auto-generated identifier columns (serial number, row id, etc.)
     const seenKeys = new Set();
     const mergedColumns = [];
     for (const sec of allSections) {
       for (const header of (sec.headers || [])) {
         const key = headerToKey(header);
-        if (key && !seenKeys.has(key)) {
+        if (key && !seenKeys.has(key) && key !== "serial_number" && key !== "id" && key !== "row_number") {
           seenKeys.add(key);
           mergedColumns.push({
             key,
@@ -1166,7 +1167,7 @@ function TabModal({ tab, onClose, onSave }) {
     if (mergedColumns.length === 0) {
       for (const header of (importPreview.headers || [])) {
         const key = headerToKey(header);
-        if (key && !seenKeys.has(key)) {
+        if (key && !seenKeys.has(key) && key !== "serial_number" && key !== "id" && key !== "row_number") {
           seenKeys.add(key);
           mergedColumns.push({ key, label: header, data_type: "text", visible: true, fieldType: "text", options: [] });
         }
@@ -1636,12 +1637,13 @@ function TabModal({ tab, onClose, onSave }) {
 
                         // Merge all unique headers across ALL sections into one column set.
                         // Each section may have different columns; the DB table needs every column.
+                        // Skip auto-generated identifier columns (serial number, row id, etc.)
                         const seenKeys = new Set();
                         const mergedColumns = [];
                         for (const sec of activeSections) {
                           for (const header of (sec.headers || [])) {
                             const key = headerToKey(header);
-                            if (key && !seenKeys.has(key)) {
+                            if (key && !seenKeys.has(key) && key !== "serial_number" && key !== "id" && key !== "row_number") {
                               seenKeys.add(key);
                               mergedColumns.push({
                                 key,
@@ -1655,13 +1657,28 @@ function TabModal({ tab, onClose, onSave }) {
                           }
                         }
 
+                        // Strip serial-number values from row data so they don't leak
+                        // into the review preview or bulk insert payload.
+                        const skipKeys = new Set(["serial_number", "id", "row_number"]);
+                        const cleanedSections = activeSections.map((sec) => {
+                          const keepColIdx = (sec.headers || []).map((h, i) => {
+                            const key = headerToKey(h);
+                            return key && !skipKeys.has(key) ? i : -1;
+                          }).filter((i) => i >= 0);
+                          return {
+                            ...sec,
+                            headers: keepColIdx.map((i) => sec.headers[i]),
+                            rows: sec.rows.map((row) => keepColIdx.map((i) => row[i])),
+                          };
+                        });
+
                         // Store the full parsed data for the review step + bulk insert.
                         // _allSections retains each section's original headers so the bulk
                         // insert can map values to the correct DB columns per-section.
                         setImportPreview({
                           headers: mergedColumns.map((c) => c.label),
-                          rows: activeSections[0].rows,
-                          _allSections: activeSections,
+                          rows: cleanedSections[0].rows,
+                          _allSections: cleanedSections,
                         });
                         setSections(newSections);
                         setColumns(mergedColumns);
