@@ -25,6 +25,7 @@ import {
   Boxes,
   FlaskConical,
   ShieldAlert,
+  Settings,
 } from "lucide-react";
 const arkLogo = "/folder/teresalogo-removebg-preview.png";
 import { useAuth } from "@/lib/AuthContext";
@@ -440,6 +441,7 @@ export default function Layout() {
           { label: "User Accounts", icon: Users, path: "/manage/accounts" },
           { label: "Inventory Manager", icon: Boxes, path: "/manage/inventory_manager" },
           { label: "Security", icon: ShieldAlert, path: "/manage/security" },
+          { label: "System Settings", icon: Settings, path: "/manage/system_settings" },
         ],
       });
     }

@@ -19,6 +19,7 @@ import InventorySection from "./pages/InventorySection";
 import ComputerLaboratoryInventory from "./pages/ComputerLaboratoryInventory";
 import UserAccounts from "./pages/UserAccounts";
 import SecurityMonitor from "./pages/SecurityMonitor";
+import SystemSettings from "./pages/SystemSettings";
 import ActivateAccount from "./pages/ActivateAccount";
 import ForgotPassword from "./pages/ForgotPassword";
 import PublicBorrow from "./pages/PublicBorrow";
@@ -27,7 +28,27 @@ import { useAuth } from "@/lib/AuthContext";
 import SecurityRoute from "@/components/SecurityRoute";
 
 function AppContent() {
-  const { isAuthenticated, isGlobalLoading, globalLoadingMessage } = useAuth();
+  const { isAuthenticated, isLoadingAuth, isGlobalLoading, globalLoadingMessage } = useAuth();
+
+  // Show a white splash with the institution logo while auth state is being restored
+  // — prevents the login page from flashing on every refresh.
+  if (isLoadingAuth) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-white">
+        <img
+          src="/folder/teresalogo-removebg-preview.png"
+          alt="St Teresa"
+          className="h-32 w-32 object-contain"
+        />
+        <div className="mt-4 flex items-center gap-2">
+          <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[#4a1111]" />
+          <span className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+            Loading
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Router>
@@ -76,6 +97,16 @@ function AppContent() {
             element={
               <SecurityRoute requiredRole="admin">
                 <SecurityMonitor />
+              </SecurityRoute>
+            }
+          />
+
+          {/* ── Admin-only: System Settings ────────────────────── */}
+          <Route
+            path="manage/system_settings"
+            element={
+              <SecurityRoute requiredRole="admin">
+                <SystemSettings />
               </SecurityRoute>
             }
           />

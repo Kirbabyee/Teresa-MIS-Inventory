@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from "react";
+import React, { createContext, useState, useContext, useEffect, useRef } from "react";
 import { supabase } from "@/api/supabaseClient";
 import { getDeviceFingerprint } from "@/lib/security/deviceFingerprint";
 
@@ -57,6 +57,12 @@ export const AuthProvider = ({ children }) => {
   const [authError, setAuthError] = useState(null);
   const [appPublicSettings, setAppPublicSettings] = useState(null);
 
+  // Track whether we've completed the initial session restore.
+  // The splash screen (isLoadingAuth === true) should only appear on first
+  // page load / reload — not on every auth state change (e.g. tab switch
+  // token refreshes).
+  const initialLoadDone = useRef(false);
+
   const showGlobalLoader = (message = "Loading...") => {
     setGlobalLoadingMessage(message);
     setIsGlobalLoading(true);
@@ -68,12 +74,15 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    checkAppState();
+    checkAppState(true);
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
-      checkAppState();
+    } = supabase.auth.onAuthStateChange((_event, _session) => {
+      // Only show loading spinner on the very first check (page reload).
+      // Subsequent auth events (token refresh on tab switch, etc.) should
+      // update state silently.
+      checkAppState(false);
     });
 
     return () => {
@@ -99,9 +108,11 @@ export const AuthProvider = ({ children }) => {
     };
   };
 
-  const checkAppState = async () => {
+  const checkAppState = async (isInitialLoad = false) => {
     setAuthError(null);
-    setIsLoadingAuth(true);
+    if (isInitialLoad) {
+      setIsLoadingAuth(true);
+    }
 
     try {
       const { data: sessionResult } = await supabase.auth.getSession();
@@ -186,7 +197,10 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(false);
     } finally {
       setIsLoadingPublicSettings(false);
-      setIsLoadingAuth(false);
+      if (isInitialLoad) {
+        initialLoadDone.current = true;
+        setIsLoadingAuth(false);
+      }
     }
   };
 
