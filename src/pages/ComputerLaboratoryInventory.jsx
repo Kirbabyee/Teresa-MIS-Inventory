@@ -78,6 +78,15 @@ const TABLE_COLUMNS = ["COMPUTER #", "", ...TABLE_HEADING.slice(1)];
 const COMPONENT_TYPES = TABLE_HEADING.slice(1);
 const REMARK_OPTIONS = ["WORKING", "DEFECTIVE", "BUILT IN"];
 
+const STORAGE_CAPACITY_OPTIONS = [
+    "256GB",
+    "512GB",
+    "1TB",
+    "2TB",
+    "4TB",
+    "8TB",
+];
+
 const INITIAL_OPEN_SECTIONS = [COMPONENT_TYPES[0]];
 
 const formatValue = (value) => {
@@ -331,9 +340,11 @@ export default function ComputerLaboratoryInventory() {
         SSD_brand: "",
         SSD_description: "",
         SSD_remarks: "",
+        SSD_capacity: "",
         HDD_brand: "",
         HDD_description: "",
         HDD_remarks: "",
+        HDD_capacity: "",
         "VIDEO CARD_brand": "",
         "VIDEO CARD_description": "",
         "VIDEO CARD_remarks": "",
@@ -700,14 +711,24 @@ export default function ComputerLaboratoryInventory() {
                     : Math.max(0, ...rows.map((row) => Number(row["COMPUTER #"]) || 0)) + 1;
 
             // Create rows for all components
-            const rowsToInsert = COMPONENT_TYPES.map((componentType) => ({
-                computer_number: nextComputerNumber,
-                type: componentType,
-                brand: (newComponent[`${componentType}_brand`] || "").trim(),
-                description: (newComponent[`${componentType}_description`] || "").trim(),
-                status: (newComponent[`${componentType}_remarks`] || "").trim(),
-                lab_number_id: selectedLab,
-            }));
+            const rowsToInsert = COMPONENT_TYPES.map((componentType) => {
+                let description = (newComponent[`${componentType}_description`] || "").trim();
+                
+                // For SSD and HDD, include capacity in the description
+                if ((componentType === "SSD" || componentType === "HDD") && newComponent[`${componentType}_capacity`]) {
+                    const capacity = newComponent[`${componentType}_capacity`].trim();
+                    description = description ? `${description} - ${capacity}` : capacity;
+                }
+                
+                return {
+                    computer_number: nextComputerNumber,
+                    type: componentType,
+                    brand: (newComponent[`${componentType}_brand`] || "").trim(),
+                    description: description,
+                    status: (newComponent[`${componentType}_remarks`] || "").trim(),
+                    lab_number_id: selectedLab,
+                };
+            });
 
             const { error: insertError } = await supabase
                 .from("computers_components")
@@ -723,6 +744,7 @@ export default function ComputerLaboratoryInventory() {
                 resetComponent[`${componentType}_brand`] = "";
                 resetComponent[`${componentType}_description`] = "";
                 resetComponent[`${componentType}_remarks`] = "";
+                resetComponent[`${componentType}_capacity`] = "";
             });
             setNewComponent(resetComponent);
             setOpenComponentSections(INITIAL_OPEN_SECTIONS);
@@ -1516,30 +1538,83 @@ export default function ComputerLaboratoryInventory() {
                                                         className="h-8 text-xs focus-visible:ring-[#4a1111]"
                                                     />
                                                 </div>
-                                                <div className="space-y-1">
-                                                    <Label className="text-xs font-medium text-slate-500">Remarks</Label>
-                                                    <Select
-                                                        value={newComponent[`${componentType}_remarks`] || ""}
-                                                        onValueChange={(val) =>
-                                                            setNewComponent((current) => ({
-                                                                ...current,
-                                                                [`${componentType}_remarks`]: val,
-                                                            }))
-                                                        }
-                                                    >
-                                                        <SelectTrigger className="h-8 text-xs focus:ring-[#4a1111]">
-                                                            <SelectValue placeholder="Select remarks..." />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {REMARK_OPTIONS.map((remark) => (
-                                                                <SelectItem key={remark} value={remark.toLowerCase()}>
-                                                                    {remark}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
+                                                {(componentType === "SSD" || componentType === "HDD") ? (
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs font-medium text-slate-500">Capacity</Label>
+                                                        <Select
+                                                            value={newComponent[`${componentType}_capacity`] || ""}
+                                                            onValueChange={(val) =>
+                                                                setNewComponent((current) => ({
+                                                                    ...current,
+                                                                    [`${componentType}_capacity`]: val,
+                                                                }))
+                                                            }
+                                                        >
+                                                            <SelectTrigger className="h-8 text-xs focus:ring-[#4a1111]">
+                                                                <SelectValue placeholder="Select capacity..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {STORAGE_CAPACITY_OPTIONS.map((capacity) => (
+                                                                    <SelectItem key={capacity} value={capacity}>
+                                                                        {capacity}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs font-medium text-slate-500">Remarks</Label>
+                                                        <Select
+                                                            value={newComponent[`${componentType}_remarks`] || ""}
+                                                            onValueChange={(val) =>
+                                                                setNewComponent((current) => ({
+                                                                    ...current,
+                                                                    [`${componentType}_remarks`]: val,
+                                                                }))
+                                                            }
+                                                        >
+                                                            <SelectTrigger className="h-8 text-xs focus:ring-[#4a1111]">
+                                                                <SelectValue placeholder="Select remarks..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {REMARK_OPTIONS.map((remark) => (
+                                                                    <SelectItem key={remark} value={remark.toLowerCase()}>
+                                                                        {remark}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                )}
                                             </div>
+                                            {(componentType === "SSD" || componentType === "HDD") && (
+                                                <div className="grid grid-cols-1 md:grid-cols-1 gap-3 mt-3">
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs font-medium text-slate-500">Remarks</Label>
+                                                        <Select
+                                                            value={newComponent[`${componentType}_remarks`] || ""}
+                                                            onValueChange={(val) =>
+                                                                setNewComponent((current) => ({
+                                                                    ...current,
+                                                                    [`${componentType}_remarks`]: val,
+                                                                }))
+                                                            }
+                                                        >
+                                                            <SelectTrigger className="h-8 text-xs focus:ring-[#4a1111]">
+                                                                <SelectValue placeholder="Select remarks..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {REMARK_OPTIONS.map((remark) => (
+                                                                    <SelectItem key={remark} value={remark.toLowerCase()}>
+                                                                        {remark}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </AccordionContent>
                                     </AccordionItem>
                                 ))}

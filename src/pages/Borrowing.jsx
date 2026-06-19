@@ -1599,6 +1599,7 @@ export default function Borrowing() {
         return "";
       case "studentId":
         if (!trimmed) return "ID number is required.";
+        if (!/^[0-9]+$/.test(trimmed)) return "ID number may contain only digits.";
         return "";
       case "role":
         if (!trimmed) return "Select borrower role.";
@@ -1912,12 +1913,10 @@ export default function Borrowing() {
     setReturnSelections({});
   };
 
-  const handleSelectAll = () => {
-    if (!pendingReturn) return;
-    const units = unrollBorrowedUnits(pendingReturn.items || []);
-    const allChecked = units.every((u) => returnSelections[u.unitKey]?.checked);
+  const handleSelectAllForItem = (itemUnits) => {
+    const allChecked = itemUnits.every((u) => returnSelections[u.unitKey]?.checked);
     const updated = { ...returnSelections };
-    for (const unit of units) {
+    for (const unit of itemUnits) {
       if (updated[unit.unitKey]) {
         updated[unit.unitKey] = { ...updated[unit.unitKey], checked: !allChecked };
       }
@@ -2374,7 +2373,9 @@ export default function Borrowing() {
   };
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value: rawValue } = e.target;
+    const value = name === "studentId" ? rawValue.replace(/\D/g, "") : rawValue;
+
     setForm({ ...form, [name]: value });
     setFormErrors((current) => ({
       ...current,
@@ -4595,6 +4596,8 @@ export default function Borrowing() {
                             const reservedForThisItem = getCartReservedQuantity(cartId, borrowCart);
                             const availableStock = Math.max(0, liveStock - reservedForThisItem);
 
+                            if (availableStock <= 0) return null;
+
                             const itemRemark = getItemRemark(item);
 
                             return (
@@ -5209,12 +5212,24 @@ export default function Borrowing() {
                       group.item.section || inventoryNameLookup.sectionNames[group.item.inventorySectionId] || "Section",
                     ].join(" / ");
 
+                    const itemCheckedCount = group.units.filter((u) => returnSelections[u.unitKey]?.checked).length;
+                    const itemAllChecked = itemCheckedCount === group.units.length && group.units.length > 0;
+
                     return (
                       <div key={group.item.id} className="rounded-xl border border-slate-200 overflow-hidden">
                         {/* Item header */}
-                        <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200">
-                          <p className="text-sm font-semibold text-slate-800">{group.item.label}</p>
-                          <p className="text-xs text-slate-400">{locLabel}</p>
+                        <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-800">{group.item.label}</p>
+                            <p className="text-xs text-slate-400">{locLabel}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleSelectAllForItem(group.units)}
+                            className="shrink-0 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                          >
+                            {itemAllChecked ? "Deselect All" : "Select All"}
+                          </button>
                         </div>
 
                         {/* Unrolled unit rows */}
@@ -5307,16 +5322,7 @@ export default function Borrowing() {
               </div>
 
               {/* ── Footer ─────────────────────────────────────────────── */}
-              <DialogFooter className="shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/60 px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:space-x-2 sm:px-8">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSelectAll}
-                  className="rounded-lg"
-                >
-                  {checkedCount === totalUnits && totalUnits > 0 ? "Deselect All" : "Select All"}
-                </Button>
+              <DialogFooter className="shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/60 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"
