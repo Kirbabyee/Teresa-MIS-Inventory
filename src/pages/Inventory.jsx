@@ -54,8 +54,10 @@ import {
   getTabTableConfig,
   slugify,
   makeUniqueSlug,
+  bulkInsertInventoryRows,
 } from "@/lib/inventoryApi";
 import { isCurrentUserAdmin } from "@/lib/inventoryApi";
+import SmartImporter from "@/components/SmartImporter";
 
 const iconButtonClass =
   "inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700";
@@ -1130,21 +1132,49 @@ function TabModal({ tab, onClose, onSave }) {
     const headerToKey = (h) =>
       h.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
 
-    // Use first header as the section name, rest become columns
-    // Or: create one section and all headers become columns
-    const sectionName = tabForm.name.trim() || "Imported Section";
-    const newSections = [{ name: sectionName, description: "Imported from file", sort_order: 1 }];
-    const newColumns = importPreview.headers.map((header) => ({
-      key: headerToKey(header),
-      label: header,
-      data_type: "text",
-      visible: true,
-      fieldType: "text",
-      options: [],
-    }));
+    const allSections = importPreview._allSections || [];
+
+    // Build sections: one per detected file section (or fall back to one)
+    const newSections = allSections.length > 0
+      ? allSections.map((sec, idx) => ({
+          name: sec.name || `Section ${idx + 1}`,
+          description: "Imported from file",
+          sort_order: idx + 1,
+        }))
+      : [{ name: tabForm.name.trim() || "Imported Section", description: "Imported from file", sort_order: 1 }];
+
+    // Build columns: merge all unique headers across all sections
+    const seenKeys = new Set();
+    const mergedColumns = [];
+    for (const sec of allSections) {
+      for (const header of (sec.headers || [])) {
+        const key = headerToKey(header);
+        if (key && !seenKeys.has(key)) {
+          seenKeys.add(key);
+          mergedColumns.push({
+            key,
+            label: header,
+            data_type: "text",
+            visible: true,
+            fieldType: "text",
+            options: [],
+          });
+        }
+      }
+    }
+    // Fallback if no _allSections data (backwards compat)
+    if (mergedColumns.length === 0) {
+      for (const header of (importPreview.headers || [])) {
+        const key = headerToKey(header);
+        if (key && !seenKeys.has(key)) {
+          seenKeys.add(key);
+          mergedColumns.push({ key, label: header, data_type: "text", visible: true, fieldType: "text", options: [] });
+        }
+      }
+    }
 
     setSections(newSections);
-    setColumns(newColumns);
+    setColumns(mergedColumns);
   };
 
   const handleNext = () => {
@@ -1366,7 +1396,7 @@ function TabModal({ tab, onClose, onSave }) {
   };
 
   const handleSaveTab = () => {
-    return onSave({ ...tabForm, sections, columns });
+    return onSave({ ...tabForm, sections, columns, _importData: importPreview });
   };
 
   const requestClose = () => {
@@ -1582,105 +1612,71 @@ function TabModal({ tab, onClose, onSave }) {
             {((!isNewTab) || wizardStep === 3 || wizardStep === 5) && tabType === "legacy" && (
               <div className="border-t border-slate-200 px-5 py-5">
                 {isNewTab && isImportTemplate && wizardStep === 3 ? (
-                  // ── File Upload UI for Import Template ──
+                  // ── Smart Importer: handles .xlsx, .csv with noise stripping, multi-section, inline edit ──
                   <div>
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center justify-between gap-3 mb-4">
                       <div>
-                        <h4 className="text-sm font-semibold text-slate-900">Upload File</h4>
-                        <p className="mt-1 text-xs text-slate-500">Upload a CSV file. Column headers will become your inventory fields.</p>
+                        <h4 className="text-sm font-semibold text-slate-900">Upload Inventory File</h4>
+                        <p className="mt-1 text-xs text-slate-500">Upload a CSV or Excel file. Banners, footers, and metadata will be stripped automatically.</p>
                       </div>
                     </div>
+                    <SmartImporter
+                      onSave={(activeSections) => {
+                        if (!activeSections || activeSections.length === 0) return;
 
-                    {/* Drop zone */}
-                    <div
-                      className="mt-4 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center transition hover:border-[#4a1111] hover:bg-rose-50/30 cursor-pointer"
-                      onClick={() => fileInputRef.current?.click()}
-                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const file = e.dataTransfer.files?.[0];
-                        if (file) {
-                          const fakeEvent = { target: { files: [file], value: "" } };
-                          handleImportFile(fakeEvent);
+                        const headerToKey = (h) =>
+                          h.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+
+                        // Create one wizard section per detected file section
+                        const newSections = activeSections.map((sec, idx) => ({
+                          name: sec.name || `Section ${idx + 1}`,
+                          description: `Imported from file`,
+                          sort_order: idx + 1,
+                        }));
+
+                        // Merge all unique headers across ALL sections into one column set.
+                        // Each section may have different columns; the DB table needs every column.
+                        const seenKeys = new Set();
+                        const mergedColumns = [];
+                        for (const sec of activeSections) {
+                          for (const header of (sec.headers || [])) {
+                            const key = headerToKey(header);
+                            if (key && !seenKeys.has(key)) {
+                              seenKeys.add(key);
+                              mergedColumns.push({
+                                key,
+                                label: header,
+                                data_type: "text",
+                                visible: true,
+                                fieldType: "text",
+                                options: [],
+                              });
+                            }
+                          }
                         }
+
+                        // Store the full parsed data for the review step + bulk insert.
+                        // _allSections retains each section's original headers so the bulk
+                        // insert can map values to the correct DB columns per-section.
+                        setImportPreview({
+                          headers: mergedColumns.map((c) => c.label),
+                          rows: activeSections[0].rows,
+                          _allSections: activeSections,
+                        });
+                        setSections(newSections);
+                        setColumns(mergedColumns);
+
+                        const totalRows = activeSections.reduce((n, s) => n + s.rows.length, 0);
+                        const totalCols = mergedColumns.length;
+                        toast.success(
+                          `Detected ${activeSections.length} section(s) · ${totalRows} rows · ${totalCols} columns`
+                        );
                       }}
-                    >
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".csv,.xlsx,.xls"
-                        onChange={handleImportFile}
-                        className="hidden"
-                      />
-                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100">
-                        <FileSpreadsheet className="h-7 w-7 text-slate-500" />
-                      </div>
-                      <p className="mt-3 text-sm font-medium text-slate-700">
-                        {importFile ? importFile.name : "Click to upload or drag & drop"}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-400">Supports .csv files (max 10MB)</p>
-                      {importFile && !importError && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            fileInputRef.current?.click();
-                          }}
-                          className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                        >
-                          Choose different file
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Error message */}
-                    {importError && (
-                      <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                        {importError}
-                      </div>
-                    )}
-
-                    {/* Preview table */}
-                    {importPreview && importPreview.headers.length > 0 && (
-                      <div className="mt-4">
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <h5 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                            Preview — {importPreview.headers.length} columns found
-                          </h5>
-                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-                            {importPreview.headers.length} fields mapped
-                          </span>
-                        </div>
-                        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                          <table className="min-w-full divide-y divide-slate-200 text-sm">
-                            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                              <tr>
-                                {importPreview.headers.map((header, i) => (
-                                  <th key={i} className="px-4 py-3 whitespace-nowrap">
-                                    {header}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 bg-white">
-                              {importPreview.rows.map((row, rowIdx) => (
-                                <tr key={rowIdx} className="even:bg-slate-50/50">
-                                  {importPreview.headers.map((_, colIdx) => (
-                                    <td key={colIdx} className="px-4 py-2 text-slate-600 whitespace-nowrap">
-                                      {row[colIdx] || "—"}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                        <p className="mt-2 text-xs text-slate-400">
-                          These column headers will be used as your inventory fields. You can review and edit them in the next step.
-                        </p>
-                      </div>
-                    )}
+                      onCancel={() => {
+                        setImportPreview(null);
+                        setImportFile(null);
+                      }}
+                    />
                   </div>
                 ) : (
                   // ── Normal Sections UI ──
@@ -2369,6 +2365,73 @@ export default function Inventory() {
           console.error("Failed to persist tab config to inventory_settings:", settingError);
           // Don't rollback on settings error - the physical table was created successfully
           alert(`Warning: Table created but settings may not have saved. Error: ${settingError.message}`);
+        }
+
+        // ── Bulk-insert imported data rows (Smart Importer flow) ──────────
+        const importData = form._importData;
+        if (importData?._allSections?.length > 0 && keptSectionIds.length > 0) {
+          // Build a lookup: header name (lowercase) → DB column key
+          // This lets each section map its own headers to the right DB columns,
+          // even when sections have different column sets.
+          const headerToColumnKey = new Map();
+          for (const col of (form.columns || [])) {
+            if (col && col.key) {
+              headerToColumnKey.set(String(col.label || col.key).toLowerCase().trim(), col.key);
+            }
+          }
+
+          if (headerToColumnKey.size > 0) {
+            showGlobalLoader("Importing data rows...");
+
+            // Match each imported section to its corresponding saved section ID.
+            const sectionIdMap = new Map();
+            for (let i = 0; i < importData._allSections.length && i < keptSectionIds.length; i++) {
+              sectionIdMap.set(i, keptSectionIds[i]);
+            }
+
+            for (let secIdx = 0; secIdx < importData._allSections.length; secIdx++) {
+              const sectionData = importData._allSections[secIdx];
+              if (!sectionData.rows || sectionData.rows.length === 0) continue;
+
+              const sectionId = sectionIdMap.get(secIdx) || keptSectionIds[0];
+
+              // Build a per-section column mapping: for each header in this section,
+              // find the matching DB column key. Columns not present in this section
+              // will be NULL in the DB row.
+              const sectionColumnKeys = (sectionData.headers || []).map((h) => {
+                const key = headerToColumnKey.get(String(h).toLowerCase().trim());
+                return key || null; // null means this section doesn't have this column
+              });
+
+              try {
+                const { inserted, errors: rowErrors } = await bulkInsertInventoryRows(
+                  tableName,
+                  sectionId,
+                  sectionColumnKeys,
+                  sectionData.rows,
+                  { skipLogging: sectionData.rows.length > 200 }
+                );
+
+                if (rowErrors.length > 0) {
+                  console.warn(`Import warnings for "${sectionData.name}":`, rowErrors);
+                  toast.warning(
+                    `${rowErrors.length} row(s) failed to import in "${sectionData.name}". Check console for details.`
+                  );
+                }
+
+                if (inserted > 0) {
+                  toast.success(
+                    `Imported ${inserted} row(s) into "${sectionData.name}".`
+                  );
+                }
+              } catch (importErr) {
+                console.error(`Failed to import rows for "${sectionData.name}":`, importErr);
+                toast.error(
+                  `Table created, but data import failed for "${sectionData.name}": ${importErr.message}`
+                );
+              }
+            }
+          }
         }
       }
     } catch (err) {

@@ -75,6 +75,100 @@ export const logInventoryChange = async (tableName, action, oldData, newData, se
   }
 };
 
+// ─── Bulk Import: Insert parsed rows into a dynamic inventory table ──────────
+
+/**
+ * Bulk-insert parsed import rows into a dynamic inventory table.
+ *
+ * Each row is mapped from the CSV/Excel column order to the table's column keys
+ * using the provided `columnMapping` array (ordered list of { header, key }).
+ * Every row also receives `section_id` and `sort_order`.
+ *
+ * @param {string} tableName   - Dynamic table name (e.g. "inventory_warehouse_a")
+ * @param {number} sectionId   - The inventory_sections.id these rows belong to
+ * @param {{ header: string, key: string }[]} columnMapping - Ordered map: CSV header → DB column key
+ * @param {string[][]} rows    - 2D array of cell values (from SmartImporter)
+ * @param {object} [opts]      - Options
+ * @param {boolean} [opts.skipLogging=false] - Skip per-row change-log inserts (faster for large imports)
+ * @returns {Promise<{ inserted: number, errors: { row: number, message: string }[] }>}
+ */
+export const bulkInsertInventoryRows = async (
+  tableName,
+  sectionId,
+  columnMapping,
+  rows,
+  opts = {}
+) => {
+  const { skipLogging = false } = opts;
+  const errors = [];
+  let inserted = 0;
+
+  // columnMapping is an array of DB column keys (string) or null.
+  // null entries mean that column doesn't exist in this section → set NULL.
+  // This supports multi-section imports where different sections have different headers.
+
+  // Process in batches of 100 to avoid Supabase payload limits
+  const BATCH_SIZE = 100;
+  const totalBatches = Math.ceil(rows.length / BATCH_SIZE);
+
+  for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
+    const start = batchIdx * BATCH_SIZE;
+    const end = Math.min(start + BATCH_SIZE, rows.length);
+    const batch = rows.slice(start, end);
+
+    const payloads = batch.map((row, i) => {
+      const record = { section_id: sectionId };
+
+      for (let colIdx = 0; colIdx < columnMapping.length; colIdx++) {
+        const key = columnMapping[colIdx];
+        if (!key || key === "section_id") {
+          // null key = column not present in this section → explicit NULL
+          continue;
+        }
+        const raw = row[colIdx];
+        record[key] = raw !== undefined && raw !== null ? String(raw) : null;
+      }
+
+      return record;
+    });
+
+    try {
+      const { data, error } = await supabase
+        .from(tableName)
+        .insert(payloads)
+        .select("id");
+
+      if (error) {
+        // If the whole batch fails, record each row as an error
+        // but continue with remaining batches
+        for (let i = 0; i < batch.length; i++) {
+          errors.push({ row: start + i, message: error.message });
+        }
+        continue;
+      }
+
+      inserted += data?.length || 0;
+
+      // Optionally log each insert (disabled by default for large imports)
+      if (!skipLogging && data) {
+        for (const record of data) {
+          try {
+            await logInventoryChange(tableName, "INSERT", null, record, sectionId);
+          } catch (_) {
+            // logging failure is non-fatal
+          }
+        }
+      }
+    } catch (batchErr) {
+      for (let i = 0; i < batch.length; i++) {
+        errors.push({ row: start + i, message: batchErr.message || String(batchErr) });
+      }
+    }
+  }
+
+  return { inserted, errors };
+};
+
 const DEFAULT_CREATE_TABLE_ENDPOINT = "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/create-inventory-table";
 const DEFAULT_MODIFY_TABLE_ENDPOINT = "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/modify-inventory-table";
 const DEFAULT_DROP_TABLE_ENDPOINT = "https://yzhgvvnchajslpcabrjn.supabase.co/functions/v1/drop-inventory-table";
@@ -327,9 +421,25 @@ export const fetchInventoryItems = async (sectionId, tableName = null) => {
 };
 
 export const upsertInventoryTab = async ({ id, name, slug, description = "", sort_order = 0 }) => {
+  const baseSlug = slugify(slug || name || "tab");
+
+  // On insert, ensure slug uniqueness by checking existing tabs
+  let finalSlug = baseSlug;
+  if (!id) {
+    try {
+      const { data: existing } = await supabase
+        .from("inventory_tabs")
+        .select("slug");
+      const existingSlugs = (existing || []).map((t) => t.slug).filter(Boolean);
+      finalSlug = makeUniqueSlug(baseSlug, existingSlugs);
+    } catch (fetchErr) {
+      console.warn("Failed to fetch existing tab slugs, using base slug:", fetchErr);
+    }
+  }
+
   const payload = {
     name,
-    slug: slugify(slug || name || "tab"),
+    slug: finalSlug,
     description,
     sort_order,
   };
