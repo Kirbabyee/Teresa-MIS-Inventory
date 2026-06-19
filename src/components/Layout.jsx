@@ -31,6 +31,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useSessionTimeout } from "@/lib/security/sessionTimeout";
 import { useLockoutCheck } from "@/lib/security/useLockoutCheck";
 import SessionTimeoutModal from "@/components/SessionTimeoutModal";
+import Header from "@/components/Header";
 
 const SESSION_KEY = "app_session";
 const SESSION_EVENT = "app_session_change";
@@ -560,41 +561,18 @@ export default function Layout() {
 
       {/* ── MAIN CONTENT ───────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white/85 supports-[backdrop-filter]:bg-white/70 backdrop-blur-md border-b border-slate-200/80 px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-30">
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              onClick={() => setMobileOpen(true)}
-              className="lg:hidden text-slate-600 hover:bg-slate-100 p-2 rounded-lg"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-            <div className="hidden md:block min-w-0">
-              <p className="text-sm md:text-base font-semibold text-slate-900 truncate">{sectionTitleDisplay}</p>
-              <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500">CSTA MIS</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <div className="hidden md:flex flex-col items-end leading-tight border-r border-slate-200 pr-4 mr-1">
-              <p className="text-sm font-semibold text-slate-900">
-                {new Intl.DateTimeFormat(undefined, {
-                  weekday: "short", month: "short", day: "numeric", year: "numeric",
-                }).format(now)}
-              </p>
-              <p className="text-xs font-mono text-slate-500">{now.toLocaleTimeString()}</p>
-            </div>
-
-            <div className="flex items-center gap-3 pl-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2b0707,#5a1717)] text-sm font-bold text-white ring-4 ring-[#2b0707]/15 shadow-sm">
-                {initials || "U"}
-              </div>
-              <div className="hidden sm:block leading-tight">
-                <p className="text-sm font-semibold text-slate-900">{displayName}</p>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{displayRole}</p>
-              </div>
-            </div>
-          </div>
-        </header>
+        {/* Header component — shared between Layout and public pages */}
+        {/* Import props below from Layout scope */}
+        {/* eslint-disable-next-line react/jsx-pascal-case */}
+        {/* Header expects: setMobileOpen, sectionTitleDisplay, now, initials, displayName, displayRole */}
+        <Header
+          setMobileOpen={setMobileOpen}
+          sectionTitleDisplay={sectionTitleDisplay}
+          now={now}
+          initials={initials}
+          displayName={displayName}
+          displayRole={displayRole}
+        />
 
         <main className="flex-1 p-6 bg-[radial-gradient(circle_at_top_right,_rgba(148,163,184,0.16),_transparent_45%),linear-gradient(to_bottom,_#f8fafc,_#eef2f7)] overflow-y-auto scrollbar-hide">
           <Outlet />

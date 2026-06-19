@@ -1209,6 +1209,8 @@ export default function Borrowing() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareLink, setShareLink] = useState("");
   const [exportDate, setExportDate] = useState(new Date().toISOString().slice(0, 10));
   const [exportSchoolYear, setExportSchoolYear] = useState("");
   const [exportSemester, setExportSemester] = useState("");
@@ -2972,6 +2974,24 @@ export default function Borrowing() {
 
             <button
               type="button"
+              onClick={() => {
+                try {
+                  const url = new URL("/public-borrow", window.location.origin).toString();
+                  setShareLink(url);
+                } catch (e) {
+                  setShareLink(window.location.origin + "/public-borrow");
+                }
+                setShowShareModal(true);
+              }}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a1111] px-4 text-sm font-medium text-white transition hover:bg-[#5a1717]"
+              title="Share public borrow link"
+              aria-label="Share public borrow link"
+            >
+              <span>Share</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setStatusFilter(statusFilter === "borrowed" ? "all" : "borrowed")}
               className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition ${statusFilter === "all"
                 ? "bg-[#4a1111] text-white hover:bg-[#5a1717]"
@@ -3127,6 +3147,57 @@ export default function Borrowing() {
             </DialogContent>
           </Dialog>
         )}
+
+          {showShareModal && (
+            <Dialog open={showShareModal} onOpenChange={setShowShareModal}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Share Public Borrow Link</DialogTitle>
+                  <DialogDescription className="mt-1 text-sm">Copy the link below and share it with users outside the system.</DialogDescription>
+                </DialogHeader>
+
+                <div className="px-6 py-4">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={shareLink}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                      aria-label="Shareable link"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(shareLink || window.location.origin + "/public-borrow");
+                          toast.success("Link copied to clipboard");
+                        } catch (err) {
+                          try {
+                            const el = document.createElement("textarea");
+                            el.value = shareLink || window.location.origin + "/public-borrow";
+                            document.body.appendChild(el);
+                            el.select();
+                            document.execCommand("copy");
+                            document.body.removeChild(el);
+                            toast.success("Link copied to clipboard");
+                          } catch (e) {
+                            toast.error("Failed to copy link");
+                          }
+                        }
+                      }}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-3 text-sm font-medium text-white hover:bg-[#5a1717]"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setShowShareModal(false)}>Close</Button>
+                    <Button size="sm" className="bg-[#4a1111] text-white" onClick={() => window.open(shareLink || "/public-borrow", "_blank")}>Open Link</Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
 
         <AlertDialog open={showExportConfirm} onOpenChange={setShowExportConfirm}>
           <AlertDialogContent className="rounded-xl">

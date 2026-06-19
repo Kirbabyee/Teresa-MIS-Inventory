@@ -21,6 +21,7 @@ import UserAccounts from "./pages/UserAccounts";
 import SecurityMonitor from "./pages/SecurityMonitor";
 import ActivateAccount from "./pages/ActivateAccount";
 import ForgotPassword from "./pages/ForgotPassword";
+import PublicBorrow from "./pages/PublicBorrow";
 import { LoadingPopup } from "@/components/loaders/LoadingPopUp";
 import { useAuth } from "@/lib/AuthContext";
 import SecurityRoute from "@/components/SecurityRoute";
@@ -36,6 +37,7 @@ function AppContent() {
           path="/login"
           element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
         />
+        <Route path="/public-borrow" element={<PublicBorrow />} />
         <Route
           path="/forgot-password"
           element={isAuthenticated ? <Navigate to="/" replace /> : <ForgotPassword />}
