@@ -2201,6 +2201,16 @@ export default function Inventory() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [page, setPage] = useState(1);
   const itemsPerPage = 7;
+  const [showComlabEditModal, setShowComlabEditModal] = useState(false);
+  const [comlabList, setComlabList] = useState([]);
+  const [comlabLoading, setComlabLoading] = useState(false);
+  const [comlabAddName, setComlabAddName] = useState("");
+  const [comlabAdding, setComlabAdding] = useState(false);
+  const [comlabDeleteTarget, setComlabDeleteTarget] = useState(null);
+  const [comlabEditTarget, setComlabEditTarget] = useState(null);
+  const [comlabEditName, setComlabEditName] = useState("");
+  const [comlabSaving, setComlabSaving] = useState(false);
+  const comlabDescription = "CSTA Computer Laboratories";
 
   const editingTab = useMemo(() => tabs.find((tab) => tab.slug === editingSlug) || null, [tabs, editingSlug]);
   const ddlEndpoint = getInventoryCreateTableEndpoint();
@@ -2642,6 +2652,98 @@ export default function Inventory() {
     };
   }, []);
 
+  // ── Computer lab management helpers ──
+
+  const fetchComlabList = async () => {
+    setComlabLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("lab_numbers")
+        .select("id, lab_number, name")
+        .order("lab_number", { ascending: true });
+      if (error) throw error;
+      setComlabList(data || []);
+    } catch (err) {
+      console.warn("Failed to load computer labs:", err.message);
+    } finally {
+      setComlabLoading(false);
+    }
+  };
+
+  const openComlabModal = () => {
+    fetchComlabList();
+    setComlabAddName("");
+    setComlabEditTarget(null);
+    setComlabDeleteTarget(null);
+    setShowComlabEditModal(true);
+  };
+
+  const handleAddComlab = async () => {
+    const name = comlabAddName.trim();
+    if (!name) return;
+    setComlabAdding(true);
+    try {
+      const maxOrder = Math.max(...comlabList.map((l) => Number(l.lab_number) || 0), 0);
+      const { error } = await supabase.from("lab_numbers").insert({
+        lab_number: maxOrder + 1,
+        name,
+      });
+      if (error) throw error;
+      setComlabAddName("");
+      await fetchComlabList();
+      setComputerLaboratoryCount((c) => c + 1);
+    } catch (err) {
+      console.error("Failed to add lab:", err.message);
+      toast.error(`Failed to add lab: ${err.message}`);
+    } finally {
+      setComlabAdding(false);
+    }
+  };
+
+  const handleStartEditComlab = (lab) => {
+    setComlabEditTarget(lab.id);
+    setComlabEditName(lab.name);
+  };
+
+  const handleSaveEditComlab = async (labId) => {
+    const name = comlabEditName.trim();
+    if (!name) return;
+    setComlabSaving(true);
+    try {
+      const { error } = await supabase
+        .from("lab_numbers")
+        .update({ name })
+        .eq("id", labId);
+      if (error) throw error;
+      setComlabEditTarget(null);
+      setComlabEditName("");
+      await fetchComlabList();
+    } catch (err) {
+      console.error("Failed to update lab:", err.message);
+      toast.error(`Failed to update lab: ${err.message}`);
+    } finally {
+      setComlabSaving(false);
+    }
+  };
+
+  const handleDeleteComlab = async () => {
+    if (!comlabDeleteTarget) return;
+    try {
+      const { error } = await supabase
+        .from("lab_numbers")
+        .delete()
+        .eq("id", comlabDeleteTarget);
+      if (error) throw error;
+      setComlabDeleteTarget(null);
+      await fetchComlabList();
+      setComputerLaboratoryCount((c) => Math.max(0, c - 1));
+      toast.success("Laboratory deleted.");
+    } catch (err) {
+      console.error("Failed to delete lab:", err.message);
+      toast.error(`Failed to delete lab: ${err.message}`);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-[calc(100vh-6rem)] items-center justify-center p-6">
@@ -2709,10 +2811,45 @@ export default function Inventory() {
                   role="link"
                 >
                   <td className="px-4 py-3 font-medium text-slate-900">Computer Laboratories</td>
-                  <td className="px-4 py-3 text-slate-600">CSTA Computer Laboratories</td>
+                  <td className="px-4 py-3 text-slate-600">{comlabDescription}</td>
                   <td className="px-4 py-3 text-slate-600">{computerLaboratoryCount}</td>
-                  <td className="px-4 py-3 text-right text-slate-400">
-                    <span className="sr-only">Open computer laboratories</span>
+                  <td className="px-4 py-3">
+                    <div
+                      className="flex justify-end"
+                      onClick={(event) => event.stopPropagation()}
+                      onPointerDown={(event) => event.stopPropagation()}
+                    >
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={rowActionButtonClass}
+                            aria-label="Open actions for Computer Laboratories"
+                            onClick={(event) => event.stopPropagation()}
+                            onPointerDown={(event) => event.stopPropagation()}
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          className="w-56"
+                          onClick={(event) => event.stopPropagation()}
+                          onPointerDown={(event) => event.stopPropagation()}
+                        >
+                          <DropdownMenuItem
+                            onSelect={(event) => {
+                              event.stopPropagation();
+                              openComlabModal();
+                            }}
+                          >
+                            <Edit className="h-4 w-4" />
+                            Edit Section
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </td>
                 </tr>
                 {paginatedTabs.map((tab) => (
@@ -2929,6 +3066,146 @@ export default function Inventory() {
               </div>
             </div>
           </div>
+        )}
+
+        {showComlabEditModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
+            <div className="relative flex w-full max-w-xl max-h-[85vh] flex-col gap-0 overflow-hidden rounded-[28px] sm:rounded-lg bg-white shadow-2xl ring-1 ring-slate-200">
+              <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-5">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Manage Computer Laboratories</h3>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto inventory-modal-scrollbar px-6 py-5 space-y-5">
+                {/* Add new lab */}
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Add Laboratory</label>
+                  <div className="mt-2 flex gap-2">
+                    <Input
+                      value={comlabAddName}
+                      onChange={(e) => setComlabAddName(e.target.value)}
+                      placeholder="Laboratory name (e.g., Laboratory 7)"
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleAddComlab}
+                      disabled={!comlabAddName.trim() || comlabAdding}
+                      className="rounded-lg bg-[#4a1111] px-5 text-white hover:bg-[#3f0f0f] disabled:opacity-50"
+                    >
+                      {comlabAdding ? "Adding..." : "Add"}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Existing labs list */}
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500"> Laboratories</label>
+                  <div className="mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    {comlabLoading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-[#4a1111]" />
+                      </div>
+                    ) : comlabList.length === 0 ? (
+                      <p className="py-8 text-center text-sm text-slate-500">No laboratories yet.</p>
+                    ) : (
+                      <ul className="divide-y divide-slate-100">
+                        {comlabList.map((lab) => (
+                          <li key={lab.id} className="flex items-center gap-3 px-4 py-3">
+                            {comlabEditTarget === lab.id ? (
+                              <>
+                                <Input
+                                  value={comlabEditName}
+                                  onChange={(e) => setComlabEditName(e.target.value)}
+                                  className="flex-1 h-8 text-sm"
+                                  autoFocus
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveEditComlab(lab.id)}
+                                  disabled={!comlabEditName.trim() || comlabSaving}
+                                  className="inline-flex h-8 items-center gap-1 rounded-md bg-[#4a1111] px-3 text-xs font-medium text-white hover:bg-[#3f0f0f] disabled:opacity-50"
+                                >
+                                  <CheckCircle className="h-3.5 w-3.5" />
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { setComlabEditTarget(null); setComlabEditName(""); }}
+                                  className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-slate-900 truncate">{lab.name}</p>
+                                  <p className="text-xs text-slate-400">Lab #{lab.lab_number}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditComlab(lab)}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                                  title="Edit lab name"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setComlabDeleteTarget(lab.id)}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500"
+                                  title="Delete lab"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="sticky bottom-0 z-20 flex items-center justify-end gap-3 border-t border-slate-200 bg-slate-50/95 px-6 py-4 backdrop-blur-sm">
+                <Button
+                  type="button"
+                  onClick={() => setShowComlabEditModal(false)}
+                  variant="outline"
+                  size="sm"
+                  className="rounded-lg"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete confirmation for lab */}
+        {comlabDeleteTarget && (
+          <AlertDialog open onOpenChange={() => setComlabDeleteTarget(null)}>
+            <AlertDialogContent className="rounded-xl">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete laboratory?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently remove the lab and all its associated computer component data. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="flex justify-end gap-3">
+                <AlertDialogCancel className="rounded-lg">Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDeleteComlab}
+                  className="rounded-lg bg-red-600 text-white hover:bg-red-700"
+                >
+                  Delete
+                </AlertDialogAction>
+              </div>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
       </div>
     </>
