@@ -118,6 +118,7 @@ const normalizeTemplateColumns = (columns = []) => {
               .filter((option) => option)
           : [],
         subColumns: normalizeSubColumns(column.subColumns, key),
+        dynamicBrand: column.dynamicBrand === true,
       };
     })
     .filter((column) => column.key);
@@ -498,7 +499,7 @@ const applyExportHeader = (worksheet, titleText, exportDate, logoImage, separato
 };
 
 // Item Modal Component
-function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns, items }) {
+function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns, items, fetchedBrands }) {
   const useTemplate = Array.isArray(templateColumns) && templateColumns.length > 0;
   const orderedTemplateColumns = useMemo(() => orderTemplateColumns(templateColumns), [templateColumns]);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
@@ -525,6 +526,7 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
     status: item?.status || "",
   }));
   const [dynamicForm, setDynamicForm] = useState({});
+  // Use fetchedBrands from parent (InventorySection) which queries ALL inventory tables
 
   const buildLegacySnapshot = (form) =>
     JSON.stringify({
@@ -551,26 +553,54 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
 
   const renderFieldControl = (fieldKey, fieldConfig) => {
     if (isDropdownField(fieldConfig)) {
-      const options = Array.isArray(fieldConfig?.options) ? fieldConfig.options : [];
+      // Use live fetched brands for brand fields (detected by key name or dynamicBrand flag)
+      const isBrandField = fieldConfig?.dynamicBrand === true || fieldKey === "brand";
+      const staticOptions = Array.isArray(fieldConfig?.options) ? fieldConfig.options : [];
+      const options = isBrandField ? fetchedBrands : staticOptions;
+      const hasOther = options.includes("Other");
+      const regularOptions = hasOther ? options : [...options, "Other"];
+      const rawValue = dynamicForm[fieldKey] ?? "";
+      const isOtherSelected = rawValue === "Other" || (!hasOther && rawValue && !options.includes(rawValue));
 
       return (
-        <select
-          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4a1111]"
-          value={dynamicForm[fieldKey] ?? ""}
-          onChange={(event) =>
-            setDynamicForm((current) => ({
-              ...current,
-              [fieldKey]: event.target.value,
-            }))
-          }
-        >
-          <option value="">Select an option</option>
-          {options.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+        <div className="space-y-2">
+          <Select
+            value={isOtherSelected && rawValue !== "Other" ? "Other" : rawValue}
+            onValueChange={(val) => {
+              setDynamicForm((current) => ({
+                ...current,
+                [fieldKey]: val,
+                ...(val !== "Other" && { [`${fieldKey}_other`]: "" }),
+              }));
+            }}
+          >
+            <SelectTrigger className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-[#4a1111]">
+              <SelectValue placeholder={isBrandField ? "Select or type a brand…" : "Select an option"} />
+            </SelectTrigger>
+            <SelectContent className="rounded-lg border border-slate-200 bg-white shadow-md">
+              {regularOptions.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {isOtherSelected && (
+            <Input
+              className="mt-1"
+              placeholder={isBrandField ? "Type brand name…" : "Specify other value…"}
+              value={rawValue !== "Other" ? rawValue : (dynamicForm[`${fieldKey}_other`] ?? "")}
+              onChange={(event) => {
+                const customVal = event.target.value;
+                setDynamicForm((current) => ({
+                  ...current,
+                  [fieldKey]: "Other",
+                  [`${fieldKey}_other`]: customVal,
+                }));
+              }}
+            />
+          )}
+        </div>
       );
     }
 
@@ -668,10 +698,15 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
           );
         }
       } else {
-        recordData[column.key] = castValueByType(dynamicForm[column.key], column.data_type);
+        const val = dynamicForm[column.key];
+        // If user selected "Other" and typed a custom value, store the custom value
+        if (val === "Other" && dynamicForm[`${column.key}_other`]) {
+          recordData[column.key] = castValueByType(dynamicForm[`${column.key}_other`], column.data_type);
+        } else {
+          recordData[column.key] = castValueByType(val, column.data_type);
+        }
       }
     }
-
     return recordData;
   };
 
@@ -691,12 +726,20 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
           }
         } else {
           const existingValue = item?.[column.key];
-          nextForm[column.key] =
-            existingValue !== undefined && existingValue !== null && existingValue !== ""
-              ? existingValue
-              : isIdentifierField(column.key)
-                ? getNextIdentifierValue(items, column.key)
-                : "";
+          const colOptions = isDropdownField(column) ? (column.options || []) : [];
+          if (existingValue !== undefined && existingValue !== null && existingValue !== "") {
+            // If the stored value doesn't match any dropdown option, treat as "Other"
+            if (colOptions.length > 0 && !colOptions.includes(existingValue) && isDropdownField(column)) {
+              nextForm[column.key] = "Other";
+              nextForm[`${column.key}_other`] = existingValue;
+            } else {
+              nextForm[column.key] = existingValue;
+            }
+          } else {
+            nextForm[column.key] = isIdentifierField(column.key)
+              ? getNextIdentifierValue(items, column.key)
+              : "";
+          }
         }
       }
       setDynamicForm(nextForm);
@@ -756,13 +799,20 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
       setShowSaveConfirm(true);
       return;
     }
-
-    save();
+    save().catch((err) => {
+      console.error("[Save] error:", err);
+      alert(`Failed to save: ${err?.message || err}`);
+    });
   };
 
   const confirmSave = async () => {
     setShowSaveConfirm(false);
-    await save();
+    try {
+      await save();
+    } catch (err) {
+      console.error("[Save] error:", err);
+      alert(`Failed to save: ${err?.message || err}`);
+    }
   };
 
   const cancelSave = () => {
@@ -791,7 +841,7 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
         return;
       }
 
-      await upsertInventoryItem({
+      const result = await upsertInventoryItem({
         id: item?.id,
         sectionId: section.id,
         tableName,
@@ -1223,9 +1273,12 @@ export default function InventorySection() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [tabTableName, setTabTableName] = useState("");
   const [templateColumns, setTemplateColumns] = useState([]);
+  const [sectionColumnsMap, setSectionColumnsMap] = useState({}); // { [sectionId]: ColumnDef[] }
   const [gridEditMode, setGridEditMode] = useState(false);
   const [cellDrafts, setCellDrafts] = useState({});
   const [savingCellKey, setSavingCellKey] = useState(null);
+  const [fetchedBrands, setFetchedBrands] = useState([]);
+  const [tabBrands, setTabBrands] = useState([]); // template-specific brands from tab config
   const [deletingId, setDeletingId] = useState(null);
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
@@ -1595,7 +1648,13 @@ export default function InventorySection() {
   const sections = tab?.sections || [];
   const orderedTemplateColumns = useMemo(() => orderTemplateColumns(templateColumns), [templateColumns]);
   const usesTemplateColumns = templateColumns.length > 0;
-  const displayTemplateColumns = orderedTemplateColumns;
+  // Use per-section columns if available, otherwise fall back to merged template columns
+  const displayTemplateColumns = useMemo(() => {
+    if (selectedSection?.id && sectionColumnsMap[selectedSection.id]?.length > 0) {
+      return orderTemplateColumns(normalizeTemplateColumns(sectionColumnsMap[selectedSection.id]));
+    }
+    return orderedTemplateColumns;
+  }, [selectedSection?.id, sectionColumnsMap, orderedTemplateColumns]);
   const hasItemNumberColumn = useMemo(
     () => displayTemplateColumns.some((column) => String(column?.key || "").trim() === "item_number"),
     [displayTemplateColumns]
@@ -1763,6 +1822,8 @@ export default function InventorySection() {
         if (!cancelled) {
           setTabTableName(config?.tableName || "");
           setTemplateColumns(normalizeTemplateColumns(config?.columns || []));
+          setSectionColumnsMap(config?.sectionColumns || {});
+          setTabBrands(Array.isArray(config?.brands) ? config.brands : []);
         }
 
         if (!nextSection && tab.sections?.length === 0) {
@@ -1788,6 +1849,38 @@ export default function InventorySection() {
       cancelled = true;
     };
   }, [tab, searchParams]);
+
+  // Fetch brands for this tab: template-specific presets + real data from this tab's own table
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchBrands = async () => {
+      // Start with template-specific preset brands (from tab config)
+      const brandSets = new Set(tabBrands);
+
+      // Supplement with real brand data from this tab's own table only
+      if (tabTableName) {
+        try {
+          const { data } = await supabase
+            .from(tabTableName)
+            .select("brand")
+            .not("brand", "is", null)
+            .neq("brand", "");
+          if (data) {
+            data.forEach((r) => {
+              const b = String(r.brand || "").trim();
+              if (b) brandSets.add(b);
+            });
+          }
+        } catch { /* table may not have brand column yet — use presets only */ }
+      }
+
+      const sorted = [...brandSets].sort((a, b) => a.localeCompare(b));
+      if (!cancelled) setFetchedBrands(sorted);
+    };
+    fetchBrands();
+    return () => { cancelled = true; };
+  }, [tabTableName, tabBrands, refreshKey]);
 
   useEffect(() => {
     if (!tab) return;
@@ -2722,22 +2815,37 @@ export default function InventorySection() {
                                                 {subColumn.label}
                                               </div>
                                               {gridEditMode ? (
-                                                fieldEditorType === "dropdown" ? (
-                                                  <select
-                                                    value={fieldDraftValue}
-                                                    disabled={savingCellKey === fieldDraftKey || deletingId !== null}
-                                                    onChange={(event) => handleCellDraftChange(item.id, fieldKey, event.target.value)}
-                                                    onBlur={() => handleInlineCellSave(item, fieldKey, subColumn)}
-                                                    className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100"
-                                                  >
-                                                    <option value="">Select option...</option>
-                                                    {(subColumn.options || []).map((option) => (
-                                                      <option key={option} value={option}>
-                                                        {option}
-                                                      </option>
-                                                    ))}
-                                                  </select>
-                                                ) : fieldEditorType === "boolean" ? (
+                                                fieldEditorType === "dropdown" ? (() => {
+                                                  const isBrandSub = subColumn?.dynamicBrand === true || fieldKey === "brand";
+                                                  const baseOptions = isBrandSub ? fetchedBrands : (subColumn.options || []);
+                                                  const hasOtherSub = baseOptions.includes("Other");
+                                                  // Include the current value in the dropdown if it's not already there
+                                                  const currentSubVal = fieldDraftValue;
+                                                  const withOtherSub = hasOtherSub ? baseOptions : [...baseOptions, "Other"];
+                                                  const subDropdownOptions = (currentSubVal && !withOtherSub.includes(currentSubVal))
+                                                    ? [...withOtherSub, currentSubVal]
+                                                    : withOtherSub;
+                                                  return (
+                                                    <Select
+                                                      value={fieldDraftValue || undefined}
+                                                      onValueChange={(val) => {
+                                                        handleCellDraftChange(item.id, fieldKey, val);
+                                                        handleInlineCellSave(item, fieldKey, subColumn);
+                                                      }}
+                                                    >
+                                                      <SelectTrigger className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100 h-auto">
+                                                        <SelectValue placeholder={isBrandSub ? "Select brand…" : "Select option…"} />
+                                                      </SelectTrigger>
+                                                      <SelectContent className="rounded-lg border border-slate-200 bg-white shadow-md">
+                                                        {subDropdownOptions.map((option) => (
+                                                          <SelectItem key={option} value={option}>
+                                                            {option}
+                                                          </SelectItem>
+                                                        ))}
+                                                      </SelectContent>
+                                                    </Select>
+                                                  );
+                                                })() : fieldEditorType === "boolean" ? (
                                                   <label className="inline-flex items-center gap-2 text-sm text-slate-700">
                                                     <input
                                                       type="checkbox"
@@ -2810,22 +2918,38 @@ export default function InventorySection() {
                                         </span>
                                       )
                                     ) : gridEditMode ? (
-                                      columnEditorType === "dropdown" ? (
-                                        <select
-                                          value={columnDraftValue}
-                                          disabled={savingCellKey === columnDraftKey || deletingId !== null}
-                                          onChange={(event) => handleCellDraftChange(item.id, columnKey, event.target.value)}
-                                          onBlur={() => handleInlineCellSave(item, columnKey, column)}
-                                          className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100"
-                                        >
-                                          <option value="">Select option...</option>
-                                          {(column.options || []).map((option) => (
-                                            <option key={option} value={option}>
-                                              {option}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      ) : columnEditorType === "boolean" ? (
+                                      columnEditorType === "dropdown" ? (() => {
+                                        const isBrandCol = column?.dynamicBrand === true || columnKey === "brand";
+                                        const baseColOptions = isBrandCol ? fetchedBrands : (column.options || []);
+                                        const hasOtherCol = baseColOptions.includes("Other");
+                                        // Include the current value in the dropdown if it's not already there
+                                        // (e.g. a custom "Other" brand that isn't in fetchedBrands yet)
+                                        const currentVal = columnDraftValue;
+                                        const withOther = hasOtherCol ? baseColOptions : [...baseColOptions, "Other"];
+                                        const dropdownOptions = (currentVal && !withOther.includes(currentVal))
+                                          ? [...withOther, currentVal]
+                                          : withOther;
+                                        return (
+                                          <Select
+                                            value={columnDraftValue || undefined}
+                                            onValueChange={(val) => {
+                                              handleCellDraftChange(item.id, columnKey, val);
+                                              handleInlineCellSave(item, columnKey, column);
+                                            }}
+                                          >
+                                            <SelectTrigger className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100 h-auto">
+                                              <SelectValue placeholder={isBrandCol ? "Select brand…" : "Select option…"} />
+                                            </SelectTrigger>
+                                            <SelectContent className="rounded-lg border border-slate-200 bg-white shadow-md">
+                                              {dropdownOptions.map((option) => (
+                                                <SelectItem key={option} value={option}>
+                                                  {option}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        );
+                                      })() : columnEditorType === "boolean" ? (
                                         <label className="inline-flex items-center gap-2 text-sm text-slate-700">
                                           <input
                                             type="checkbox"
@@ -2974,11 +3098,13 @@ export default function InventorySection() {
 
       {showModal && selectedSection && (
         <ItemModal
+          key={`${selectedSection?.id}-${editingItem?.id || "new"}`}
           section={selectedSection}
           item={editingItem}
           tableName={tabTableName}
-          templateColumns={templateColumns}
+          templateColumns={displayTemplateColumns}
           items={items}
+          fetchedBrands={fetchedBrands}
           onClose={() => setShowModal(false)}
           onSaved={handleSaved}
         />

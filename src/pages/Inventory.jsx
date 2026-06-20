@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Edit, MoreVertical, Plus, Trash2, X, CheckCircle, Monitor, Armchair, Wrench, FileText, Box, Tv, Cable, ChevronLeft, ChevronRight, Columns2, FolderOpen, LayoutTemplate, Upload, FileSpreadsheet } from "lucide-react";
+import { Edit, MoreVertical, Plus, Trash2, X, CheckCircle, Monitor, Armchair, Wrench, FileText, Box, Tv, Cable, ChevronLeft, ChevronRight, Columns2, FolderOpen, LayoutTemplate, Upload, FileSpreadsheet, Wifi, Battery, HardDrive, Keyboard, Mouse, Headphones, Projector, Usb, Lock, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,7 +51,10 @@ import {
   getInventoryModifyTableEndpoint,
   getInventoryLogsTableEndpoint,
   getInventoryDropLogsTableEndpoint,
+  getInventoryDropColumnsEndpoint,
   getTabTableConfig,
+  getTabTableName,
+  callDropInventoryColumns,
   slugify,
   makeUniqueSlug,
   bulkInsertInventoryRows,
@@ -75,6 +78,17 @@ const getTabRoute = (tab) => {
 };
 
 // Pre-built templates for common inventory types
+// ─── Fallback brand list used when DB query returns empty ───
+const FALLBACK_BRANDS = ["Dell", "HP", "Lenovo", "Apple", "Asus", "Acer", "Logitech", "TP-Link", "Samsung", "LG"];
+
+// ─── Helper: build a standard column def ───
+const C = (key, label, fieldType = "text", extra = {}) => ({
+  key, label, data_type: fieldType === "number" ? "int" : "text", fieldType, ...extra,
+});
+const REMARKS = { key: "remarks", label: "Remarks", data_type: "text", fieldType: "dropdown", options: ["Working", "Defective"] };
+const QTY = { key: "quantity", label: "Quantity", data_type: "int", fieldType: "number" };
+const BRAND = { key: "brand", label: "Brand", data_type: "text", fieldType: "dropdown", dynamicBrand: true };
+
 const INVENTORY_TEMPLATES = [
   {
     id: "import-csv",
@@ -82,57 +96,173 @@ const INVENTORY_TEMPLATES = [
     description: "Upload a CSV or Excel file to auto-create your inventory structure",
     icon: Upload,
     sections: [],
-    columns: [],
+    sectionColumns: {},
     isImportTemplate: true,
   },
+  // ══════════════════════════════════════════════════════════════════════════════
+  // A. Computing Devices
+  // ══════════════════════════════════════════════════════════════════════════════
   {
-    id: "furniture",
-    name: "Furniture",
-    description: "Office and classroom furniture inventory",
-    icon: Armchair,
+    id: "computing-devices",
+    name: "Computing Devices",
+    description: "Laptops, desktops, tablets, and mobile devices with per-section schemas",
+    icon: Monitor,
+    brands: ["Dell", "HP", "Lenovo", "Apple", "Asus", "Acer", "MSI", "Samsung", "Huawei", "Xiaomi", "Microsoft", "Framework", "Razer", "Gateway", "Toshiba", "Sony VAIO", "Panasonic"],
     sections: [
-      { name: "Chairs", description: "Seating furniture" },
-      { name: "Tables", description: "Desks and tables" },
-      { name: "Storage", description: "Cabinets and shelves" },
+      { name: "Laptops", description: "Portable computers with serial tracking" },
+      { name: "Desktops & All-in-Ones", description: "Desktop and AIO workstations" },
+      { name: "Tablets & Mobile Devices", description: "Tablets, iPads, and mobile devices" },
     ],
-    columns: [
-      { key: "item_number", label: "Item #", data_type: "int" },
-      { key: "type", label: "Type", data_type: "text", options: ["Chair", "Table", "Desk", "Cabinet", "Shelf"] },
-      { key: "brand", label: "Brand", data_type: "text" },
-      { key: "description", label: "Description", data_type: "text" },
-      { key: "quantity", label: "Quantity", data_type: "int" },
-      { key: "remarks", label: "Remarks", data_type: "text", fieldType: "dropdown", options: ["Working", "Defective", "Missing"] },
-      { key: "location", label: "Location", data_type: "text" },
-    ],
+    sectionColumns: {
+      "Laptops": [
+        C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
+        C("serial_number", "Serial Number"), C("assigned_user", "Assigned User/Faculty"),
+        C("sub_category", "Sub-Category", "dropdown", { options: ["Ultrabook", "Business", "Gaming"] }),
+        REMARKS,
+      ],
+      "Desktops & All-in-Ones": [
+        C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
+        C("serial_number", "Serial Number"),
+        C("form_factor", "Form Factor", "dropdown", { options: ["Tower", "SFF", "Mini", "All-in-One"] }),
+        C("room_location", "Room Location"), REMARKS,
+      ],
+      "Tablets & Mobile Devices": [
+        C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
+        C("imei_serial_number", "IMEI/Serial Number"),
+        C("os_platform", "OS Platform", "dropdown", { options: ["iOS", "Android", "Windows"] }),
+        REMARKS,
+      ],
+    },
   },
+  // ══════════════════════════════════════════════════════════════════════════════
+  // B. Displays
+  // ══════════════════════════════════════════════════════════════════════════════
   {
-    id: "equipment",
-    name: "Equipment",
-    description: "General equipment and tools",
-    icon: Wrench,
+    id: "displays",
+    name: "Displays",
+    description: "Monitors, projectors, and presentation display equipment",
+    icon: Tv,
+    brands: ["Dell", "HP", "Lenovo", "Samsung", "LG", "Asus", "Acer", "BenQ", "ViewSonic", "Epson", "NEC", "Optoma", "Hitachi", "Panasonic", "Sony", "Philips", "AOC", "MSI", "Gigabyte", "Alienware"],
     sections: [
-      { name: "Electronics", description: "Electronic devices" },
-      { name: "Tools", description: "Hand and power tools" },
-      { name: "Sports", description: "Sports equipment" },
+      { name: "External Monitors", description: "Computer monitors and display screens" },
+      { name: "Projectors & Presentation Displays", description: "Projectors and presentation equipment" },
     ],
-    columns: [
-      { key: "item_number", label: "Item #", data_type: "int" },
-      { key: "name", label: "Name", data_type: "text" },
-      { key: "brand", label: "Brand", data_type: "text" },
-      { key: "model", label: "Model", data_type: "text" },
-      { key: "serial_number", label: "Serial Number", data_type: "text" },
-      { key: "quantity", label: "Quantity", data_type: "int" },
-      { key: "remarks", label: "Remarks", data_type: "text", fieldType: "dropdown", options: ["Working", "Defective", "Missing"] },
-      { key: "acquisition_date", label: "Acquisition Date", data_type: "date" },
-    ],
+    sectionColumns: {
+      "External Monitors": [
+        C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
+        C("serial_number", "Serial Number"),
+        C("screen_size", "Screen Size", "dropdown", { options: ["21\"", "24\"", "27\"", "32\"+"] }),
+        C("video_inputs", "Video Inputs", "dropdown", { options: ["HDMI", "DisplayPort", "VGA"] }),
+        REMARKS,
+      ],
+      "Projectors & Presentation Displays": [
+        C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
+        C("serial_number", "Serial Number"), C("interface_connection", "Interface Connection"),
+        C("bulb_hours_run", "Bulb Hours Run", "number"), REMARKS,
+      ],
+    },
   },
+  // ══════════════════════════════════════════════════════════════════════════════
+  // C. Peripherals & Input Devices
+  // ══════════════════════════════════════════════════════════════════════════════
+  {
+    id: "peripherals",
+    name: "Peripherals & Input Devices",
+    description: "Docking stations, keyboards, mice, headsets, and webcams",
+    icon: Keyboard,
+    brands: ["Logitech", "Razer", "Corsair", "SteelSeries", "HyperX", "Dell", "HP", "Lenovo", "Apple", "Microsoft", "Anker", "UGREEN", "Satechi", "CalDigit", "Plugable", "StarTech", "Blue", "Jabra", "Plantronics", "Poly", "Elgato", "Razer", "Creative", "Audio-Technica", "Shure", "Samson"],
+    sections: [
+      { name: "Docking Stations", description: "USB-C and brand-specific docking stations" },
+      { name: "Keyboards & Mice", description: "Pooled bulk inventory — no serial tracking" },
+      { name: "Headsets, Microphones & Webcams", description: "Audio and video conferencing peripherals" },
+    ],
+    sectionColumns: {
+      "Docking Stations": [
+        C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
+        C("compatibility_type", "Compatibility Type", "dropdown", { options: ["Universal USB-C", "Dell", "Lenovo", "HP"] }),
+        REMARKS,
+      ],
+      "Keyboards & Mice": [
+        C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
+        { key: "pooled_quantity", label: "Pooled Quantity", data_type: "int", fieldType: "number" }, REMARKS,
+      ],
+      "Headsets, Microphones & Webcams": [
+        C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
+        C("connection_type", "Connection Type", "dropdown", { options: ["USB-A", "USB-C", "3.5mm", "Bluetooth"] }),
+        QTY, REMARKS,
+      ],
+    },
+  },
+  // ══════════════════════════════════════════════════════════════════════════════
+  // D. Power & Cables
+  // ══════════════════════════════════════════════════════════════════════════════
+  {
+    id: "power-cables",
+    name: "Power & Cables",
+    description: "Power adapters, UPS units, surge protectors, and data adapters",
+    icon: Battery,
+    brands: ["APC", "CyberPower", "Tripp Lite", "Belkin", "Eaton", "Dell", "HP", "Lenovo", "Apple", "Anker", "UGREEN", "Baseus", "Unidapt", "StarTech", "Cable Matters", "Amazon Basics", "DURAGADGET", "Pyle", "Monster", "Philips"],
+    sections: [
+      { name: "Power Adapters / Chargers", description: "Consumable pool stock items" },
+      { name: "UPS Units & Surge Protectors", description: "UPS and surge protection devices" },
+      { name: "Video & Data Adapters", description: "Video, data, and network adapters" },
+    ],
+    sectionColumns: {
+      "Power Adapters / Chargers": [
+        C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
+        C("voltage_wattage", "Voltage/Wattage"),
+        { key: "pooled_quantity", label: "Pooled Quantity", data_type: "int", fieldType: "number" }, REMARKS,
+      ],
+      "UPS Units & Surge Protectors": [
+        C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
+        C("load_capacity_va", "Load Capacity (VA)"),
+        C("battery_health", "Battery Health Condition", "dropdown", { options: ["Good", "Replace Battery"] }),
+        REMARKS,
+      ],
+      "Video & Data Adapters": [
+        C("item_number", "Item #"), C("name", "Name"), BRAND,
+        C("adapter_endpoints", "Adapter Endpoints", "dropdown", { options: ["HDMI to VGA", "USB-C to USB-A", "Type-C to Ethernet"] }),
+        QTY, REMARKS,
+      ],
+    },
+  },
+  // ══════════════════════════════════════════════════════════════════════════════
+  // E. Storage & Networking
+  // ══════════════════════════════════════════════════════════════════════════════
+  {
+    id: "storage-networking",
+    name: "Storage & Networking",
+    description: "External storage drives and network equipment",
+    icon: HardDrive,
+    brands: ["Western Digital", "Seagate", "Samsung", "SanDisk", "Kingston", "Crucial", "Toshiba", "LaCie", "Netgear", "TP-Link", "Ubiquiti", "Cisco", "MikroTik", "Linksys", "Asus", "D-Link", "Synology", "QNAP", "Zyxel", "Aruba"],
+    sections: [
+      { name: "External Hard Drives & SSDs", description: "Portable storage devices" },
+      { name: "Network Equipment", description: "Routers, access points, and switches" },
+    ],
+    sectionColumns: {
+      "External Hard Drives & SSDs": [
+        C("item_number", "Item #"), C("name", "Name"), BRAND,
+        C("storage_type", "Storage Type", "dropdown", { options: ["External HDD", "Portable SSD"] }),
+        C("capacity", "Capacity", "dropdown", { options: ["500GB", "1TB", "2TB", "4TB+"] }),
+        REMARKS,
+      ],
+      "Network Equipment": [
+        C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
+        C("device_class", "Device Class", "dropdown", { options: ["Wireless Router", "Access Point", "PoE Switch"] }),
+        C("management_ip", "Management IP Address"), REMARKS,
+      ],
+    },
+  },
+  // ══════════════════════════════════════════════════════════════════════════════
+  // F. Custom
+  // ══════════════════════════════════════════════════════════════════════════════
   {
     id: "custom",
     name: "Custom",
     description: "Start from scratch with your own fields",
     icon: FileText,
     sections: [],
-    columns: [],
+    sectionColumns: {},
   },
 ];
 
@@ -153,6 +283,7 @@ const normalizeColumnConfig = (column) => ({
   visible: column?.visible !== false,
   fieldType: String(column?.fieldType || "text").toLowerCase(),
   options: Array.isArray(column?.options) ? column.options.map(normalizeOption).filter(Boolean) : [],
+  dynamicBrand: column?.dynamicBrand === true,
   subColumns: Array.isArray(column?.subColumns)
     ? column.subColumns
       .filter((subColumn) => subColumn && subColumn.key)
@@ -416,9 +547,9 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
           </div>
 
           {form.fieldType === "dropdown" && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
               <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Dropdown Options</label>
-              <div className="mt-2 flex gap-2">
+              <div className="flex gap-2">
                 <Input
                   placeholder="Enter option (e.g., Active, Inactive)"
                   value={form.newOption}
@@ -442,8 +573,9 @@ function ColumnRowModal({ column, onClose, onSave, existingColumns = [] }) {
                   Add
                 </button>
               </div>
+
               {form.options.length > 0 && (
-                <div className="mt-2 space-y-1">
+                <div className="space-y-1">
                   {form.options.map((option) => (
                     <div key={option} className="flex items-center justify-between rounded bg-white px-2 py-1">
                       <span className="text-sm text-slate-700">{option}</span>
@@ -922,6 +1054,25 @@ function SectionModal({ section, onClose, onSave }) {
   );
 }
 
+// ─── Template category grouping (for flat display, one card per template) ───
+const TEMPLATE_DISPLAY_ORDER = [
+  "import-csv",
+  "computing-devices",
+  "displays",
+  "peripherals",
+  "power-cables",
+  "storage-networking",
+  "custom",
+];
+
+// ─── Field type badge colors ───
+const FIELD_TYPE_COLORS = {
+  text: "bg-slate-100 text-slate-600",
+  dropdown: "bg-violet-100 text-violet-700",
+  number: "bg-emerald-100 text-emerald-700",
+  date: "bg-amber-100 text-amber-700",
+};
+
 function TabModal({ tab, onClose, onSave }) {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
@@ -937,6 +1088,7 @@ function TabModal({ tab, onClose, onSave }) {
   const [columns, setColumns] = useState(tab?.columns || []);
   const [editingSectionIndex, setEditingSectionIndex] = useState(null);
   const [editingColumnIndex, setEditingColumnIndex] = useState(null);
+  const [editingColumnSectionKey, setEditingColumnSectionKey] = useState(null); // section name when editing in Step 4
   const [showSectionModal, setShowSectionModal] = useState(false);
   const [showColumnModal, setShowColumnModal] = useState(false);
   const [sectionToEdit, setSectionToEdit] = useState(null);
@@ -947,6 +1099,13 @@ function TabModal({ tab, onClose, onSave }) {
   // Wizard step state for new tabs
   const [wizardStep, setWizardStep] = useState(tab?.id ? 4 : 1);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+
+  // Per-section columns: { [sectionName]: ColumnDef[] }
+  const [sectionColumns, setSectionColumns] = useState({});
+  const [activeSectionTab, setActiveSectionTab] = useState(0);
+
+  // Fetched brands from Supabase
+  const [availableBrands, setAvailableBrands] = useState([]);
 
   // CSV / File import state
   const [importFile, setImportFile] = useState(null);
@@ -970,13 +1129,13 @@ function TabModal({ tab, onClose, onSave }) {
         { num: 1, label: "Choose Template" },
         { num: 2, label: "Basic Info" },
         { num: 3, label: "Sections" },
-        { num: 4, label: "Columns" },
+        { num: 4, label: "Section Columns" },
         { num: 5, label: "Review" },
       ]
     : [
       { num: 1, label: "Basic Info" },
       { num: 2, label: "Sections" },
-      { num: 3, label: "Columns" },
+      { num: 3, label: "Section Columns" },
       { num: 4, label: "Review" },
     ];
 
@@ -993,18 +1152,33 @@ function TabModal({ tab, onClose, onSave }) {
         { key: "template", Icon: LayoutTemplate },
         { key: "basic", Icon: FileText },
         { key: "sections", Icon: FolderOpen },
-        { key: "columns", Icon: Columns2 },
+        { key: "section-columns", Icon: Columns2 },
         { key: "review", Icon: CheckCircle },
       ]
     : [
       { key: "basic", Icon: FileText },
       { key: "sections", Icon: FolderOpen },
-      { key: "columns", Icon: Columns2 },
+      { key: "section-columns", Icon: Columns2 },
       { key: "review", Icon: CheckCircle },
     ];
 
   const canProceed = () => {
     const currentStep = wizardStep;
+    // Edit flow: Step 1 = Basic Info, Step 2 = Sections, Step 3 = Section Columns, Step 4 = Review
+    if (!isNewTab) {
+      if (currentStep === 1 || currentStep === 2) {
+        const name = tabForm.name.trim();
+        return name && hasOnlyLettersNumbers(name);
+      }
+      if (currentStep === 3) {
+        return sections.length > 0;
+      }
+      if (currentStep === 4) {
+        return Object.values(sectionColumns).some((cols) => cols.length > 0);
+      }
+      return true;
+    }
+    // New tab flow
     if (currentStep === 1) {
       return selectedTemplate !== null;
     }
@@ -1020,27 +1194,43 @@ function TabModal({ tab, onClose, onSave }) {
     }
     if (currentStep === 4) {
       if (isImportTemplate) {
-        // In import template, step 4 is review — always allow
-        return true;
+        return true; // step 4 is review for import
       }
-      return columns.length > 0;
+      // Section columns step — at least one section must have columns
+      return Object.values(sectionColumns).some((cols) => cols.length > 0);
     }
     return true;
   };
 
   const handleTemplateSelect = (template) => {
     setSelectedTemplate(template);
+    setActiveSectionTab(0);
     if (template.id === "custom") {
       setSections([]);
-      setColumns([]);
+      setSectionColumns({});
     } else if (template.isImportTemplate) {
       setSections([]);
-      setColumns([]);
+      setSectionColumns({});
       setImportPreview(null);
       setImportFile(null);
     } else {
       setSections(template.sections.map((s, i) => ({ ...s, sort_order: i + 1 })));
-      setColumns(template.columns);
+      // Build sectionColumns map from template; merged columns = union of all section columns
+      const secCols = {};
+      const merged = [];
+      const seenKeys = new Set();
+      for (const sec of template.sections) {
+        const cols = (template.sectionColumns?.[sec.name] || []).map((c) => ({ ...c }));
+        secCols[sec.name] = cols;
+        for (const c of cols) {
+          if (!seenKeys.has(c.key)) {
+            seenKeys.add(c.key);
+            merged.push({ ...c });
+          }
+        }
+      }
+      setSectionColumns(secCols);
+      setColumns(merged);
     }
     setWizardStep(2);
   };
@@ -1266,6 +1456,8 @@ function TabModal({ tab, onClose, onSave }) {
     setTabForm(nextTabForm);
     setSections(nextSections);
     setColumns(nextColumns);
+    setSectionColumns({});
+    setActiveSectionTab(0);
     setEditingSectionIndex(null);
     setEditingColumnIndex(null);
     setSectionToEdit(null);
@@ -1302,6 +1494,31 @@ function TabModal({ tab, onClose, onSave }) {
     };
   }, [tab?.id]);
 
+  // Fetch distinct brands from Supabase on mount
+  useEffect(() => {
+    let cancelled = false;
+    const fetchBrands = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("inventory_items")
+          .select("brand")
+          .not("brand", "is", null)
+          .neq("brand", "");
+        if (!error && data && !cancelled) {
+          const dbBrands = [...new Set(data.map((r) => String(r.brand).trim()).filter(Boolean))];
+          const merged = [...new Set([...FALLBACK_BRANDS, ...dbBrands])].sort((a, b) =>
+            a.localeCompare(b)
+          );
+          setAvailableBrands(merged);
+        }
+      } catch {
+        if (!cancelled) setAvailableBrands([...FALLBACK_BRANDS]);
+      }
+    };
+    fetchBrands();
+    return () => { cancelled = true; };
+  }, []);
+
   const editSection = (index) => {
     const current = sections[index];
     if (!current) return;
@@ -1333,8 +1550,8 @@ function TabModal({ tab, onClose, onSave }) {
 
     try {
       // If we have an existing table, drop the column immediately
-      if (editingTab && editingTab.id) {
-        const tableName = await getTabTableName(editingTab.id);
+      if (tab && tab.id) {
+        const tableName = await getTabTableName(tab.id);
         if (tableName) {
           const dropColumnsEndpoint = getInventoryDropColumnsEndpoint();
           await callDropInventoryColumns(dropColumnsEndpoint, tableName, [columnToDelete.key]);
@@ -1397,7 +1614,7 @@ function TabModal({ tab, onClose, onSave }) {
   };
 
   const handleSaveTab = () => {
-    return onSave({ ...tabForm, sections, columns, _importData: importPreview });
+    return onSave({ ...tabForm, sections, columns, sectionColumns, _importData: importPreview });
   };
 
   const requestClose = () => {
@@ -1517,7 +1734,7 @@ function TabModal({ tab, onClose, onSave }) {
               {!tab && (
                 <p className="mt-1 text-sm text-slate-500">
                   {wizardStep === 1
-                    ? "Choose a template or start from scratch"
+                    ? "Choose a parent template or start from scratch"
                     : wizardStep === 2
                       ? "Give your inventory a name"
                       : wizardStep === 3
@@ -1527,7 +1744,7 @@ function TabModal({ tab, onClose, onSave }) {
                         : wizardStep === 4
                           ? isImportTemplate
                             ? "Review auto-mapped columns from your file"
-                            : "Define what information to track"
+                            : "Define columns for each section"
                           : "Review and save your inventory"}
                 </p>
               )}
@@ -1537,31 +1754,40 @@ function TabModal({ tab, onClose, onSave }) {
           <div className="flex-1 overflow-y-auto inventory-modal-scrollbar">
             {/* Wizard Step Content */}
             {isNewTab && wizardStep === 1 && (
-              <div className="p-5">
+              <div className="p-5 space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {INVENTORY_TEMPLATES.map((template) => (
-                    <button
-                      key={template.id}
-                      type="button"
-                      onClick={() => handleTemplateSelect(template)}
-                      className={`group relative flex flex-col items-start rounded-xl border-2 p-4 text-left transition-all hover:border-[#4a1111] ${selectedTemplate?.id === template.id ? "border-[#4a1111] bg-rose-50" : "border-slate-200 bg-white hover:bg-slate-50"
+                  {TEMPLATE_DISPLAY_ORDER.map((id) => {
+                    const template = INVENTORY_TEMPLATES.find((t) => t.id === id);
+                    if (!template) return null;
+                    const totalCols = Object.values(template.sectionColumns || {}).reduce((n, cols) => n + cols.length, 0);
+                    return (
+                      <button
+                        key={template.id}
+                        type="button"
+                        onClick={() => handleTemplateSelect(template)}
+                        className={`group relative flex flex-col items-start rounded-xl border-2 p-4 text-left transition-all hover:border-[#4a1111] hover:shadow-md ${
+                          selectedTemplate?.id === template.id
+                            ? "border-[#4a1111] bg-rose-50 shadow-sm ring-1 ring-[#4a1111]/20"
+                            : "border-slate-200 bg-white hover:bg-slate-50"
                         }`}
-                    >
-                      {template.icon && <template.icon className="mb-2 h-8 w-8 text-slate-600" />}
-                      <h4 className="font-semibold text-slate-900">{template.name}</h4>
-                      <p className="mt-1 text-sm text-slate-500">{template.description}</p>
-                      {template.id !== "custom" && !template.isImportTemplate && (
-                        <span className="mt-3 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
-                          {template.sections.length} sections, {template.columns.length} columns
-                        </span>
-                      )}
-                      {template.isImportTemplate && (
-                        <span className="mt-3 rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-600">
-                          CSV / Excel upload
-                        </span>
-                      )}
-                    </button>
-                  ))}
+                      >
+                        <div className="flex w-full items-start gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 transition-colors group-hover:bg-[#4a1111]/10 group-hover:text-[#4a1111]">
+                            {template.icon && <template.icon className="h-5 w-5" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <h4 className="font-semibold text-slate-900">{template.name}</h4>
+                            <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{template.description}</p>
+                          </div>
+                        </div>
+                        {template.isImportTemplate && (
+                          <span className="mt-3 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">
+                            CSV / Excel upload
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1609,8 +1835,8 @@ function TabModal({ tab, onClose, onSave }) {
               </div>
             )}
 
-            {/* Step 3: Sections (normal) or Upload File (import template) */}
-            {((!isNewTab) || wizardStep === 3 || wizardStep === 5) && tabType === "legacy" && (
+            {/* Sections step — new tab step 3, edit flow step 2 */}
+            {((isNewTab && wizardStep === 3) || (!isNewTab && wizardStep === 2)) && tabType === "legacy" && (
               <div className="border-t border-slate-200 px-5 py-5">
                 {isNewTab && isImportTemplate && wizardStep === 3 ? (
                   // ── Smart Importer: handles .xlsx, .csv with noise stripping, multi-section, inline edit ──
@@ -1761,161 +1987,185 @@ function TabModal({ tab, onClose, onSave }) {
               </div>
             )}
 
-            {((isNewTab && wizardStep >= 4) || !isNewTab) && tabType === "legacy" && (
-              <div className="border-t border-slate-200 px-5 py-5">
-                {isNewTab && isImportTemplate ? (
-                  // ── Import Template: Mapped Columns Review ──
-                  <div>
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <h4 className="text-sm font-semibold text-slate-900">Mapped Columns</h4>
-                        <p className="mt-1 text-xs text-slate-500">These fields were detected from your file. Toggle visibility or remove columns you don't need.</p>
-                      </div>
-                      <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                        {columns.length} fields
-                      </span>
-                    </div>
-
-                    <div className="mt-4 space-y-2">
-                      {columns.map((col, index) => (
-                        <div
-                          key={col.key || index}
-                          className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3"
+            {/* Section Columns editor: new tab step 4, edit tab step 3 */}
+            {((isNewTab && wizardStep === 4) || (!isNewTab && wizardStep === 3)) && !isImportTemplate && (
+              <div className="p-5 space-y-4">
+                {sections.length === 0 ? (
+                  <p className="text-sm text-slate-400">No sections defined. Go back to Step 3 to add sections first.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Section tab strip */}
+                    <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+                      {sections.map((sec, idx) => (
+                        <button
+                          key={sec.id || sec.slug || idx}
+                          type="button"
+                          onClick={() => setActiveSectionTab(idx)}
+                          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                            activeSectionTab === idx
+                              ? "bg-[#4a1111] text-white"
+                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          }`}
                         >
-                          <div className="flex items-center gap-3">
-                            <FileText className="h-4 w-4 text-slate-400" />
-                            <div>
-                              <p className="text-sm font-medium text-slate-800">{col.label}</p>
-                              <p className="text-xs text-slate-400">key: {col.key}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-500">
-                              <Checkbox
-                                checked={col.visible !== false}
-                                onCheckedChange={(checked) => {
-                                  setColumns((prev) =>
-                                    prev.map((c, i) => (i === index ? { ...c, visible: !!checked } : c))
-                                  );
-                                }}
-                                className="h-3.5 w-3.5 border-slate-300 data-[state=checked]:bg-[#4a1111] data-[state=checked]:border-[#4a1111]"
-                              />
-                              Visible
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setColumns((prev) => prev.filter((_, i) => i !== index));
-                              }}
-                              className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-500"
-                              title="Remove column"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
+                          {sec.name}
+                          <span className="ml-1.5 text-[10px] opacity-70">
+                            ({(sectionColumns[sec.name] || []).length})
+                          </span>
+                        </button>
                       ))}
                     </div>
 
-                    {columns.length === 0 && (
-                      <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 py-8 text-center">
-                        <p className="text-sm text-slate-500">No columns mapped. Go back to upload a file.</p>
-                      </div>
-                    )}
+                    {/* Active section column editor */}
+                    {sections[activeSectionTab] && (() => {
+                      const secName = sections[activeSectionTab].name;
+                      const secCols = sectionColumns[secName] || [];
+                      return (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h5 className="text-sm font-semibold text-slate-700">
+                              {secName} — {secCols.length} field{secCols.length !== 1 ? "s" : ""}
+                            </h5>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="rounded-lg text-xs"
+                              onClick={() => {
+                                setColumnToEdit(null);
+                                setEditingColumnIndex(null);
+                                setEditingColumnSectionKey(secName);
+                                setShowColumnModal(true);
+                              }}
+                            >
+                              <Plus className="mr-1 h-3.5 w-3.5" />
+                              Add Field
+                            </Button>
+                          </div>
 
-                    {importPreview && importPreview.rows.length > 0 && (
-                      <div className="mt-5">
-                        <h5 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 mb-2">Data Preview</h5>
-                        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                          <table className="min-w-full divide-y divide-slate-200 text-sm">
-                            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                              <tr>
-                                {columns.filter((c) => c.visible !== false).map((col, i) => (
-                                  <th key={i} className="px-4 py-3 whitespace-nowrap">{col.label}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 bg-white">
-                              {importPreview.rows.slice(0, 3).map((row, rowIdx) => (
-                                <tr key={rowIdx} className="even:bg-slate-50/50">
-                                  {columns.filter((c) => c.visible !== false).map((col, colIdx) => (
-                                    <td key={colIdx} className="px-4 py-2 text-slate-600 whitespace-nowrap">
-                                      {row[colIdx] || "—"}
-                                    </td>
-                                  ))}
+                          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                            <table className="min-w-full divide-y divide-slate-200 text-sm">
+                              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                <tr>
+                                  <th className="px-4 py-3">Field Name</th>
+                                  <th className="px-4 py-3 text-right">Actions</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 bg-white">
+                                {secCols.length === 0 ? (
+                                  <tr>
+                                    <td className="px-4 py-8 text-center text-slate-500" colSpan={2}>
+                                      No fields defined for this section. Click "Add Field" to start.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  secCols.map((col, colIdx) => (
+                                    <tr key={col.id || col.key || colIdx} className="even:bg-slate-50/50 hover:bg-slate-50">
+                                      <td className="px-4 py-3 text-slate-600">{col.label}</td>
+                                      <td className="px-4 py-3">
+                                        <div className="flex justify-end gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setColumnToEdit({ ...col });
+                                              setEditingColumnIndex(colIdx);
+                                              setEditingColumnSectionKey(secName);
+                                              setShowColumnModal(true);
+                                            }}
+                                            className={iconButtonClass}
+                                            title="Edit Field"
+                                          >
+                                            <Edit className="h-4 w-4" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setSectionColumns((prev) => {
+                                                const updated = { ...prev };
+                                                updated[secName] = (updated[secName] || []).filter((_, i) => i !== colIdx);
+                                                return updated;
+                                              });
+                                            }}
+                                            className={iconButtonClass}
+                                            title="Delete Field"
+                                          >
+                                            <Trash2 className="h-4 w-4 text-rose-500" />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  // ── Normal Columns Editor ──
-                  <div>
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <h4 className="text-sm font-semibold text-slate-900">Columns</h4>
-                        {hasUserInteracted && tabValidation.columns ? (
-                          <p className="mt-1 text-sm text-rose-600">{tabValidation.columns}</p>
-                        ) : null}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setColumnToEdit(null);
-                          setEditingColumnIndex(null);
-                          setShowColumnModal(true);
-                        }}
-                        className="inline-flex items-center gap-2 rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-medium text-white hover:bg-[#3f0f0f]"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Add Column
-                      </button>
-                    </div>
-
-                    <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                      <table className="min-w-full divide-y divide-slate-200 text-sm">
-                        <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                          <tr>
-                            <th className="px-4 py-3">Name</th>
-                            <th className="px-4 py-3 text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 bg-white">
-                          {columns.length === 0 ? (
-                            <tr>
-                              <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
-                                Add at least one column.
-                              </td>
-                            </tr>
-                          ) : (
-                            columns.map((currentColumn, index) => (
-                              <tr key={currentColumn.id || currentColumn.key || index} className="even:bg-slate-50/50 hover:bg-slate-50">
-                                <td className="px-4 py-3 text-slate-600">{currentColumn.label}</td>
-                                <td className="px-4 py-3">
-                                  <div className="flex justify-end gap-2">
-                                    <button type="button" onClick={() => editColumn(index)} className={iconButtonClass} title="Edit Column">
-                                      <Edit className="h-4 w-4" />
-                                    </button>
-                                    <button type="button" onClick={() => deleteColumn(index)} className={iconButtonClass} title="Delete Column">
-                                      <Trash2 className="h-4 w-4 text-rose-500" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
             )}
 
-            {isNewTab && wizardStep === 5 && (
+            {/* Step 4 for import template = Review columns */}
+            {isNewTab && wizardStep === 4 && isImportTemplate && (
+              <div className="border-t border-slate-200 px-5 py-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-900">Review Mapped Columns</h4>
+                    <p className="mt-1 text-sm text-slate-500">Review auto-mapped columns from your file before saving.</p>
+                  </div>
+                </div>
+                <div className="mt-4 space-y-2 max-h-[320px] overflow-y-auto">
+                  {columns.length === 0 ? (
+                    <p className="text-sm text-slate-400">No columns mapped.</p>
+                  ) : (
+                    columns.map((currentColumn, index) => (
+                      <div key={currentColumn.id || currentColumn.key || index} className="rounded-lg bg-slate-50 px-3 py-2">
+                        <p className="text-sm font-medium text-slate-900">{currentColumn.label}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Step 5: Review (new tab, non-import) */}
+            {isNewTab && wizardStep === 5 && !isImportTemplate && (
+              <div className="border-t border-slate-200 px-5 py-5">
+                
+
+                <div className="mt-4 space-y-4">
+                  {sections.map((sec, idx) => {
+                    const secCols = sectionColumns[sec.name] || [];
+                    return (
+                      <div key={sec.id || sec.slug || idx} className="rounded-xl border border-slate-200 bg-white p-4">
+                        <h5 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          {sec.name} — {secCols.length} field{secCols.length !== 1 ? "s" : ""}
+                        </h5>
+                        <div className="mt-3 space-y-1.5">
+                          {secCols.length === 0 ? (
+                            <p className="text-xs text-slate-400">No fields defined.</p>
+                          ) : (
+                            secCols.map((col, colIdx) => (
+                              <div key={col.id || col.key || colIdx} className="rounded-lg bg-slate-50 px-3 py-1.5">
+                                <span className="text-sm text-slate-700">{col.label}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {sections.length === 0 && (
+                  <p className="mt-4 text-sm text-slate-400">No sections defined.</p>
+                )}
+              </div>
+            )}
+
+            {/* Step 5: Review (import template) */}
+            {isNewTab && wizardStep === 5 && isImportTemplate && (
               <div className="border-t border-slate-200 px-5 py-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -1926,26 +2176,37 @@ function TabModal({ tab, onClose, onSave }) {
 
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <h5 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Sections</h5>
+                    <h5 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Sections ({sections.length})
+                    </h5>
                     <div className="mt-3 space-y-2">
-                      {sections.map((currentSection, index) => (
-                        <div key={currentSection.id || currentSection.slug || index} className="rounded-lg bg-slate-50 px-3 py-2">
-                          <p className="text-sm font-medium text-slate-900">{currentSection.name}</p>
-                          <p className="text-xs text-slate-500">{currentSection.description || "No description"}</p>
-                        </div>
-                      ))}
+                      {sections.length === 0 ? (
+                        <p className="text-sm text-slate-400">No sections defined.</p>
+                      ) : (
+                        sections.map((currentSection, index) => (
+                          <div key={currentSection.id || currentSection.slug || index} className="rounded-lg bg-slate-50 px-3 py-2">
+                            <p className="text-sm font-medium text-slate-900">{currentSection.name}</p>
+                            <p className="text-xs text-slate-500">{currentSection.description || "No description"}</p>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
 
                   <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <h5 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Columns</h5>
-                    <div className="mt-3 space-y-2">
-                      {columns.map((currentColumn, index) => (
-                        <div key={currentColumn.id || currentColumn.key || index} className="rounded-lg bg-slate-50 px-3 py-2">
-                          <p className="text-sm font-medium text-slate-900">{currentColumn.label}</p>
-                          <p className="text-xs text-slate-500">{currentColumn.fieldType || currentColumn.data_type || "text"}</p>
-                        </div>
-                      ))}
+                    <h5 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Columns ({columns.length})
+                    </h5>
+                    <div className="mt-3 space-y-2 max-h-[280px] overflow-y-auto">
+                      {columns.length === 0 ? (
+                        <p className="text-sm text-slate-400">No columns defined.</p>
+                      ) : (
+                        columns.map((currentColumn, index) => (
+                          <div key={currentColumn.id || currentColumn.key || index} className="rounded-lg bg-slate-50 px-3 py-2">
+                            <p className="text-sm font-medium text-slate-900">{currentColumn.label}</p>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1964,7 +2225,7 @@ function TabModal({ tab, onClose, onSave }) {
           <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-slate-50/95 px-6 py-4 sm:px-8 backdrop-blur-sm">
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div>
-                {isNewTab && wizardStep > 1 && wizardStep < STEPS.length && (
+                {wizardStep > 1 && wizardStep < STEPS.length && (
                   <Button
                     type="button"
                     onClick={handlePrev}
@@ -1996,7 +2257,7 @@ function TabModal({ tab, onClose, onSave }) {
                       size="sm"
                       className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
                     >
-                      {wizardStep === 4 ? "Review" : "Continue"}
+                      {wizardStep === STEPS.length - 1 ? "Review" : "Continue"}
                     </Button>
                   ) : wizardStep === STEPS.length ? (
                     <Button
@@ -2010,15 +2271,17 @@ function TabModal({ tab, onClose, onSave }) {
                     </Button>
                   ) : null
                 ) : (
-                  <Button
-                    type="button"
-                    onClick={requestSave}
-                    disabled={isSaveDisabled}
-                    size="sm"
-                    className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
-                  >
-                    Save Tab
-                  </Button>
+                  wizardStep === STEPS.length ? (
+                    <Button
+                      type="button"
+                      onClick={requestSave}
+                      disabled={isSaveDisabled}
+                      size="sm"
+                      className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
+                    >
+                      Save Tab
+                    </Button>
+                  ) : null
                 )}
               </div>
             </div>
@@ -2116,6 +2379,18 @@ function TabModal({ tab, onClose, onSave }) {
                     nextSections.push(nextSection);
                   }
 
+                  // If section name changed, update sectionColumns key
+                  if (currentSection && currentSection.name !== name) {
+                    setSectionColumns((prev) => {
+                      const updated = { ...prev };
+                      if (updated[currentSection.name]) {
+                        updated[name] = updated[currentSection.name];
+                        delete updated[currentSection.name];
+                      }
+                      return updated;
+                    });
+                  }
+
                   return nextSections;
                 });
 
@@ -2137,6 +2412,7 @@ function TabModal({ tab, onClose, onSave }) {
               setShowColumnModal(false);
               setColumnToEdit(null);
               setEditingColumnIndex(null);
+              setEditingColumnSectionKey(null);
             }}
             onSave={(colForm) => {
               try {
@@ -2158,19 +2434,43 @@ function TabModal({ tab, onClose, onSave }) {
 
                 const nextColumn = normalizeColumnConfig({ ...colForm, key, label });
 
-                setColumns((currentColumns) => {
-                  const next = [...currentColumns];
-                  if (editingColumnIndex !== null && next[editingColumnIndex]) {
-                    next[editingColumnIndex] = nextColumn;
-                  } else {
-                    next.push(nextColumn);
-                  }
-                  return next;
-                });
+                // If editing within a section (Step 4), update sectionColumns
+                if (editingColumnSectionKey) {
+                  setSectionColumns((prev) => {
+                    const updated = { ...prev };
+                    const secCols = [...(updated[editingColumnSectionKey] || [])];
+                    if (editingColumnIndex !== null && secCols[editingColumnIndex]) {
+                      secCols[editingColumnIndex] = nextColumn;
+                    } else {
+                      secCols.push(nextColumn);
+                    }
+                    updated[editingColumnSectionKey] = secCols;
+                    return updated;
+                  });
+                  // Also update merged columns union
+                  setColumns((currentColumns) => {
+                    const existingKeys = new Set(currentColumns.map((c) => c.key));
+                    if (!existingKeys.has(nextColumn.key)) {
+                      return [...currentColumns, nextColumn];
+                    }
+                    return currentColumns;
+                  });
+                } else {
+                  setColumns((currentColumns) => {
+                    const next = [...currentColumns];
+                    if (editingColumnIndex !== null && next[editingColumnIndex]) {
+                      next[editingColumnIndex] = nextColumn;
+                    } else {
+                      next.push(nextColumn);
+                    }
+                    return next;
+                  });
+                }
 
                 setShowColumnModal(false);
                 setColumnToEdit(null);
                 setEditingColumnIndex(null);
+                setEditingColumnSectionKey(null);
               } catch (err) {
                 console.error("Error saving column:", err);
                 alert(`Error saving column: ${err.message}`);
@@ -2250,6 +2550,7 @@ export default function Inventory() {
       const existingSections = currentTab?.sections || [];
       const keptSectionIds = [];
 
+      const savedSectionIdMap = new Map(); // section name → saved section ID
       for (let index = 0; index < form.sections.length; index += 1) {
         const section = form.sections[index];
         const savedSection = await upsertInventorySection({
@@ -2261,11 +2562,21 @@ export default function Inventory() {
           sort_order: index + 1,
         });
         keptSectionIds.push(savedSection.id);
+        savedSectionIdMap.set(section.name, savedSection.id);
       }
 
       for (const section of existingSections) {
         if (!keptSectionIds.includes(section.id)) {
           await deleteInventorySection(section.id);
+        }
+      }
+
+      // Build sectionColumns map keyed by section ID (not name, for stable lookup)
+      const sectionColumnsById = {};
+      for (const [secName, secCols] of Object.entries(form.sectionColumns || {})) {
+        const secId = savedSectionIdMap.get(secName);
+        if (secId) {
+          sectionColumnsById[secId] = secCols;
         }
       }
 
@@ -2278,7 +2589,8 @@ export default function Inventory() {
           const updatedColumns = (form.columns || [])
             .filter((col) => col && col.key)
             .map((col) => normalizeColumnConfig(col));
-          const tabConfig = { tableName: existingConfig?.tableName, columns: updatedColumns };
+          const existingBrands = Array.isArray(existingConfig?.brands) ? existingConfig.brands : [];
+          const tabConfig = { tableName: existingConfig?.tableName, columns: updatedColumns, sectionColumns: sectionColumnsById, brands: existingBrands };
 
           const tableName = existingConfig?.tableName;
           if (tableName) {
@@ -2379,7 +2691,8 @@ export default function Inventory() {
         // Exports are recorded in the shared dynamic export logs table; no per-table exports creation here.
 
         // persist mapping and create-time template columns for this tab
-        const tabConfig = { tableName, columns: cols };
+        const templateBrands = Array.isArray(selectedTemplate?.brands) ? selectedTemplate.brands : [];
+        const tabConfig = { tableName, columns: cols, sectionColumns: sectionColumnsById, brands: templateBrands };
         try {
           window.localStorage.setItem(`inventory.tab_table.${savedTab.id}`, JSON.stringify(tabConfig));
         } catch (storageError) {
