@@ -400,6 +400,42 @@ const buildUnitsFromReturnDetails = (item = {}, borrowedQty = 1, opLabel = "Work
 };
 
 /**
+ * Group consecutive returned units that share the same remark + timestamp.
+ * Returns an array of groups: { count, remark, returnedAt, remarks, unitIndices }
+ * where unitIndices is the original 1-based unit numbers for display.
+ */
+const groupReturnedUnits = (units) => {
+  const groups = [];
+  let current = null;
+  for (const unit of units) {
+    if (unit.status !== "Returned") {
+      if (current) { groups.push(current); current = null; }
+      continue;
+    }
+    const sameAsCurrent =
+      current &&
+      current.remark === (unit.remark || "") &&
+      current.returnedAt === (unit.returnedAt || null) &&
+      current.remarks === (unit.remarks || "");
+    if (sameAsCurrent) {
+      current.count += 1;
+      current.unitIndices.push(unit.index + 1);
+    } else {
+      if (current) groups.push(current);
+      current = {
+        count: 1,
+        remark: unit.remark || "",
+        returnedAt: unit.returnedAt || null,
+        remarks: unit.remarks || "",
+        unitIndices: [unit.index + 1],
+      };
+    }
+  }
+  if (current) groups.push(current);
+  return groups;
+};
+
+/**
  * Derive the `returning_status` for a borrowing record.
  * Returns one of: "not fully returned" | "partially returned" | "fully returned"
  *
@@ -844,44 +880,74 @@ const ItemCard = ({
           </div>
         </div>
 
-        {/* Per-unit timestamps (only when multiple distinct timestamps) */}
-        {hasJsonbData && retDetails.length > 1 && (
-          <div className="border-t border-slate-200 pt-3">
-            <p className="text-xs font-medium text-slate-400 mb-2">Unit Timestamps</p>
-            <div className="space-y-1.5">
-              {retDetails.map((entry, i) => (
-                <div key={i} className="flex items-baseline gap-2">
-                  <span className="w-6 shrink-0 text-[10px] font-bold tabular-nums text-slate-400">Unit{i + 1}:</span>
-                  <span className="text-sm font-semibold text-slate-700">
-                    {entry.returnedAt ? formatExportDate(entry.returnedAt) : <span className="italic text-slate-400">pending</span>}
-                  </span>
-                  {entry.returnedAt && (
-                    <span className="text-xs text-slate-400">{formatExportTime(entry.returnedAt)}</span>
-                  )}
-                </div>
-              ))}
+        {/* Per-unit timestamps — grouped by same remark + timestamp */}
+        {hasJsonbData && retDetails.length > 1 && (() => {
+          // Build unit objects from retDetails for grouping
+          const units = retDetails.map((entry, i) => ({
+            index: i,
+            status: entry.returnedAt ? "Returned" : "Active / Borrowed",
+            remark: entry.remark || entry.condition || "Working",
+            remarks: entry.remarks || "",
+            returnedAt: entry.returnedAt || null,
+          }));
+          const groups = groupReturnedUnits(units);
+          if (groups.length <= 1 && retDetails.length <= 1) return null;
+          return (
+            <div className="border-t border-slate-200 pt-3">
+              <p className="text-xs font-medium text-slate-400 mb-2">Unit Timestamps</p>
+              <div className="space-y-1.5">
+                {groups.map((g, gi) => (
+                  <div key={gi} className="flex items-baseline gap-2">
+                    <span className="text-[10px] font-bold tabular-nums text-slate-400">
+                      {g.count > 1 ? `${g.count}x` : `U${g.unitIndices[0]}`}:
+                    </span>
+                    <span className="text-sm font-semibold text-slate-700">
+                      {g.returnedAt ? formatExportDate(g.returnedAt) : <span className="italic text-slate-400">pending</span>}
+                    </span>
+                    {g.returnedAt && (
+                      <span className="text-xs text-slate-400">{formatExportTime(g.returnedAt)}</span>
+                    )}
+                    {g.remark && (
+                      <span className="text-xs text-slate-500">— {g.remark}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
-        {/* Return remarks */}
+        {/* Return remarks — grouped by same remark + timestamp */}
         {(() => {
           if (hasJsonbData) {
             const withRemarks = retDetails.filter((e) => e.remarks?.trim());
             if (withRemarks.length === 0) return null;
+            // Group by same remark text
+            const remarkGroups = [];
+            let cur = null;
+            for (const entry of withRemarks) {
+              const r = (entry.remarks || "").trim();
+              if (cur && cur.remark === r) {
+                cur.count += 1;
+                cur.unitIndices.push((retDetails.indexOf(entry) + 1));
+              } else {
+                if (cur) remarkGroups.push(cur);
+                cur = { remark: r, count: 1, unitIndices: [(retDetails.indexOf(entry) + 1)] };
+              }
+            }
+            if (cur) remarkGroups.push(cur);
             return (
               <div className="border-t border-slate-200 pt-3">
                 <p className="text-xs font-medium text-slate-400 mb-1.5">Notes</p>
                 <div className="space-y-1">
-                  {withRemarks.map((entry, i) => {
-                    const unitNum = retDetails.indexOf(entry) + 1;
-                    return (
-                      <p key={i} className="text-sm text-slate-700">
-                        <span className="w-6 shrink-0 text-[10px] font-bold tabular-nums text-slate-400">Unit{unitNum}:</span>{" "}
-                        <span className="font-medium">{entry.remarks}</span>
-                      </p>
-                    );
-                  })}
+                  {remarkGroups.map((g, gi) => (
+                    <p key={gi} className="text-sm text-slate-700">
+                      <span className="text-[10px] font-bold tabular-nums text-slate-400">
+                        {g.count > 1 ? `${g.count}x` : `U${g.unitIndices[0]}`}:
+                      </span>{" "}
+                      <span className="font-medium">{g.remark}</span>
+                    </p>
+                  ))}
                 </div>
               </div>
             );
@@ -900,14 +966,10 @@ const ItemCard = ({
     );
   };
 
-  // ── Unit status pagination (10 per page) ──
-  const UNITS_PER_PAGE = 10;
-  const [unitPage, setUnitPage] = useState(0);
-  const totalUnitPages = Math.ceil(displayUnits.length / UNITS_PER_PAGE);
-  const pagedUnits = displayUnits.slice(
-    unitPage * UNITS_PER_PAGE,
-    (unitPage + 1) * UNITS_PER_PAGE,
-  );
+  // ── Unit status: no pagination; all units shown, grouped by same status ──
+  const unitPage = 0;
+  const totalUnitPages = 1;
+  const pagedUnits = displayUnits;
 
   // ── Left panel: asset fields + unit status ──
   const renderLeftPanel = () => (
@@ -938,26 +1000,46 @@ const ItemCard = ({
               </span>
             )}
           </div>
-          {/* Unit list: strict vertical */}
+          {/* Unit list: grouped by consecutive same status */}
           <div className="flex flex-col gap-y-1">
-            {pagedUnits.map((unit) => {
-              const isActive = unit.status === "Active / Borrowed";
-              const dot = isActive ? "bg-blue-500" : dotColorFor(unit.remark);
-              return (
+            {(() => {
+              // Group consecutive units with same status + remark
+              const statusGroups = [];
+              let cur = null;
+              for (const unit of pagedUnits) {
+                const isActive = unit.status === "Active / Borrowed";
+                const dot = isActive ? "bg-blue-500" : dotColorFor(unit.remark);
+                if (cur && cur.status === unit.status && cur.remark === (unit.remark || "")) {
+                  cur.count += 1;
+                  cur.unitIndices.push(unit.index + 1);
+                } else {
+                  if (cur) statusGroups.push(cur);
+                  cur = {
+                    status: unit.status,
+                    remark: unit.remark || "",
+                    dot,
+                    isActive,
+                    count: 1,
+                    unitIndices: [unit.index + 1],
+                  };
+                }
+              }
+              if (cur) statusGroups.push(cur);
+              return statusGroups.map((g, gi) => (
                 <div
-                  key={`${item.id}-unit-${unit.index}`}
+                  key={`${item.id}-ustatus-${gi}`}
                   className="flex items-center gap-1.5 text-sm py-0.5"
                 >
-                  <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${dot}`} />
-                  <span className={`font-semibold tabular-nums ${isActive ? "text-blue-600" : "text-slate-700"}`}>
-                    {displayUnits.length > 1 ? `${unit.index + 1}: ` : ""}{unit.status}
+                  <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${g.dot}`} />
+                  <span className={`font-semibold tabular-nums ${g.isActive ? "text-blue-600" : "text-slate-700"}`}>
+                    {g.count > 1 ? `${g.count}x ` : g.unitIndices.length > 1 ? `U${g.unitIndices[0]}: ` : ""}{g.status}
                   </span>
-                  {!isActive && unit.remark && unit.remark !== "Returned" && (
-                    <span className="truncate text-xs font-medium text-slate-400">{unit.remark}</span>
+                  {!g.isActive && g.remark && g.remark !== "Returned" && (
+                    <span className="truncate text-xs font-medium text-slate-400">{g.remark}</span>
                   )}
                 </div>
-              );
-            })}
+              ));
+            })()}
           </div>
           {/* Pagination controls — 3-page sliding window */}
           {totalUnitPages > 1 && (() => {
@@ -1068,42 +1150,66 @@ const ItemCard = ({
             </div>
           </div>
 
-          {/* Per-unit timestamps */}
-          {groupCount > 1 && (
-            <div className="border-t border-slate-200 pt-3">
-              <p className="text-xs font-medium text-slate-400 mb-2">Unit Timestamps</p>
-              <div className="space-y-1.5">
-                {groupUnits.map((unit, ui) => (
-                  <div key={ui} className="flex items-baseline gap-2">
-                    <span className="w-6 shrink-0 text-[10px] font-bold tabular-nums text-slate-400">
-                      U{unit.index + 1}
-                    </span>
-                    <span className="text-sm font-semibold text-slate-700">
-                      {unit.returnedAt ? formatExportDate(unit.returnedAt) : <span className="italic text-slate-400">pending</span>}
-                    </span>
-                    {unit.returnedAt && (
-                      <span className="text-xs text-slate-400">{formatExportTime(unit.returnedAt)}</span>
-                    )}
-                  </div>
-                ))}
+          {/* Per-unit timestamps — grouped by same remark + timestamp */}
+          {groupCount > 1 && (() => {
+            const groups = groupReturnedUnits(groupUnits);
+            return (
+              <div className="border-t border-slate-200 pt-3">
+                <p className="text-xs font-medium text-slate-400 mb-2">Unit Timestamps</p>
+                <div className="space-y-1.5">
+                  {groups.map((g, gi) => (
+                    <div key={gi} className="flex items-baseline gap-2">
+                      <span className="text-[10px] font-bold tabular-nums text-slate-400">
+                        {g.count > 1 ? `${g.count}x` : `U${g.unitIndices[0]}`}:
+                      </span>
+                      <span className="text-sm font-semibold text-slate-700">
+                        {g.returnedAt ? formatExportDate(g.returnedAt) : <span className="italic text-slate-400">pending</span>}
+                      </span>
+                      {g.returnedAt && (
+                        <span className="text-xs text-slate-400">{formatExportTime(g.returnedAt)}</span>
+                      )}
+                      {g.remark && (
+                        <span className="text-xs text-slate-500">— {g.remark}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
-          {/* Remarks */}
-          {groupUnits.some((u) => u.remarks?.trim()) && (
-            <div className="border-t border-slate-200 pt-3">
-              <p className="text-xs font-medium text-slate-400 mb-1.5">Notes</p>
-              {groupUnits.map((unit, ui) => (
-                unit.remarks?.trim() ? (
-                  <p key={ui} className="text-sm text-slate-700">
-                    <span className="font-medium text-slate-400">U{unit.index + 1}:</span>{" "}
-                    <span className="font-medium">{unit.remarks}</span>
-                  </p>
-                ) : null
-              ))}
-            </div>
-          )}
+          {/* Remarks — grouped by same remark text */}
+          {groupUnits.some((u) => u.remarks?.trim()) && (() => {
+            const remarkGroups = [];
+            let cur = null;
+            for (const unit of groupUnits) {
+              const r = (unit.remarks || "").trim();
+              if (!r) continue;
+              if (cur && cur.remark === r) {
+                cur.count += 1;
+                cur.unitIndices.push(unit.index + 1);
+              } else {
+                if (cur) remarkGroups.push(cur);
+                cur = { remark: r, count: 1, unitIndices: [unit.index + 1] };
+              }
+            }
+            if (cur) remarkGroups.push(cur);
+            return (
+              <div className="border-t border-slate-200 pt-3">
+                <p className="text-xs font-medium text-slate-400 mb-1.5">Notes</p>
+                <div className="space-y-1">
+                  {remarkGroups.map((g, gi) => (
+                    <p key={gi} className="text-sm text-slate-700">
+                      <span className="text-[10px] font-bold tabular-nums text-slate-400">
+                        {g.count > 1 ? `${g.count}x` : `U${g.unitIndices[0]}`}:
+                      </span>{" "}
+                      <span className="font-medium">{g.remark}</span>
+                    </p>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
@@ -1959,9 +2065,10 @@ export default function Borrowing() {
 
       // Build a SectionRowsCache: one fetch per impacted section
       const sectionCache = new Map();
+      const missingTables = new Set(); // track sections whose table no longer exists
       for (const item of inventoryItems) {
         const sectionId = item.inventorySectionId;
-        if (sectionCache.has(sectionId)) continue;
+        if (sectionCache.has(sectionId) || missingTables.has(sectionId)) continue;
         const tabId = item.inventoryTabId;
         const config = await getTabTableConfig(tabId).catch(() => null);
         const tableName = item.tableName || tabTableNames[tabId] || config?.tableName || "";
@@ -1970,8 +2077,15 @@ export default function Borrowing() {
         if (tableName) {
           try {
             rows = (await fetchInventoryItems(sectionId, tableName)) || [];
-          } catch {
-            rows = [];
+          } catch (fetchErr) {
+            // Table may have been deleted — mark as missing so we skip
+            // inventory updates but still allow the return to proceed
+            if (fetchErr?.message?.includes("schema cache") || fetchErr?.message?.includes("Could not find")) {
+              missingTables.add(sectionId);
+              rows = [];
+            } else {
+              rows = [];
+            }
           }
         }
         sectionCache.set(sectionId, { tabId, tableName, columns, rows });
@@ -1992,6 +2106,10 @@ export default function Borrowing() {
       }
 
       for (const [sectionId, sectionItemGroups] of itemsBySection) {
+        // Skip sections whose inventory table no longer exists — the return
+        // will still be recorded but we can't update inventory quantities
+        if (missingTables.has(sectionId)) continue;
+
         const cache = sectionCache.get(sectionId);
         const isCustomTable = cache?.tableName && cache?.rows?.length > 0;
 
@@ -2026,14 +2144,14 @@ export default function Borrowing() {
 
               // Add operational-remark units back to the source row
               if (operationalQty > 0) {
-                dbOps.push(
-                  adjustInventoryItemQuantity({
+                dbOps.push(async () => {
+                  await adjustInventoryItemQuantity({
                     id: sourceItemId,
                     sectionId,
                     tableName,
                     delta: operationalQty,
-                  })
-                );
+                  });
+                });
               }
 
               // For non-operational remarks, create a new row with that remark
@@ -2043,29 +2161,27 @@ export default function Borrowing() {
                 if (qty <= 0) continue;
 
                 // Create a new inventory row for this non-operational remark
-                dbOps.push(
-                  (async () => {
-                    // Fetch source item data to clone attributes
-                    const { data: src, error: srcErr } = await supabase
-                      .from(tableName)
-                      .select("*")
-                      .eq("id", sourceItemId)
-                      .single();
-                    if (srcErr) throw srcErr;
+                dbOps.push(async () => {
+                  // Fetch source item data to clone attributes
+                  const { data: src, error: srcErr } = await supabase
+                    .from(tableName)
+                    .select("*")
+                    .eq("id", sourceItemId)
+                    .single();
+                  if (srcErr) throw srcErr;
 
-                    const { remarkKey: rk, quantityKey: qk } = detectItemColumns(src);
-                    const newRow = {};
-                    for (const [k, v] of Object.entries(src)) {
-                      if (["id", "created_at", "updated_at"].includes(k)) continue;
-                      newRow[k] = v;
-                    }
-                    newRow[qk] = qty;
-                    if (rk) newRow[rk] = remark;
+                  const { remarkKey: rk, quantityKey: qk } = detectItemColumns(src);
+                  const newRow = {};
+                  for (const [k, v] of Object.entries(src)) {
+                    if (["id", "created_at", "updated_at"].includes(k)) continue;
+                    newRow[k] = v;
+                  }
+                  newRow[qk] = qty;
+                  if (rk) newRow[rk] = remark;
 
-                    const { error: insErr } = await supabase.from(tableName).insert([newRow]);
-                    if (insErr) throw insErr;
-                  })()
-                );
+                  const { error: insErr } = await supabase.from(tableName).insert([newRow]);
+                  if (insErr) throw insErr;
+                });
               }
             }
           }
@@ -2285,6 +2401,26 @@ export default function Borrowing() {
           const pcr = itemRemarkMap[itemId].perConditionRemarks;
           if (!pcr[conditionText]) pcr[conditionText] = [];
           pcr[conditionText].push(remarkText);
+        }
+      }
+
+      // ── Append a note for items whose inventory table no longer exists ─
+      if (missingTables.size > 0) {
+        for (const unit of checkedUnits) {
+          if (!missingTables.has(unit.item.inventorySectionId)) continue;
+          const itemId = unit.item.id;
+          if (!itemRemarkMap[itemId]) {
+            itemRemarkMap[itemId] = {
+              condition: "Working",
+              remarks: "",
+              perConditionRemarks: {},
+              conditionCounts: { Working: 1 },
+            };
+          }
+          const note = `[Inventory table no longer exists — ${unit.item.tableName || "deleted"}]`;
+          itemRemarkMap[itemId].remarks = itemRemarkMap[itemId].remarks
+            ? `${itemRemarkMap[itemId].remarks}\n${note}`
+            : note;
         }
       }
 
