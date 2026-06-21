@@ -400,39 +400,56 @@ const buildUnitsFromReturnDetails = (item = {}, borrowedQty = 1, opLabel = "Work
 };
 
 /**
- * Group consecutive returned units that share the same remark + timestamp.
+ * Group ALL returned units that share the same remark + timestamp (not just consecutive).
  * Returns an array of groups: { count, remark, returnedAt, remarks, unitIndices }
  * where unitIndices is the original 1-based unit numbers for display.
+ *
+ * Grouping key = remark + returnedAt (timestamp). Units with the same remark
+ * AND same timestamp are merged into a single group showing "Nx" count.
+ *
+ * Notes/remarks within each group are further merged:
+ * - If multiple units share the same note text → combined as "Nx: note"
+ * - If units have different notes → each shown separately
  */
 const groupReturnedUnits = (units) => {
-  const groups = [];
-  let current = null;
-  for (const unit of units) {
-    if (unit.status !== "Returned") {
-      if (current) { groups.push(current); current = null; }
-      continue;
-    }
-    const sameAsCurrent =
-      current &&
-      current.remark === (unit.remark || "") &&
-      current.returnedAt === (unit.returnedAt || null) &&
-      current.remarks === (unit.remarks || "");
-    if (sameAsCurrent) {
-      current.count += 1;
-      current.unitIndices.push(unit.index + 1);
-    } else {
-      if (current) groups.push(current);
-      current = {
-        count: 1,
-        remark: unit.remark || "",
-        returnedAt: unit.returnedAt || null,
+  // Only process returned units
+  const returnedUnits = units.filter((u) => u.status === "Returned");
+  if (returnedUnits.length === 0) return [];
+
+  // Group by composite key: remark + returnedAt
+  const map = new Map();
+  for (const unit of returnedUnits) {
+    const remark = unit.remark || "";
+    const returnedAt = unit.returnedAt || null;
+    const key = `${remark}|||${returnedAt}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        count: 0,
+        remark,
+        returnedAt,
         remarks: unit.remarks || "",
-        unitIndices: [unit.index + 1],
-      };
+        unitIndices: [],
+        // Track unique notes within this group
+        noteGroups: new Map(),
+      });
+    }
+    const group = map.get(key);
+    group.count += 1;
+    group.unitIndices.push(unit.index + 1);
+    // Track notes: group by note text
+    const noteText = (unit.remarks || "").trim();
+    if (noteText) {
+      if (!group.noteGroups.has(noteText)) {
+        group.noteGroups.set(noteText, { note: noteText, count: 0, unitIndices: [] });
+      }
+      const ng = group.noteGroups.get(noteText);
+      ng.count += 1;
+      ng.unitIndices.push(unit.index + 1);
     }
   }
-  if (current) groups.push(current);
-  return groups;
+
+  // Convert map to array, sorted by first unit index
+  return Array.from(map.values()).sort((a, b) => a.unitIndices[0] - b.unitIndices[0]);
 };
 
 /**
@@ -801,14 +818,6 @@ const ItemCard = ({
     return "bg-amber-500";
   };
 
-  const conditionBadgeClass = (label) => {
-    if (!label) return "bg-slate-100 text-slate-500";
-    const l = label.toLowerCase();
-    if (l === String(opLabel).toLowerCase() || l === "working") return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
-    if (l === String(qLabel).toLowerCase() || l === "defective") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
-    return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-  };
-
   const hasActiveUnits = displayUnits.some((u) => u.status === "Active / Borrowed");
   const activeCount = displayUnits.filter((u) => u.status === "Active / Borrowed").length;
 
@@ -818,66 +827,38 @@ const ItemCard = ({
     const retDetails = item.returnedItemDetails;
     const hasJsonbData = Array.isArray(retDetails) && retDetails.length > 0;
     return (
-      <div className="shrink-0 sm:w-60 bg-slate-50/40 border-t sm:border-t-0 border-l-0 border-slate-100 px-5 py-5 space-y-4">
-        {/* Condition flow */}
-        <div>
-          <p className="text-xs font-medium text-slate-400 mb-1.5">Condition</p>
-          {returnedQty > 0 ? (
-            <div className="flex items-center gap-2">
-              <span className={`rounded-md px-2 py-1 text-xs font-semibold ${conditionBadgeClass(originalRemark)}`}>
-                {originalRemark || opLabel}
-              </span>
-              <span className="text-sm text-slate-300">→</span>
-              <span className={`rounded-md px-2 py-1 text-xs font-semibold ${conditionBadgeClass(groupCondition.split(" / ")[0].split(": ")[0])}`}>
-                {groupCondition}
-              </span>
-            </div>
+      <div className="flex-1 bg-slate-50/40 border-t sm:border-t-0 border-l-0 border-slate-100 px-5 py-5 flex flex-col gap-y-2">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="shrink-0 text-xs font-medium text-slate-400">Returned Condition:</span>
+          <span className="truncate text-sm font-semibold text-slate-900">{(returnedQty > 0 ? groupCondition : originalRemark || opLabel).split(":")[0].trim()}</span>
+          {returnedQty > 1 && <span className="ml-auto shrink-0 text-sm font-semibold tabular-nums text-slate-700">{returnedQty}x</span>}
+        </div>
+
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="shrink-0 text-xs font-medium text-slate-400">Quantity:</span>
+          <span className="truncate text-sm font-semibold text-slate-900">{returnedQty}/{borrowedQty}</span>
+        </div>
+
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="shrink-0 text-xs font-medium text-slate-400">Borrowed:</span>
+          <span className="truncate text-sm font-semibold text-slate-900">{formatExportDate(borrowDate)}</span>
+          <span className="text-xs text-slate-400">{formatExportTime(borrowDate)}</span>
+        </div>
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="shrink-0 text-xs font-medium text-slate-400">Returned:</span>
+          {hasJsonbData && retDetails[0]?.returnedAt ? (
+            <>
+              <span className="truncate text-sm font-semibold text-slate-900">{formatExportDate(retDetails[0].returnedAt)}</span>
+              <span className="text-xs text-slate-400">{formatExportTime(retDetails[0].returnedAt)}</span>
+            </>
+          ) : item.itemReturnedAt ? (
+            <>
+              <span className="truncate text-sm font-semibold text-slate-900">{formatExportDate(item.itemReturnedAt)}</span>
+              <span className="text-xs text-slate-400">{formatExportTime(item.itemReturnedAt)}</span>
+            </>
           ) : (
-            <span className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${conditionBadgeClass(originalRemark)}`}>
-              {originalRemark || opLabel}
-            </span>
+            <span className="truncate text-xs italic text-slate-400">Not yet returned</span>
           )}
-        </div>
-
-        {/* Quantity */}
-        <div>
-          <p className="text-xs font-medium text-slate-400 mb-1.5">Quantity</p>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-lg font-bold tabular-nums text-slate-900">{returnedQty}</span>
-            <span className="text-sm text-slate-300">/</span>
-            <span className="text-sm font-medium tabular-nums text-slate-500">{borrowedQty}</span>
-            <span className="text-xs text-slate-400">units</span>
-          </div>
-          {hasActiveUnits && (
-            <p className="mt-1 text-xs font-medium text-blue-600">
-              {activeCount} {activeCount === 1 ? "unit" : "units"} still borrowed
-            </p>
-          )}
-        </div>
-
-        {/* Dates */}
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-          <div>
-            <p className="text-xs font-medium text-slate-400 mb-1">Borrowed</p>
-            <p className="text-sm font-semibold text-slate-900">{formatExportDate(borrowDate)}</p>
-            <p className="text-xs text-slate-400">{formatExportTime(borrowDate)}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium text-slate-400 mb-1">Returned</p>
-            {hasJsonbData && retDetails[0]?.returnedAt ? (
-              <>
-                <p className="text-sm font-semibold text-slate-900">{formatExportDate(retDetails[0].returnedAt)}</p>
-                <p className="text-xs text-slate-400">{formatExportTime(retDetails[0].returnedAt)}</p>
-              </>
-            ) : item.itemReturnedAt ? (
-              <>
-                <p className="text-sm font-semibold text-slate-900">{formatExportDate(item.itemReturnedAt)}</p>
-                <p className="text-xs text-slate-400">{formatExportTime(item.itemReturnedAt)}</p>
-              </>
-            ) : (
-              <p className="text-xs italic text-slate-400">Not yet returned</p>
-            )}
-          </div>
         </div>
 
         {/* Per-unit timestamps — grouped by same remark + timestamp */}
@@ -895,57 +876,85 @@ const ItemCard = ({
           return (
             <div className="border-t border-slate-200 pt-3">
               <p className="text-xs font-medium text-slate-400 mb-2">Unit Timestamps</p>
-              <div className="space-y-1.5">
-                {groups.map((g, gi) => (
-                  <div key={gi} className="flex items-baseline gap-2">
-                    <span className="text-[10px] font-bold tabular-nums text-slate-400">
-                      {g.count > 1 ? `${g.count}x` : `U${g.unitIndices[0]}`}:
-                    </span>
-                    <span className="text-sm font-semibold text-slate-700">
-                      {g.returnedAt ? formatExportDate(g.returnedAt) : <span className="italic text-slate-400">pending</span>}
-                    </span>
-                    {g.returnedAt && (
-                      <span className="text-xs text-slate-400">{formatExportTime(g.returnedAt)}</span>
-                    )}
-                    {g.remark && (
-                      <span className="text-xs text-slate-500">— {g.remark}</span>
-                    )}
+              <div className="space-y-2">
+                {(() => {
+                  // Group by date string, then by time within each date
+                  const dateMap = new Map();
+                  for (const g of groups) {
+                    if (!g.returnedAt) continue;
+                    const dateStr = formatExportDate(g.returnedAt);
+                    const timeStr = formatExportTime(g.returnedAt);
+                    if (!dateMap.has(dateStr)) dateMap.set(dateStr, []);
+                    dateMap.get(dateStr).push({ timeStr, count: g.count, unitIndices: g.unitIndices });
+                  }
+                  const dateEntries = Array.from(dateMap.entries());
+                  return dateEntries.map(([dateStr, timeEntries], di) => (
+                    <div key={di}>
+                      <p className="text-sm font-semibold text-slate-900">{dateStr}</p>
+                      <div className="space-y-0.5 mt-0.5">
+                        {timeEntries.map((te, ti) => (
+                          <div key={ti} className="flex items-baseline justify-between gap-2">
+                            <p className="text-xs text-slate-400">{te.timeStr}</p>
+                            <span className="text-sm font-semibold tabular-nums text-slate-700">
+                              {te.count > 1 ? `${te.count}x` : `U${te.unitIndices[0]}`}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()}
+                {groups.some((g) => !g.returnedAt) && (
+                  <div>
+                    <p className="text-xs italic text-slate-400">Pending</p>
+                    <div className="mt-0.5">
+                      <span className="text-sm font-semibold tabular-nums text-slate-700">
+                        {groups.filter((g) => !g.returnedAt).reduce((s, g) => s + g.count, 0) > 1
+                          ? `${groups.filter((g) => !g.returnedAt).reduce((s, g) => s + g.count, 0)}x`
+                          : `U${groups.find((g) => !g.returnedAt)?.unitIndices[0]}`}
+                      </span>
+                    </div>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           );
         })()}
 
-        {/* Return remarks — grouped by same remark + timestamp */}
+        {/* Return remarks / notes — grouped by same note text */}
         {(() => {
           if (hasJsonbData) {
-            const withRemarks = retDetails.filter((e) => e.remarks?.trim());
-            if (withRemarks.length === 0) return null;
-            // Group by same remark text
-            const remarkGroups = [];
-            let cur = null;
-            for (const entry of withRemarks) {
-              const r = (entry.remarks || "").trim();
-              if (cur && cur.remark === r) {
-                cur.count += 1;
-                cur.unitIndices.push((retDetails.indexOf(entry) + 1));
-              } else {
-                if (cur) remarkGroups.push(cur);
-                cur = { remark: r, count: 1, unitIndices: [(retDetails.indexOf(entry) + 1)] };
+            // Use the same groupReturnedUnits to get noteGroups per timestamp+remark group
+            const units = retDetails.map((entry, i) => ({
+              index: i,
+              status: entry.returnedAt ? "Returned" : "Active / Borrowed",
+              remark: entry.remark || entry.condition || "Working",
+              remarks: entry.remarks || "",
+              returnedAt: entry.returnedAt || null,
+            }));
+            const groups = groupReturnedUnits(units);
+            // Collect all note groups across all timestamp+remark groups
+            const allNoteGroups = [];
+            for (const g of groups) {
+              if (g.noteGroups) {
+                for (const ng of g.noteGroups.values()) {
+                  allNoteGroups.push(ng);
+                }
               }
             }
-            if (cur) remarkGroups.push(cur);
+            if (allNoteGroups.length === 0) return null;
+            // Sort by first unit index
+            allNoteGroups.sort((a, b) => a.unitIndices[0] - b.unitIndices[0]);
             return (
               <div className="border-t border-slate-200 pt-3">
                 <p className="text-xs font-medium text-slate-400 mb-1.5">Notes</p>
                 <div className="space-y-1">
-                  {remarkGroups.map((g, gi) => (
-                    <p key={gi} className="text-sm text-slate-700">
-                      <span className="text-[10px] font-bold tabular-nums text-slate-400">
-                        {g.count > 1 ? `${g.count}x` : `U${g.unitIndices[0]}`}:
-                      </span>{" "}
-                      <span className="font-medium">{g.remark}</span>
+                  {allNoteGroups.map((g, gi) => (
+                    <p key={gi} className="flex items-baseline gap-2 text-sm text-slate-700">
+                      <span className="font-medium">{g.note}</span>
+                      <span className="ml-auto text-sm font-semibold tabular-nums text-slate-700">
+                        {g.count > 1 ? `${g.count}x` : `U${g.unitIndices[0]}`}
+                      </span>
                     </p>
                   ))}
                 </div>
@@ -1025,20 +1034,31 @@ const ItemCard = ({
                 }
               }
               if (cur) statusGroups.push(cur);
-              return statusGroups.map((g, gi) => (
-                <div
-                  key={`${item.id}-ustatus-${gi}`}
-                  className="flex items-center gap-1.5 text-sm py-0.5"
-                >
-                  <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${g.dot}`} />
-                  <span className={`font-semibold tabular-nums ${g.isActive ? "text-blue-600" : "text-slate-700"}`}>
-                    {g.count > 1 ? `${g.count}x ` : g.unitIndices.length > 1 ? `U${g.unitIndices[0]}: ` : ""}{g.status}
-                  </span>
-                  {!g.isActive && g.remark && g.remark !== "Returned" && (
-                    <span className="truncate text-xs font-medium text-slate-400">{g.remark}</span>
-                  )}
-                </div>
-              ));
+              return statusGroups.map((g, gi) => {
+                const isClickable = needsCarousel && !g.isActive && g.remark;
+                const targetIdx = isClickable ? remarkGroups.indexOf(g.remark) : -1;
+                return (
+                  <div
+                    key={`${item.id}-ustatus-${gi}`}
+                    className={`flex items-center gap-1.5 text-sm py-0.5 ${isClickable ? "cursor-pointer hover:bg-slate-100 rounded px-1 -mx-1 transition-colors" : ""}`}
+                    onClick={isClickable ? () => setCarouselIdx(targetIdx) : undefined}
+                    role={isClickable ? "button" : undefined}
+                    tabIndex={isClickable ? 0 : undefined}
+                    onKeyDown={isClickable ? (e) => { if (e.key === "Enter" || e.key === " ") setCarouselIdx(targetIdx); } : undefined}
+                  >
+                    <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${g.dot}`} />
+                    <span className={`font-semibold tabular-nums ${g.isActive ? "text-blue-600" : "text-slate-700"}`}>
+                      {g.count > 1 ? `${g.count}x ` : g.unitIndices.length > 1 ? `U${g.unitIndices[0]}: ` : ""}{g.status}
+                    </span>
+                    {!g.isActive && g.remark && g.remark !== "Returned" && (
+                      <span className="truncate text-xs font-medium text-slate-400">{g.remark}</span>
+                    )}
+                    {isClickable && (
+                      <ChevronRight className="h-3 w-3 text-slate-300 ml-auto shrink-0" />
+                    )}
+                  </div>
+                );
+              });
             })()}
           </div>
           {/* Pagination controls — 3-page sliding window */}
@@ -1096,7 +1116,7 @@ const ItemCard = ({
     const nextPanel = () => setCarouselIdx((carouselIdx + 1) % remarkGroups.length);
 
     return (
-      <div className="shrink-0 sm:w-60 bg-slate-50/40 border-t sm:border-t-0 border-l-0 border-slate-100">
+      <div className="flex-1 bg-slate-50/40 border-t sm:border-t-0 border-l-0 border-slate-100">
         {/* Chevron nav */}
         <div className="flex items-center justify-between px-5 pt-4 pb-3">
           <button onClick={prevPanel} className="rounded-md border border-border bg-background p-1.5 text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:opacity-50" aria-label="Previous panel">
@@ -1115,95 +1135,111 @@ const ItemCard = ({
           </button>
         </div>
 
-        <div className="px-5 pb-4 space-y-3.5">
-          {/* Condition flow */}
-          <div>
-            <p className="text-xs font-medium text-slate-400 mb-1.5">Condition</p>
-            <div className="flex items-center gap-2">
-              <span className={`rounded-md px-2 py-1 text-xs font-semibold ${conditionBadgeClass(originalRemark)}`}>
-                {originalRemark || opLabel}
-              </span>
-              <span className="text-sm text-slate-300">→</span>
-              <span className={`rounded-md px-2 py-1 text-xs font-semibold ${conditionBadgeClass(groupCondition)}`}>
-                {groupCondition}
-              </span>
-            </div>
+        <div className="px-5 pb-4 flex flex-col gap-y-2">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <span className="shrink-0 text-xs font-medium text-slate-400">Returned Condition:</span>
+            <span className="truncate text-sm font-semibold text-slate-900">{groupRemark.split(":")[0].trim()}</span>
+            {groupCount > 1 && <span className="ml-auto shrink-0 text-sm font-semibold tabular-nums text-slate-700">{groupCount}x</span>}
           </div>
 
-          {/* Borrowed / Returned dates */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-            <div>
-              <p className="text-xs font-medium text-slate-400 mb-1">Borrowed</p>
-              <p className="text-sm font-semibold text-slate-900">{formatExportDate(borrowDate)}</p>
-              <p className="text-xs text-slate-400">{formatExportTime(borrowDate)}</p>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-400 mb-1">Returned</p>
-              {groupUnits[0]?.returnedAt ? (
-                <>
-                  <p className="text-sm font-semibold text-slate-900">{formatExportDate(groupUnits[0].returnedAt)}</p>
-                  <p className="text-xs text-slate-400">{formatExportTime(groupUnits[0].returnedAt)}</p>
-                </>
-              ) : (
-                <p className="text-xs italic text-slate-400">pending</p>
-              )}
-            </div>
+          <div className="flex items-baseline gap-2 min-w-0">
+            <span className="shrink-0 text-xs font-medium text-slate-400">Quantity:</span>
+            <span className="truncate text-sm font-semibold text-slate-900">{returnedQty}/{borrowedQty}</span>
           </div>
 
-          {/* Per-unit timestamps — grouped by same remark + timestamp */}
+          <div className="flex items-baseline gap-2 min-w-0">
+            <span className="shrink-0 text-xs font-medium text-slate-400">Borrowed:</span>
+            <span className="truncate text-sm font-semibold text-slate-900">{formatExportDate(borrowDate)}</span>
+            <span className="text-xs text-slate-400">{formatExportTime(borrowDate)}</span>
+          </div>
+          <div className="flex items-baseline gap-2 min-w-0">
+            <span className="shrink-0 text-xs font-medium text-slate-400">Returned:</span>
+            {groupUnits[0]?.returnedAt ? (
+              <>
+                <span className="truncate text-sm font-semibold text-slate-900">{formatExportDate(groupUnits[0].returnedAt)}</span>
+                <span className="text-xs text-slate-400">{formatExportTime(groupUnits[0].returnedAt)}</span>
+              </>
+            ) : (
+              <span className="truncate text-xs italic text-slate-400">Pending</span>
+            )}
+          </div>
+
+          {/* Per-unit timestamps — grouped by date, then time */}
           {groupCount > 1 && (() => {
             const groups = groupReturnedUnits(groupUnits);
             return (
               <div className="border-t border-slate-200 pt-3">
                 <p className="text-xs font-medium text-slate-400 mb-2">Unit Timestamps</p>
-                <div className="space-y-1.5">
-                  {groups.map((g, gi) => (
-                    <div key={gi} className="flex items-baseline gap-2">
-                      <span className="text-[10px] font-bold tabular-nums text-slate-400">
-                        {g.count > 1 ? `${g.count}x` : `U${g.unitIndices[0]}`}:
-                      </span>
-                      <span className="text-sm font-semibold text-slate-700">
-                        {g.returnedAt ? formatExportDate(g.returnedAt) : <span className="italic text-slate-400">pending</span>}
-                      </span>
-                      {g.returnedAt && (
-                        <span className="text-xs text-slate-400">{formatExportTime(g.returnedAt)}</span>
-                      )}
-                      {g.remark && (
-                        <span className="text-xs text-slate-500">— {g.remark}</span>
-                      )}
+                <div className="space-y-2">
+                  {(() => {
+                    const dateMap = new Map();
+                    for (const g of groups) {
+                      if (!g.returnedAt) continue;
+                      const dateStr = formatExportDate(g.returnedAt);
+                      const timeStr = formatExportTime(g.returnedAt);
+                      if (!dateMap.has(dateStr)) dateMap.set(dateStr, []);
+                      dateMap.get(dateStr).push({ timeStr, count: g.count, unitIndices: g.unitIndices });
+                    }
+                    const dateEntries = Array.from(dateMap.entries());
+                    return dateEntries.map(([dateStr, timeEntries], di) => (
+                      <div key={di}>
+                        <p className="text-sm font-semibold text-slate-900">{dateStr}</p>
+                        <div className="space-y-0.5 mt-0.5">
+                          {timeEntries.map((te, ti) => (
+                            <div key={ti} className="flex items-baseline justify-between gap-2">
+                              <p className="text-xs text-slate-400">{te.timeStr}</p>
+                              <span className="text-sm font-semibold tabular-nums text-slate-700">
+                                {te.count > 1 ? `${te.count}x` : `U${te.unitIndices[0]}`}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                  {groups.some((g) => !g.returnedAt) && (
+                    <div>
+                      <p className="text-xs italic text-slate-400">Pending</p>
+                      <div className="mt-0.5">
+                        <span className="text-sm font-semibold tabular-nums text-slate-700">
+                          {groups.filter((g) => !g.returnedAt).reduce((s, g) => s + g.count, 0) > 1
+                            ? `${groups.filter((g) => !g.returnedAt).reduce((s, g) => s + g.count, 0)}x`
+                            : `U${groups.find((g) => !g.returnedAt)?.unitIndices[0]}`}
+                        </span>
+                      </div>
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             );
           })()}
 
-          {/* Remarks — grouped by same remark text */}
+          {/* Notes — grouped by same note text, merged with Nx */}
           {groupUnits.some((u) => u.remarks?.trim()) && (() => {
-            const remarkGroups = [];
-            let cur = null;
+            // Group all units' notes by identical text
+            const noteMap = new Map();
             for (const unit of groupUnits) {
               const r = (unit.remarks || "").trim();
               if (!r) continue;
-              if (cur && cur.remark === r) {
-                cur.count += 1;
-                cur.unitIndices.push(unit.index + 1);
-              } else {
-                if (cur) remarkGroups.push(cur);
-                cur = { remark: r, count: 1, unitIndices: [unit.index + 1] };
+              if (!noteMap.has(r)) {
+                noteMap.set(r, { note: r, count: 0, unitIndices: [] });
               }
+              const ng = noteMap.get(r);
+              ng.count += 1;
+              ng.unitIndices.push(unit.index + 1);
             }
-            if (cur) remarkGroups.push(cur);
+            const noteGroups = Array.from(noteMap.values()).sort((a, b) => a.unitIndices[0] - b.unitIndices[0]);
+            if (noteGroups.length === 0) return null;
             return (
               <div className="border-t border-slate-200 pt-3">
                 <p className="text-xs font-medium text-slate-400 mb-1.5">Notes</p>
                 <div className="space-y-1">
-                  {remarkGroups.map((g, gi) => (
-                    <p key={gi} className="text-sm text-slate-700">
-                      <span className="text-[10px] font-bold tabular-nums text-slate-400">
-                        {g.count > 1 ? `${g.count}x` : `U${g.unitIndices[0]}`}:
-                      </span>{" "}
-                      <span className="font-medium">{g.remark}</span>
+                  {noteGroups.map((g, gi) => (
+                    <p key={gi} className="flex items-baseline gap-2 text-sm text-slate-700">
+                      <span className="font-medium">{g.note}</span>
+                      <span className="ml-auto text-sm font-semibold tabular-nums text-slate-700">
+                        {g.count > 1 ? `${g.count}x` : `U${g.unitIndices[0]}`}
+                      </span>
                     </p>
                   ))}
                 </div>
@@ -4895,7 +4931,10 @@ export default function Borrowing() {
                                 size="icon"
                                 variant="outline"
                                 className="h-9 w-9 rounded-full"
-                                onClick={() => setQtyDialogValue((v) => Math.max(1, v - 1))}
+                                onClick={() => setQtyDialogValue((v) => {
+                                  const cur = (v === "" || v == null) ? 1 : Number(v);
+                                  return Math.max(1, cur - 1);
+                                })}
                                 disabled={qtyDialogValue <= 1}
                               >
                                 <Minus className="h-4 w-4" />
@@ -4906,11 +4945,26 @@ export default function Borrowing() {
                                 max={Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1)}
                                 value={qtyDialogValue}
                                 onChange={(e) => {
-                                  const v = Number(e.target.value);
-                                  if (!Number.isNaN(v)) {
-                                    const max = Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1);
-                                    setQtyDialogValue(Math.max(1, Math.min(v, max)));
+                                  const raw = e.target.value;
+                                  // Allow the user to freely type — only clamp on blur
+                                  if (raw === "") {
+                                    setQtyDialogValue("");
+                                    return;
                                   }
+                                  const v = Number(raw);
+                                  if (!Number.isNaN(v)) {
+                                    setQtyDialogValue(v);
+                                  }
+                                }}
+                                onBlur={() => {
+                                  // Clamp to valid range when the user leaves the field
+                                  const max = Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1);
+                                  setQtyDialogValue((v) => {
+                                    if (v === "" || v == null) return 1;
+                                    const n = Number(v);
+                                    if (Number.isNaN(n)) return 1;
+                                    return Math.max(1, Math.min(n, max));
+                                  });
                                 }}
                                 className="no-number-spinner h-10 w-20 rounded-md border border-input bg-white text-center text-lg font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                               />
@@ -4921,7 +4975,10 @@ export default function Borrowing() {
                                 className="h-9 w-9 rounded-full"
                                 onClick={() => {
                                   const max = Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1);
-                                  setQtyDialogValue((v) => Math.min(max, v + 1));
+                                  setQtyDialogValue((v) => {
+                                    const cur = (v === "" || v == null) ? 1 : Number(v);
+                                    return Math.min(max, cur + 1);
+                                  });
                                 }}
                                 disabled={qtyDialogValue >= Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1)}
                               >
@@ -4943,7 +5000,11 @@ export default function Borrowing() {
                               type="button"
                               size="sm"
                               onClick={() => {
-                                addToCart(qtyDialogItem, false, qtyDialogValue);
+                                const max = Number(qtyDialogItem.quantity ?? qtyDialogItem.data?.quantity ?? 1);
+                                const qty = (qtyDialogValue === "" || qtyDialogValue == null || Number.isNaN(Number(qtyDialogValue)))
+                                  ? 1
+                                  : Math.max(1, Math.min(Number(qtyDialogValue), max));
+                                addToCart(qtyDialogItem, false, qty);
                                 setQtyDialogItem(null);
                               }}
                               className="rounded-lg bg-[#4a1111] px-5 text-white hover:bg-[#3f0f0f]"
