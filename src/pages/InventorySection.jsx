@@ -64,6 +64,7 @@ import {
   getInventoryDropLogsTableEndpoint,
 } from "@/lib/inventoryApi";
 import { fetchBorrowingRecords } from "@/lib/borrowingApi";
+import { cn } from "@/lib/utils";
 
 // Utility functions
 const normalizeSubColumns = (subColumns = [], parentKey = "") => {
@@ -507,6 +508,73 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
   const [duplicateMatch, setDuplicateMatch] = useState(null);
   const [pendingRecordData, setPendingRecordData] = useState(null);
   const [duplicateAction, setDuplicateAction] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [remarksDescError, setRemarksDescError] = useState("");
+
+  const nameFieldKey = useMemo(() => {
+    for (const col of orderedTemplateColumns) {
+      if (col.subColumns && col.subColumns.length > 0) {
+        const nameSub = col.subColumns.find((sc) => String(sc.physicalKey || "").toLowerCase() === "name");
+        if (nameSub) return nameSub.physicalKey;
+      }
+      if (String(col.key || "").toLowerCase() === "name") return col.key;
+    }
+    return null;
+  }, [orderedTemplateColumns]);
+
+  const remarksFieldKey = useMemo(() => {
+    for (const col of orderedTemplateColumns) {
+      if (col.subColumns && col.subColumns.length > 0) {
+        const rSub = col.subColumns.find((sc) => String(sc.physicalKey || "").toLowerCase() === "remarks");
+        if (rSub) return rSub.physicalKey;
+      }
+      if (String(col.key || "").toLowerCase() === "remarks") return col.key;
+    }
+    return null;
+  }, [orderedTemplateColumns]);
+
+  const remarksDescFieldKey = useMemo(() => {
+    for (const col of orderedTemplateColumns) {
+      if (col.subColumns && col.subColumns.length > 0) {
+        const rSub = col.subColumns.find((sc) => String(sc.physicalKey || "").toLowerCase() === "remarks_description");
+        if (rSub) return rSub.physicalKey;
+      }
+      if (String(col.key || "").toLowerCase() === "remarks_description") return col.key;
+    }
+    return null;
+  }, [orderedTemplateColumns]);
+
+  const hasRemarksDescColumn = Boolean(remarksDescFieldKey);
+
+  const REMARKS_REQUIRES_DESC = ["defective", "other"];
+
+  const isRemarksDescRequired = () => {
+    if (!remarksFieldKey) return false;
+    const remarkVal = String(dynamicForm[remarksFieldKey] ?? "").trim().toLowerCase();
+    return REMARKS_REQUIRES_DESC.includes(remarkVal);
+  };
+
+  const getNameValue = () => {
+    if (useTemplate && nameFieldKey) return String(dynamicForm[nameFieldKey] ?? "").trim();
+    if (!useTemplate) return legacyForm.type.trim();
+    return "";
+  };
+
+  const validateName = (val) => {
+    const trimmed = String(val || "").trim();
+    if (!trimmed) return "Name is required.";
+    return "";
+  };
+
+  const validateRemarksDesc = (val) => {
+    if (!hasRemarksDescColumn) return "";
+    if (isRemarksDescRequired()) {
+      const trimmed = String(val || "").trim();
+      if (!trimmed) return "Remarks Description is required when remark is Defective or Other.";
+    }
+    return "";
+  };
+
   const createInitialSubFieldGroups = (columns) =>
     (columns || []).reduce((accumulator, column) => {
       if (Array.isArray(column?.subColumns) && column.subColumns.length > 1) {
@@ -551,7 +619,7 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
       }, {})
     );
 
-  const renderFieldControl = (fieldKey, fieldConfig) => {
+  const renderFieldControl = (fieldKey, fieldConfig, isNameField = false, nameErr = "", setNameErr = () => {}, validateNameFn = () => "") => {
     if (isDropdownField(fieldConfig)) {
       // Use live fetched brands for brand fields (detected by key name or dynamicBrand flag)
       const isBrandField = fieldConfig?.dynamicBrand === true || fieldKey === "brand";
@@ -572,6 +640,15 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
                 [fieldKey]: val,
                 ...(val !== "Other" && { [`${fieldKey}_other`]: "" }),
               }));
+              // If this is the remarks dropdown, re-validate remarks description
+              if (remarksFieldKey && fieldKey === remarksFieldKey) {
+                const newVal = REMARKS_REQUIRES_DESC.includes(String(val).trim().toLowerCase());
+                if (newVal) {
+                  setRemarksDescError(validateRemarksDesc(dynamicForm[remarksDescFieldKey] ?? ""));
+                } else {
+                  setRemarksDescError("");
+                }
+              }
             }}
           >
             <SelectTrigger className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:ring-2 focus:ring-[#4a1111]">
@@ -604,9 +681,22 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
       );
     }
 
+    const isRemarksDescField = remarksDescFieldKey && fieldKey === remarksDescFieldKey;
+
     return (
       <Input
-        className="mt-1"
+        className={cn(
+          "mt-1",
+          isNameField && nameErr
+            ? "border-rose-400 bg-rose-50/50 focus-visible:ring-rose-400"
+            : isNameField && !nameErr && dynamicForm[fieldKey]?.trim()
+              ? "border-emerald-400 bg-emerald-50/30 focus-visible:ring-emerald-400"
+              : isRemarksDescField && remarksDescError
+                ? "border-rose-400 bg-rose-50/50 focus-visible:ring-rose-400"
+                : isRemarksDescField && !remarksDescError && dynamicForm[fieldKey]?.trim()
+                  ? "border-emerald-400 bg-emerald-50/30 focus-visible:ring-emerald-400"
+                  : ""
+        )}
         type={
           fieldConfig?.data_type === "date"
             ? "date"
@@ -615,12 +705,18 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
               : "text"
         }
         value={dynamicForm[fieldKey] ?? ""}
-        onChange={(event) =>
+        onChange={(event) => {
           setDynamicForm((current) => ({
             ...current,
             [fieldKey]: event.target.value,
-          }))
-        }
+          }));
+          if (isNameField) {
+            setNameErr(validateNameFn(event.target.value));
+          }
+          if (isRemarksDescField) {
+            setRemarksDescError(validateRemarksDesc(event.target.value));
+          }
+        }}
       />
     );
   };
@@ -795,6 +891,17 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
   };
 
   const requestSave = () => {
+    // Validate name field
+    const currentName = getNameValue();
+    const nameErr = validateName(currentName);
+    setNameError(nameErr);
+
+    // Validate remarks description (required when remark is Defective or Other)
+    const rdErr = validateRemarksDesc(dynamicForm[remarksDescFieldKey] ?? "");
+    setRemarksDescError(rdErr);
+
+    if (nameErr || rdErr) return;
+
     if (hasUnsavedChanges) {
       setShowSaveConfirm(true);
       return;
@@ -940,27 +1047,37 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
                       ) : (
                         <div className="px-3 py-2">
                           <span className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                            {column.label}
+                            {column.label}{String(column.key || "").toLowerCase() === "name" ? <span className="text-red-500">*</span> : null}
                           </span>
                         </div>
                       )}
                       {(column.subColumns.length <= 1 || openSubFieldGroups[column.key] !== false) && (
                         <div className={`grid gap-3 border-t border-slate-200 p-3 ${isIdentifierField(column.key) ? "md:grid-cols-1" : "md:grid-cols-3"}`}>
-                          {column.subColumns.map((subColumn) => (
-                            <div key={subColumn.physicalKey}>
-                              <label className="text-xs font-medium text-slate-600">
-                                {subColumn.label}
-                              </label>
-                              {renderFieldControl(subColumn.physicalKey, subColumn)}
-                            </div>
-                          ))}
+                          {column.subColumns.map((subColumn) => {
+                            const isNameSubField = nameFieldKey && subColumn.physicalKey === nameFieldKey;
+                            const isRemarksDescSubField = remarksDescFieldKey && subColumn.physicalKey === remarksDescFieldKey;
+                            return (
+                              <div key={subColumn.physicalKey}>
+                                <label className="text-xs font-medium text-slate-600">
+                                  {subColumn.label}{String(subColumn.physicalKey || "").toLowerCase() === "name" ? <span className="text-red-500">*</span> : null}
+                                </label>
+                                {renderFieldControl(subColumn.physicalKey, subColumn, isNameSubField, nameError, setNameError, validateName)}
+                                {isNameSubField && nameError && (
+                                  <p className="mt-1 text-xs font-medium text-rose-600">{nameError}</p>
+                                )}
+                                {isRemarksDescSubField && remarksDescError && (
+                                  <p className="mt-1 text-xs font-medium text-rose-600">{remarksDescError}</p>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
                   ) : (
                     <div key={column.key} className="space-y-1">
                       <label className="text-sm font-medium text-slate-700">
-                        {column.label}
+                        {column.label}{String(column.key || "").toLowerCase() === "name" ? <span className="text-red-500">*</span> : null}
                       </label>
                       {column.data_type === "boolean" || column.data_type === "bool" ? (
                         <label className="mt-1 inline-flex items-center gap-2 text-sm text-slate-700">
@@ -977,10 +1094,26 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
                           <span>{dynamicForm[column.key] ? "True" : "False"}</span>
                         </label>
                       ) : isDropdownField(column) ? (
-                        renderFieldControl(column.key, column)
+                        <div className="space-y-1">
+                          {renderFieldControl(column.key, column)}
+                          {remarksFieldKey && column.key === remarksFieldKey && isRemarksDescRequired() && (
+                            <></>
+                          )}
+                        </div>
                       ) : (
                         <Input
-                          className="mt-1"
+                          className={cn(
+                            "mt-1",
+                            useTemplate && nameFieldKey && column.key === nameFieldKey && nameError
+                              ? "border-rose-400 bg-rose-50/50 focus-visible:ring-rose-400"
+                              : useTemplate && nameFieldKey && column.key === nameFieldKey && !nameError && dynamicForm[column.key]?.trim()
+                                ? "border-emerald-400 bg-emerald-50/30 focus-visible:ring-emerald-400"
+                                : useTemplate && remarksDescFieldKey && column.key === remarksDescFieldKey && remarksDescError
+                                  ? "border-rose-400 bg-rose-50/50 focus-visible:ring-rose-400"
+                                  : useTemplate && remarksDescFieldKey && column.key === remarksDescFieldKey && !remarksDescError && dynamicForm[column.key]?.trim()
+                                    ? "border-emerald-400 bg-emerald-50/30 focus-visible:ring-emerald-400"
+                                    : ""
+                          )}
                           type={
                             column.data_type === "date"
                               ? "date"
@@ -991,13 +1124,25 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
                                 : "text"
                           }
                           value={dynamicForm[column.key] ?? ""}
-                          onChange={(event) =>
+                          onChange={(event) => {
                             setDynamicForm((current) => ({
                               ...current,
                               [column.key]: event.target.value,
-                            }))
-                          }
+                            }));
+                            if (useTemplate && nameFieldKey && column.key === nameFieldKey) {
+                              setNameError(validateName(event.target.value));
+                            }
+                            if (useTemplate && remarksDescFieldKey && column.key === remarksDescFieldKey) {
+                              setRemarksDescError(validateRemarksDesc(event.target.value));
+                            }
+                          }}
                         />
+                      )}
+                      {useTemplate && nameFieldKey && column.key === nameFieldKey && nameError && (
+                        <p className="mt-1 text-xs font-medium text-rose-600">{nameError}</p>
+                      )}
+                      {useTemplate && remarksDescFieldKey && column.key === remarksDescFieldKey && remarksDescError && (
+                        <p className="mt-1 text-xs font-medium text-rose-600">{remarksDescError}</p>
                       )}
                     </div>
                   )
@@ -1409,7 +1554,11 @@ export default function InventorySection() {
 
   const isDefectiveRemark = (remark) => String(remark || "").toLowerCase().includes("defective");
 
-  const executeRemarkChange = async ({ item, targetRemark, quantity, remarkColumnKey, quantityKey, itemQty }) => {
+  const REMARKS_REQUIRES_DESC = ["defective", "other"];
+
+  const isRemarkDescRequired = (remark) => REMARKS_REQUIRES_DESC.includes(String(remark || "").trim().toLowerCase());
+
+  const executeRemarkChange = async ({ item, targetRemark, quantity, remarkColumnKey, quantityKey, itemQty, remarksDescription = "" }) => {
     const qty = Math.max(1, Math.floor(Number(quantity) || 1));
     setRemarkSaving(true);
     try {
@@ -1447,6 +1596,12 @@ export default function InventorySection() {
         }
       }
 
+      // Build the extra record data (remarks_description if needed, only when column exists)
+      const extraRecord = {};
+      if (sectionHasRemarksDescColumn && isRemarkDescRequired(targetRemark) && remarksDescription.trim()) {
+        extraRecord.remarks_description = remarksDescription.trim();
+      }
+
       if (foundTarget) {
         // Merge path: update state AND persist to DB
         const tbl = tabTableName || null;
@@ -1454,36 +1609,37 @@ export default function InventorySection() {
 
         // Update UI state
         if (newSourceQty <= 0) {
-          setItems((prev) => prev.map((it) => it.id === foundTarget.id ? { ...it, [quantityKey]: newTargetQty } : it).filter((it) => it.id !== item.id));
+          setItems((prev) => prev.map((it) => it.id === foundTarget.id ? { ...it, [quantityKey]: newTargetQty, ...(extraRecord.remarks_description != null ? { remarks_description: extraRecord.remarks_description } : {}) } : it).filter((it) => it.id !== item.id));
         } else {
           setItems((prev) => prev.map((it) => {
             if (it.id === item.id) return { ...it, [quantityKey]: newSourceQty };
-            if (it.id === foundTarget.id) return { ...it, [quantityKey]: newTargetQty };
+            if (it.id === foundTarget.id) return { ...it, [quantityKey]: newTargetQty, ...(extraRecord.remarks_description != null ? { remarks_description: extraRecord.remarks_description } : {}) };
             return it;
           }));
         }
 
         // Persist to DB
         if (newSourceQty <= 0) {
-          const { error: updErr } = await supabase.from(tbl).update({ [quantityKey]: newTargetQty }).eq("id", foundTarget.id);
+          const { error: updErr } = await supabase.from(tbl).update({ [quantityKey]: newTargetQty, ...extraRecord }).eq("id", foundTarget.id);
           if (updErr) throw new Error("Update target failed: " + updErr.message);
           const { error: delErr } = await supabase.from(tbl).delete().eq("id", item.id);
           if (delErr) throw new Error("Delete source failed: " + delErr.message);
         } else {
-          const { error: e1 } = await supabase.from(tbl).update({ [quantityKey]: newTargetQty }).eq("id", foundTarget.id);
+          const { error: e1 } = await supabase.from(tbl).update({ [quantityKey]: newTargetQty, ...extraRecord }).eq("id", foundTarget.id);
           if (e1) throw new Error("Update target failed: " + e1.message);
           const { error: e2 } = await supabase.from(tbl).update({ [quantityKey]: newSourceQty }).eq("id", item.id);
           if (e2) throw new Error("Update source failed: " + e2.message);
         }
       } else if (newSourceQty <= 0) {
         // No target, source fully consumed — update remark in-place
-        await upsertInventoryItem({ id: item.id, sectionId: selectedSection?.id, tableName: tabTableName || null, recordData: { [remarkColumnKey]: targetRemark } });
-        setItems((prev) => prev.map((it) => it.id === item.id ? { ...it, [remarkColumnKey]: targetRemark } : it));
+        await upsertInventoryItem({ id: item.id, sectionId: selectedSection?.id, tableName: tabTableName || null, recordData: { [remarkColumnKey]: targetRemark, ...extraRecord } });
+        setItems((prev) => prev.map((it) => it.id === item.id ? { ...it, [remarkColumnKey]: targetRemark, ...(extraRecord.remarks_description != null ? { remarks_description: extraRecord.remarks_description } : {}) } : it));
       } else {
         // No target, source has remaining qty — create a new row
         await upsertInventoryItem({ id: item.id, sectionId: selectedSection?.id, tableName: tabTableName || null, recordData: { [quantityKey]: newSourceQty } });
         const nr = { ...item }; delete nr.id; delete nr.created_at; delete nr.updated_at;
         nr[quantityKey] = qty; nr[remarkColumnKey] = targetRemark;
+        if (extraRecord.remarks_description) nr.remarks_description = extraRecord.remarks_description;
         const newRecordData = { ...nr };
         const created = await upsertInventoryItem({ id: null, sectionId: selectedSection?.id, tableName: tabTableName || null, recordData: newRecordData });
         setItems((prev) => { const u = prev.map((it) => it.id === item.id ? { ...it, [quantityKey]: newSourceQty } : it); if (created?.id) { const newRow = { ...nr, id: created.id }; const si = u.findIndex((it) => it.id === item.id); u.splice(si + 1, 0, newRow); } return u; });
@@ -1495,14 +1651,23 @@ export default function InventorySection() {
 
   const handleRemarkChange = () => {
     if (!remarkChangeModal) return;
-    const { item, currentRemark, targetRemark, quantity, remarkColumnKey, quantityKey, itemQty } = remarkChangeModal;
+    const { item, currentRemark, targetRemark, quantity, remarkColumnKey, quantityKey, itemQty, remarksDescription } = remarkChangeModal;
     if (currentRemark === targetRemark) { setRemarkChangeModal(null); return; }
+    // Validate remarks description when required (only if the column exists)
+    if (sectionHasRemarksDescColumn && isRemarkDescRequired(targetRemark)) {
+      const descTrimmed = String(remarksDescription || "").trim();
+      if (!descTrimmed) {
+        setRemarkChangeModal((prev) => ({ ...prev, remarksDescError: "Remarks Description is required when remark is Defective or Other." }));
+        return;
+      }
+    }
+    setRemarkChangeModal((prev) => ({ ...prev, remarksDescError: "" }));
     if (isDefectiveRemark(targetRemark)) {
-      setDefectiveConfirmModal({ item, currentRemark, targetRemark, quantity, remarkColumnKey, quantityKey, itemQty });
+      setDefectiveConfirmModal({ item, currentRemark, targetRemark, quantity, remarkColumnKey, quantityKey, itemQty, remarksDescription });
       setRemarkChangeModal(null);
       return;
     }
-    executeRemarkChange({ item, targetRemark, quantity, remarkColumnKey, quantityKey, itemQty });
+    executeRemarkChange({ item, targetRemark, quantity, remarkColumnKey, quantityKey, itemQty, remarksDescription });
   };
 
   useEffect(() => {
@@ -1657,6 +1822,14 @@ export default function InventorySection() {
   }, [selectedSection?.id, sectionColumnsMap, orderedTemplateColumns]);
   const hasItemNumberColumn = useMemo(
     () => displayTemplateColumns.some((column) => String(column?.key || "").trim() === "item_number"),
+    [displayTemplateColumns]
+  );
+  const sectionHasRemarksDescColumn = useMemo(
+    () => displayTemplateColumns.some((column) => {
+      const k = String(column?.key || "").trim().toLowerCase();
+      if (k === "remarks_description") return true;
+      return column?.subColumns?.some((sc) => String(sc.physicalKey || "").toLowerCase() === "remarks_description") || false;
+    }),
     [displayTemplateColumns]
   );
   const exportColumnOptions = useMemo(
@@ -2905,6 +3078,8 @@ export default function InventorySection() {
                                               remarkColumnKey: remarkCol?.key || null,
                                               quantityKey,
                                               itemQty,
+                                              remarksDescription: "",
+                                              remarksDescError: "",
                                             });
                                           }}
                                           className="group inline-flex items-center gap-1 text-sm text-slate-700 cursor-pointer hover:text-indigo-600 transition-colors"
@@ -3377,9 +3552,14 @@ export default function InventorySection() {
                 <Label className="text-sm font-medium text-slate-700">New Remark</Label>
                 <Select
                   value={remarkChangeModal.targetRemark || ""}
-                  onValueChange={(value) =>
-                    setRemarkChangeModal((prev) => ({ ...prev, targetRemark: value }))
-                  }
+                  onValueChange={(value) => {
+                    setRemarkChangeModal((prev) => ({
+                      ...prev,
+                      targetRemark: value,
+                      remarksDescError: "",
+                      remarksDescription: isRemarkDescRequired(value) ? prev.remarksDescription : "",
+                    }));
+                  }}
                 >
                   <SelectTrigger className="focus:ring-[#4a1111]">
                     <SelectValue placeholder="Select new remark..." />
@@ -3395,6 +3575,47 @@ export default function InventorySection() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Remarks Description — slides down when Defective or Other is selected (only if column exists) */}
+              {sectionHasRemarksDescColumn && (
+              <div
+                className="overflow-hidden transition-all duration-300 ease-in-out"
+                style={{
+                  maxHeight: isRemarkDescRequired(remarkChangeModal.targetRemark) ? "200px" : "0px",
+                  opacity: isRemarkDescRequired(remarkChangeModal.targetRemark) ? 1 : 0,
+                  marginTop: isRemarkDescRequired(remarkChangeModal.targetRemark) ? "12px" : "0px",
+                }}
+              >
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium text-slate-700">
+                    Remarks Description <span className="text-rose-500">*</span>
+                  </Label>
+                  <Textarea
+                    placeholder="Describe the issue or details..."
+                    value={remarkChangeModal.remarksDescription || ""}
+                    onChange={(event) => {
+                      setRemarkChangeModal((prev) => ({
+                        ...prev,
+                        remarksDescription: event.target.value,
+                        remarksDescError: "",
+                      }));
+                    }}
+                    className={cn(
+                      "min-h-[80px] resize-none focus-visible:ring-[#4a1111]",
+                      remarkChangeModal.remarksDescError
+                        ? "border-rose-400 bg-rose-50/50 focus-visible:ring-rose-400"
+                        : remarkChangeModal.remarksDescription?.trim()
+                          ? "border-emerald-400 bg-emerald-50/30 focus-visible:ring-emerald-400"
+                          : ""
+                    )}
+                    rows={3}
+                  />
+                  {remarkChangeModal.remarksDescError && (
+                    <p className="text-xs font-medium text-rose-600">{remarkChangeModal.remarksDescError}</p>
+                  )}
+                </div>
+              </div>
+              )}
 
             {/* Quantity input — only when item has more than 1 */}
             {remarkChangeModal.itemQty > 1 && (
@@ -3461,6 +3682,14 @@ export default function InventorySection() {
                 <>
                   This will move <strong>{defectiveConfirmModal.quantity}</strong> unit{defectiveConfirmModal.quantity > 1 ? "s" : ""} from{" "}
                   <strong>"{defectiveConfirmModal.currentRemark}"</strong> to <strong>"{defectiveConfirmModal.targetRemark}"</strong>.
+                  {defectiveConfirmModal.remarksDescription?.trim() && (
+                    <>
+                      <br /><br />
+                      <span className="text-sm font-medium text-slate-700">Remarks Description:</span>
+                      <br />
+                      <span className="text-sm text-slate-600 italic">"{defectiveConfirmModal.remarksDescription.trim()}"</span>
+                    </>
+                  )}
                   <br /><br />
                   Defective items are flagged for repair or replacement. This action cannot be undone easily.
                 </>

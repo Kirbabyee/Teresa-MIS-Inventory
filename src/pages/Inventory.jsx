@@ -86,8 +86,16 @@ const C = (key, label, fieldType = "text", extra = {}) => ({
   key, label, data_type: fieldType === "number" ? "int" : "text", fieldType, ...extra,
 });
 const REMARKS = { key: "remarks", label: "Remarks", data_type: "text", fieldType: "dropdown", options: ["Working", "Defective"] };
+const REMARKS_DESC = { key: "remarks_description", label: "Remarks Description", data_type: "text", fieldType: "text" };
 const QTY = { key: "quantity", label: "Quantity", data_type: "int", fieldType: "number" };
 const BRAND = { key: "brand", label: "Brand", data_type: "text", fieldType: "dropdown", dynamicBrand: true };
+const DESCRIPTION = { key: "description", label: "Description", data_type: "text", fieldType: "text" };
+
+// Default columns for any new section added in the wizard
+const DEFAULT_SECTION_COLUMNS = [
+  C("item_number", "Item #"), C("name", "Name"), BRAND, DESCRIPTION,
+  QTY, REMARKS, REMARKS_DESC,
+];
 
 const INVENTORY_TEMPLATES = [
   {
@@ -118,19 +126,19 @@ const INVENTORY_TEMPLATES = [
         C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
         C("serial_number", "Serial Number"), C("assigned_user", "Assigned User/Faculty"),
         C("sub_category", "Sub-Category", "dropdown", { options: ["Ultrabook", "Business", "Gaming"] }),
-        REMARKS,
+        DESCRIPTION, QTY, REMARKS, REMARKS_DESC,
       ],
       "Desktops & All-in-Ones": [
         C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
         C("serial_number", "Serial Number"),
         C("form_factor", "Form Factor", "dropdown", { options: ["Tower", "SFF", "Mini", "All-in-One"] }),
-        C("room_location", "Room Location"), REMARKS,
+        C("room_location", "Room Location"), DESCRIPTION, QTY, REMARKS, REMARKS_DESC,
       ],
       "Tablets & Mobile Devices": [
         C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
         C("imei_serial_number", "IMEI/Serial Number"),
         C("os_platform", "OS Platform", "dropdown", { options: ["iOS", "Android", "Windows"] }),
-        REMARKS,
+        DESCRIPTION, QTY, REMARKS, REMARKS_DESC,
       ],
     },
   },
@@ -153,12 +161,12 @@ const INVENTORY_TEMPLATES = [
         C("serial_number", "Serial Number"),
         C("screen_size", "Screen Size", "dropdown", { options: ["21\"", "24\"", "27\"", "32\"+"] }),
         C("video_inputs", "Video Inputs", "dropdown", { options: ["HDMI", "DisplayPort", "VGA"] }),
-        REMARKS,
+        DESCRIPTION, QTY, REMARKS, REMARKS_DESC,
       ],
       "Projectors & Presentation Displays": [
         C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
         C("serial_number", "Serial Number"), C("interface_connection", "Interface Connection"),
-        C("bulb_hours_run", "Bulb Hours Run", "number"), REMARKS,
+        C("bulb_hours_run", "Bulb Hours Run", "number"), DESCRIPTION, QTY, REMARKS, REMARKS_DESC,
       ],
     },
   },
@@ -180,16 +188,16 @@ const INVENTORY_TEMPLATES = [
       "Docking Stations": [
         C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
         C("compatibility_type", "Compatibility Type", "dropdown", { options: ["Universal USB-C", "Dell", "Lenovo", "HP"] }),
-        REMARKS,
+        DESCRIPTION, QTY, REMARKS, REMARKS_DESC,
       ],
       "Keyboards & Mice": [
         C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
-        { key: "pooled_quantity", label: "Pooled Quantity", data_type: "int", fieldType: "number" }, REMARKS,
+        DESCRIPTION, { key: "quantity", label: "Quantity", data_type: "int", fieldType: "number" }, REMARKS, REMARKS_DESC,
       ],
       "Headsets, Microphones & Webcams": [
         C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
         C("connection_type", "Connection Type", "dropdown", { options: ["USB-A", "USB-C", "3.5mm", "Bluetooth"] }),
-        QTY, REMARKS,
+        DESCRIPTION, QTY, REMARKS, REMARKS_DESC,
       ],
     },
   },
@@ -210,19 +218,19 @@ const INVENTORY_TEMPLATES = [
     sectionColumns: {
       "Power Adapters / Chargers": [
         C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
-        C("voltage_wattage", "Voltage/Wattage"),
-        { key: "pooled_quantity", label: "Pooled Quantity", data_type: "int", fieldType: "number" }, REMARKS,
+        C("voltage_wattage", "Voltage/Wattage"), DESCRIPTION,
+        { key: "quantity", label: "Quantity", data_type: "int", fieldType: "number" }, REMARKS, REMARKS_DESC,
       ],
       "UPS Units & Surge Protectors": [
         C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
         C("load_capacity_va", "Load Capacity (VA)"),
         C("battery_health", "Battery Health Condition", "dropdown", { options: ["Good", "Replace Battery"] }),
-        REMARKS,
+        DESCRIPTION, QTY, REMARKS, REMARKS_DESC,
       ],
       "Video & Data Adapters": [
         C("item_number", "Item #"), C("name", "Name"), BRAND,
         C("adapter_endpoints", "Adapter Endpoints", "dropdown", { options: ["HDMI to VGA", "USB-C to USB-A", "Type-C to Ethernet"] }),
-        QTY, REMARKS,
+        DESCRIPTION, QTY, REMARKS, REMARKS_DESC,
       ],
     },
   },
@@ -238,18 +246,26 @@ const INVENTORY_TEMPLATES = [
     sections: [
       { name: "External Hard Drives & SSDs", description: "Portable storage devices" },
       { name: "Network Equipment", description: "Routers, access points, and switches" },
+      { name: "Networking Tools", description: "Crimping tools, wire strippers, and cable testers" },
     ],
     sectionColumns: {
       "External Hard Drives & SSDs": [
         C("item_number", "Item #"), C("name", "Name"), BRAND,
         C("storage_type", "Storage Type", "dropdown", { options: ["External HDD", "Portable SSD"] }),
         C("capacity", "Capacity", "dropdown", { options: ["500GB", "1TB", "2TB", "4TB+"] }),
-        REMARKS,
+        DESCRIPTION, QTY, REMARKS, REMARKS_DESC,
       ],
       "Network Equipment": [
         C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
         C("device_class", "Device Class", "dropdown", { options: ["Wireless Router", "Access Point", "PoE Switch"] }),
-        C("management_ip", "Management IP Address"), REMARKS,
+        C("management_ip", "Management IP Address"), DESCRIPTION, QTY, REMARKS, REMARKS_DESC,
+      ],
+      "Networking Tools": [
+        C("item_number", "Item #"), C("name", "Name"), BRAND, C("model", "Model"),
+        C("tool_type", "Tool Type", "dropdown", { options: ["Crimping Tool", "Wire Stripper", "Cable Tester", "Punch Down Tool", "Tone Probe", "Network Cable Certifier", "Other"] }),
+        C("compatible_cable", "Compatible Cable Type", "dropdown", { options: ["RJ45 Ethernet", "RJ11 Telephone", "Coaxial", "Fiber Optic", "Cat5e/Cat6/Cat6a", "Multiple/Universal"] }),
+        C("quantity", "Quantity", "number"),
+        DESCRIPTION, QTY, REMARKS, REMARKS_DESC,
       ],
     },
   },
@@ -1569,27 +1585,6 @@ function TabModal({ tab, onClose, onSave }) {
     if (editingColumnIndex === index) setEditingColumnIndex(null);
   };
 
-  const saveSectionFromModal = async (sectionForm) => {
-    const nextSection = {
-      ...(sectionToEdit || {}),
-      name: String(sectionForm.name || "").trim(),
-      slug: slugify(sectionForm.name || ""),
-      description: String(sectionForm.description || "").trim(),
-    };
-
-    setSections((currentSections) => {
-      if (editingSectionIndex === null) return [...currentSections, nextSection];
-
-      return currentSections.map((section, index) =>
-        index === editingSectionIndex ? nextSection : section
-      );
-    });
-    setErrors((current) => ({ ...current, sections: "" }));
-    setShowSectionModal(false);
-    setSectionToEdit(null);
-    setEditingSectionIndex(null);
-  };
-
   const saveColumnFromModal = async (columnForm) => {
     const normalizedColumn = normalizeColumnConfig({
       ...(columnToEdit || {}),
@@ -2427,8 +2422,10 @@ function TabModal({ tab, onClose, onSave }) {
                   return;
                 }
 
+                const isNewSection = editingSectionIndex === null;
+                const currentSection = editingSectionIndex !== null ? sections[editingSectionIndex] : null;
+
                 setSections((currentSections) => {
-                  const currentSection = editingSectionIndex !== null ? currentSections[editingSectionIndex] : null;
                   const nextSlug = makeUniqueSlug(
                     name,
                     currentSections.map((section) => section.slug),
@@ -2460,6 +2457,14 @@ function TabModal({ tab, onClose, onSave }) {
 
                   return nextSections;
                 });
+
+                // Auto-populate default columns for new sections
+                if (isNewSection) {
+                  setSectionColumns((prev) => ({
+                    ...prev,
+                    [name]: DEFAULT_SECTION_COLUMNS.map((c) => ({ ...c })),
+                  }));
+                }
 
                 setShowSectionModal(false);
                 setSectionToEdit(null);
@@ -2759,7 +2764,7 @@ export default function Inventory() {
         // Exports are recorded in the shared dynamic export logs table; no per-table exports creation here.
 
         // persist mapping and create-time template columns for this tab
-        const templateBrands = Array.isArray(selectedTemplate?.brands) ? selectedTemplate.brands : [];
+        const templateBrands = Array.isArray(form.brands) ? form.brands : [];
         const tabConfig = { tableName, columns: cols, sectionColumns: sectionColumnsById, brands: templateBrands };
         try {
           window.localStorage.setItem(`inventory.tab_table.${savedTab.id}`, JSON.stringify(tabConfig));
