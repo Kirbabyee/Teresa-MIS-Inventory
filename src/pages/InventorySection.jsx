@@ -1853,9 +1853,20 @@ export default function InventorySection() {
     [templateColumns, usesTemplateColumns]
   );
   const displayItems = useMemo(() => {
-    const visibleItems = isDefectiveOnlyView
+    let visibleItems = isDefectiveOnlyView
       ? items.filter(isDefectiveInventoryRecord)
       : items;
+
+    // Apply search filter
+    const query = searchQuery.trim().toLowerCase();
+    if (query) {
+      visibleItems = visibleItems.filter((item) => {
+        return Object.values(item).some((val) => {
+          if (val == null) return false;
+          return String(val).toLowerCase().includes(query);
+        });
+      });
+    }
 
     if (!hasItemNumberColumn) {
       return visibleItems;
@@ -1872,7 +1883,7 @@ export default function InventorySection() {
       if (rightMissing) return -1;
       return leftValue - rightValue;
     });
-  }, [hasItemNumberColumn, isDefectiveOnlyView, items]);
+  }, [hasItemNumberColumn, isDefectiveOnlyView, items, searchQuery]);
   const totalPages = Math.ceil(displayItems.length / itemsPerPage);
   const visiblePageNumbers = (() => {
     const maxVisible = 3;
@@ -3689,9 +3700,7 @@ export default function InventorySection() {
                       <br />
                       <span className="text-sm text-slate-600 italic">"{defectiveConfirmModal.remarksDescription.trim()}"</span>
                     </>
-                  )}
-                  <br /><br />
-                  Defective items are flagged for repair or replacement. This action cannot be undone easily.
+                  )}                  
                 </>
               )}
             </AlertDialogDescription>

@@ -101,10 +101,14 @@ export default function SystemSettings() {
   const [borrowingErasureEnabled, setBorrowingErasureEnabled] = useState(false);
   const [borrowingErasureDays, setBorrowingErasureDays] = useState(365);
 
-  // ── Inventory Activity Logs Retention ──────────────────────────────────
+  // ── Inventory Activity Logs Retention (legacy — inventory_settings) ───
   const [inventoryRetentionEnabled, setInventoryRetentionEnabled] =
     useState(false);
   const [inventoryRetentionDays, setInventoryRetentionDays] = useState(60);
+
+  // ── Inventory Audit Log Erasure (new — system_configurations) ─────────
+  const [inventoryErasureEnabled, setInventoryErasureEnabled] = useState(false);
+  const [inventoryErasureDays, setInventoryErasureDays] = useState(60);
 
   // ── Admin Approval Guard ───────────────────────────────────────────────
   const [isAdminApprovalRequired, setIsAdminApprovalRequired] = useState(false);
@@ -196,6 +200,8 @@ export default function SystemSettings() {
         setInventoryRetentionEnabled(nextInventoryEnabled);
         setInventoryRetentionDays(nextInventoryDays);
         setIsAdminApprovalRequired(nextAdminApproval);
+        setInventoryErasureEnabled(exportCfg.inventoryErasureEnabled ?? false);
+        setInventoryErasureDays(exportCfg.inventoryErasureDays ?? 60);
 
         // Snapshot for dirty comparison — all values normalised
         savedValues.current = {
@@ -208,6 +214,8 @@ export default function SystemSettings() {
           inventoryRetentionEnabled: nextInventoryEnabled,
           inventoryRetentionDays: nextInventoryDays,
           isAdminApprovalRequired: nextAdminApproval,
+          inventoryErasureEnabled: exportCfg.inventoryErasureEnabled ?? false,
+          inventoryErasureDays: exportCfg.inventoryErasureDays ?? 60,
         };
       } catch (err) {
         console.error("Failed to load system settings:", err);
@@ -237,7 +245,10 @@ export default function SystemSettings() {
         Boolean(s.inventoryRetentionEnabled) ||
       Number(inventoryRetentionDays) !== Number(s.inventoryRetentionDays) ||
       Boolean(isAdminApprovalRequired) !==
-        Boolean(s.isAdminApprovalRequired)
+        Boolean(s.isAdminApprovalRequired) ||
+      Boolean(inventoryErasureEnabled) !==
+        Boolean(s.inventoryErasureEnabled) ||
+      Number(inventoryErasureDays) !== Number(s.inventoryErasureDays)
     );
   })();
 
@@ -270,6 +281,8 @@ export default function SystemSettings() {
         inventoryRetentionEnabled,
         inventoryRetentionDays: Number(inventoryRetentionDays),
         isAdminApprovalRequired,
+        inventoryErasureEnabled,
+        inventoryErasureDays: Number(inventoryErasureDays),
       });
       exportSuccess = true;
     } catch (err) {
@@ -324,6 +337,8 @@ export default function SystemSettings() {
         inventoryRetentionEnabled,
         inventoryRetentionDays: Number(inventoryRetentionDays),
         isAdminApprovalRequired,
+        inventoryErasureEnabled,
+        inventoryErasureDays: Number(inventoryErasureDays),
       };
 
       toast.success("System settings saved successfully.", {
@@ -350,6 +365,8 @@ export default function SystemSettings() {
     inventoryRetentionEnabled,
     inventoryRetentionDays,
     isAdminApprovalRequired,
+    inventoryErasureEnabled,
+    inventoryErasureDays,
   ]);
 
   // ── Loading skeleton ───────────────────────────────────────────────────
@@ -445,8 +462,7 @@ export default function SystemSettings() {
         >
           <div className="flex items-center justify-between">
             <p className="min-w-0 flex-1 pr-6 text-sm text-slate-500 leading-relaxed">
-              When enabled, all student-initiated item requests will hold in a
-              pending state until manually authorized by an administrator.
+              
             </p>
             <ToggleSwitch
               enabled={isAdminApprovalRequired}
@@ -501,11 +517,11 @@ export default function SystemSettings() {
           </div>
         </SettingsCard>
 
-        {/* Inventory Activity Logs Retention */}
+        {/* Inventory Audit Log Erasure (dynamic discovery + pg_cron) */}
         <SettingsCard
           icon={Clock}
           title="Automated Inventory Auditing Log Erasure"
-          description="Automatically purge inventory activity logs that exceed the configured retention threshold."
+          description="Automatically purge inventory activity logs from all inventory tables (including dynamically created tab log tables) that exceed the configured retention threshold."
         >
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -513,13 +529,13 @@ export default function SystemSettings() {
                 Enable auto-erasure
               </span>
               <ToggleSwitch
-                enabled={inventoryRetentionEnabled}
-                onToggle={setInventoryRetentionEnabled}
-                ariaLabel="Toggle inventory log auto-erasure"
+                enabled={inventoryErasureEnabled}
+                onToggle={setInventoryErasureEnabled}
+                ariaLabel="Toggle inventory audit log auto-erasure"
               />
             </div>
 
-            <RevealPanel show={inventoryRetentionEnabled}>
+            <RevealPanel show={inventoryErasureEnabled}>
               <div className="pt-3 border-t border-slate-100">
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">
                   Retention threshold
@@ -528,15 +544,17 @@ export default function SystemSettings() {
                   <Input
                     type="number"
                     min="1"
-                    value={inventoryRetentionDays}
-                    onChange={(e) => setInventoryRetentionDays(e.target.value)}
+                    value={inventoryErasureDays}
+                    onChange={(e) => setInventoryErasureDays(e.target.value)}
                     className="no-number-spinner h-10 w-24 rounded-lg border-slate-200 bg-slate-50 text-sm text-slate-700 focus:border-[#411111] focus:ring-[#411111]"
                   />
                   <span className="text-sm text-slate-500">days</span>
                 </div>
                 <p className="mt-2 text-xs text-slate-400">
-                  Inventory audit logs older than {inventoryRetentionDays} days
-                  will be permanently removed.
+                  Inventory audit logs older than {inventoryErasureDays} days
+                  will be permanently removed from every inventory tab's log
+                  table (including <code className="text-[11px] bg-slate-100 px-1 rounded">inventory_change_logs</code> and
+                  all dynamically created <code className="text-[11px] bg-slate-100 px-1 rounded">*_logs</code> tables).
                 </p>
               </div>
             </RevealPanel>

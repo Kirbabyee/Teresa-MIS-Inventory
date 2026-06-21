@@ -121,6 +121,10 @@ export const CONFIG_KEYS = {
   inventoryRetentionEnabled: "retention.inventory.enabled",
   inventoryRetentionDays: "retention.inventory.days",
 
+  // ── Inventory audit log erasure (new — system_configurations + pg_cron) ──
+  inventoryErasureEnabled: "inventory_erasure_enabled",
+  inventoryErasureDays: "inventory_erasure_days",
+
   // ── Admin approval guard (legacy — inventory_settings table) ──────────
   adminApprovalRequired: "borrowing.require_admin_approval",
 };
@@ -151,6 +155,12 @@ export const loadAllSystemSettings = async () => {
       map[CONFIG_KEYS.inventoryRetentionDays] ?? 60,
     isAdminApprovalRequired:
       map[CONFIG_KEYS.adminApprovalRequired] ?? false,
+
+    // New system_configurations-backed inventory erasure settings
+    inventoryErasureEnabled:
+      map[CONFIG_KEYS.inventoryErasureEnabled] ?? false,
+    inventoryErasureDays:
+      map[CONFIG_KEYS.inventoryErasureDays] ?? 60,
   };
 };
 
@@ -168,6 +178,8 @@ export const saveAllSystemSettings = async ({
   inventoryRetentionEnabled,
   inventoryRetentionDays,
   isAdminApprovalRequired,
+  inventoryErasureEnabled,
+  inventoryErasureDays,
 }) => {
   const entries = [
     { key: CONFIG_KEYS.exportErasureEnabled, value: exportRetentionEnabled },
@@ -190,6 +202,14 @@ export const saveAllSystemSettings = async ({
     {
       key: CONFIG_KEYS.adminApprovalRequired,
       value: isAdminApprovalRequired,
+    },
+    {
+      key: CONFIG_KEYS.inventoryErasureEnabled,
+      value: inventoryErasureEnabled,
+    },
+    {
+      key: CONFIG_KEYS.inventoryErasureDays,
+      value: Number(inventoryErasureDays),
     },
   ];
 
