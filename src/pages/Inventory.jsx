@@ -1097,7 +1097,7 @@ function TabModal({ tab, onClose, onSave }) {
   const [tabType, setTabType] = useState("legacy");
 
   // Wizard step state for new tabs
-  const [wizardStep, setWizardStep] = useState(tab?.id ? 4 : 1);
+  const [wizardStep, setWizardStep] = useState(1);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
 
   // Per-section columns: { [sectionName]: ColumnDef[] }
@@ -1208,11 +1208,13 @@ function TabModal({ tab, onClose, onSave }) {
     if (template.id === "custom") {
       setSections([]);
       setSectionColumns({});
+      setAvailableBrands([]);
     } else if (template.isImportTemplate) {
       setSections([]);
       setSectionColumns({});
       setImportPreview(null);
       setImportFile(null);
+      setAvailableBrands([]);
     } else {
       setSections(template.sections.map((s, i) => ({ ...s, sort_order: i + 1 })));
       // Build sectionColumns map from template; merged columns = union of all section columns
@@ -1231,6 +1233,7 @@ function TabModal({ tab, onClose, onSave }) {
       }
       setSectionColumns(secCols);
       setColumns(merged);
+      setAvailableBrands(Array.isArray(template.brands) ? template.brands : []);
     }
     setWizardStep(2);
   };
@@ -1409,7 +1412,7 @@ function TabModal({ tab, onClose, onSave }) {
 
   const isSaveDisabled = Boolean(tabValidation.name || tabValidation.sections || tabValidation.columns || isSaving);
 
-  const buildTabSnapshot = (currentTabForm, currentSections, currentColumns) =>
+  const buildTabSnapshot = (currentTabForm, currentSections, currentColumns, currentSectionColumns, currentBrands) =>
     JSON.stringify({
       tabForm: {
         name: String(currentTabForm.name || ""),
@@ -1439,10 +1442,12 @@ function TabModal({ tab, onClose, onSave }) {
             }))
           : [],
       })),
+      sectionColumns: currentSectionColumns || {},
+      brands: Array.isArray(currentBrands) ? currentBrands : [],
     });
 
   const hasUnsavedChanges =
-    initialSnapshotRef.current !== buildTabSnapshot(tabForm, sections, columns);
+    initialSnapshotRef.current !== buildTabSnapshot(tabForm, sections, columns, sectionColumns, availableBrands);
 
   useEffect(() => {
     const nextTabForm = {
@@ -1479,8 +1484,26 @@ function TabModal({ tab, onClose, onSave }) {
 
       try {
         const config = await getTabTableConfig(tab.id);
-        if (!cancelled && config?.columns) {
-          setColumns((config.columns || []).filter((column) => column && column.key).map((column) => normalizeColumnConfig(column)));
+        if (!cancelled) {
+          if (config?.columns) {
+            setColumns((config.columns || []).filter((column) => column && column.key).map((column) => normalizeColumnConfig(column)));
+          }
+          // Load per-section columns map (keyed by section name for the wizard UI)
+          if (config?.sectionColumns) {
+            const byName = {};
+            for (const [secId, secCols] of Object.entries(config.sectionColumns)) {
+              // Find the section name from the tab's sections
+              const sec = (tab.sections || []).find((s) => String(s.id) === String(secId));
+              if (sec) {
+                byName[sec.name] = secCols;
+              }
+            }
+            setSectionColumns(byName);
+          }
+          // Load template-specific brands
+          if (Array.isArray(config?.brands)) {
+            setAvailableBrands(config.brands);
+          }
         }
       } catch (error) {
         console.warn("Failed to load tab config:", error);
@@ -1494,30 +1517,10 @@ function TabModal({ tab, onClose, onSave }) {
     };
   }, [tab?.id]);
 
-  // Fetch distinct brands from Supabase on mount
-  useEffect(() => {
-    let cancelled = false;
-    const fetchBrands = async () => {
-      try {
-        const { data, error } = await supabase
-          .from("inventory_items")
-          .select("brand")
-          .not("brand", "is", null)
-          .neq("brand", "");
-        if (!error && data && !cancelled) {
-          const dbBrands = [...new Set(data.map((r) => String(r.brand).trim()).filter(Boolean))];
-          const merged = [...new Set([...FALLBACK_BRANDS, ...dbBrands])].sort((a, b) =>
-            a.localeCompare(b)
-          );
-          setAvailableBrands(merged);
-        }
-      } catch {
-        if (!cancelled) setAvailableBrands([...FALLBACK_BRANDS]);
-      }
-    };
-    fetchBrands();
-    return () => { cancelled = true; };
-  }, []);
+  // Brand fetching is handled by:
+  //   - handleTemplateSelect() for new tabs (template-specific brands)
+  //   - loadTabConfig() for existing tabs (brands from DB config)
+  // The legacy fetch from inventory_items is no longer needed.
 
   const editSection = (index) => {
     const current = sections[index];
@@ -1614,7 +1617,7 @@ function TabModal({ tab, onClose, onSave }) {
   };
 
   const handleSaveTab = () => {
-    return onSave({ ...tabForm, sections, columns, sectionColumns, _importData: importPreview });
+    return onSave({ ...tabForm, sections, columns, sectionColumns, brands: availableBrands, _importData: importPreview });
   };
 
   const requestClose = () => {
@@ -2106,6 +2109,60 @@ function TabModal({ tab, onClose, onSave }) {
               </div>
             )}
 
+            {/* Edit flow: Step 4 = Review */}
+            {!isNewTab && wizardStep === 4 && (
+              <div className="border-t border-slate-200 px-5 py-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-900">Review</h4>
+                    <p className="mt-1 text-sm text-slate-500">Review your sections and columns before saving.</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <h5 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Sections ({sections.length})
+                    </h5>
+                    <div className="mt-3 space-y-2">
+                      {sections.length === 0 ? (
+                        <p className="text-sm text-slate-400">No sections defined.</p>
+                      ) : (
+                        sections.map((sec, idx) => {
+                          const secCols = sectionColumns[sec.name] || [];
+                          return (
+                            <div key={sec.id || sec.slug || idx} className="rounded-lg bg-slate-50 px-3 py-2">
+                              <p className="text-sm font-medium text-slate-900">{sec.name}</p>
+                              <p className="text-xs text-slate-500">
+                                {secCols.length} field{secCols.length !== 1 ? "s" : ""}
+                              </p>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <h5 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Columns ({columns.length})
+                    </h5>
+                    <div className="mt-3 space-y-2 max-h-[280px] overflow-y-auto">
+                      {columns.length === 0 ? (
+                        <p className="text-sm text-slate-400">No columns defined.</p>
+                      ) : (
+                        columns.map((col, idx) => (
+                          <div key={col.id || col.key || idx} className="rounded-lg bg-slate-50 px-3 py-2">
+                            <p className="text-sm font-medium text-slate-900">{col.label}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Step 4 for import template = Review columns */}
             {isNewTab && wizardStep === 4 && isImportTemplate && (
               <div className="border-t border-slate-200 px-5 py-5">
@@ -2225,7 +2282,7 @@ function TabModal({ tab, onClose, onSave }) {
           <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-slate-50/95 px-6 py-4 sm:px-8 backdrop-blur-sm">
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div>
-                {wizardStep > 1 && wizardStep < STEPS.length && (
+                {wizardStep > 1 && (
                   <Button
                     type="button"
                     onClick={handlePrev}
@@ -2271,7 +2328,17 @@ function TabModal({ tab, onClose, onSave }) {
                     </Button>
                   ) : null
                 ) : (
-                  wizardStep === STEPS.length ? (
+                  wizardStep < STEPS.length ? (
+                    <Button
+                      type="button"
+                      onClick={handleNext}
+                      disabled={!canProceed()}
+                      size="sm"
+                      className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
+                    >
+                      {wizardStep === STEPS.length - 1 ? "Review" : "Continue"}
+                    </Button>
+                  ) : (
                     <Button
                       type="button"
                       onClick={requestSave}
@@ -2281,7 +2348,7 @@ function TabModal({ tab, onClose, onSave }) {
                     >
                       Save Tab
                     </Button>
-                  ) : null
+                  )
                 )}
               </div>
             </div>
@@ -2590,7 +2657,8 @@ export default function Inventory() {
             .filter((col) => col && col.key)
             .map((col) => normalizeColumnConfig(col));
           const existingBrands = Array.isArray(existingConfig?.brands) ? existingConfig.brands : [];
-          const tabConfig = { tableName: existingConfig?.tableName, columns: updatedColumns, sectionColumns: sectionColumnsById, brands: existingBrands };
+          const wizardBrands = Array.isArray(form.brands) ? form.brands : existingBrands;
+          const tabConfig = { tableName: existingConfig?.tableName, columns: updatedColumns, sectionColumns: sectionColumnsById, brands: wizardBrands };
 
           const tableName = existingConfig?.tableName;
           if (tableName) {
