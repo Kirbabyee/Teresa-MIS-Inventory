@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Calendar as CalendarIcon, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Download, History, Minus, Package, Plus, Search, Trash2, User, X } from "lucide-react";
+import { Calendar as CalendarIcon, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Download, History, Minus, Package, Plus, Search, ShoppingCart, Trash2, User, X, Check, ArrowLeft } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
@@ -1373,6 +1373,11 @@ export default function Borrowing() {
   const [filterSectionId, setFilterSectionId] = useState("");
   const [qtyDialogItem, setQtyDialogItem] = useState(null);
   const [qtyDialogValue, setQtyDialogValue] = useState(1);
+
+  // ── Cart & Custom Item Modal State ──────────────────────────────────────
+  const [showCartModal, setShowCartModal] = useState(false);
+  const [showCustomItemModal, setShowCustomItemModal] = useState(false);
+  const catalogScrollRef = useRef(0);
 
   const selectedTab = useMemo(
     () => tabs.find((tab) => String(tab.id) === String(selectedTabId)) || null,
@@ -4846,7 +4851,10 @@ export default function Borrowing() {
                             return (
                               <div
                                 key={cartId}
-                                className="grid grid-cols-[1fr_80px_90px_80px] gap-2 items-center border-b border-slate-100 px-3 py-2.5 hover:bg-slate-50 transition-colors"
+                                className={cn(
+                                  "grid grid-cols-[1fr_80px_90px_80px] gap-2 items-center border-b border-slate-100 px-3 py-2.5 hover:bg-slate-50 transition-colors relative",
+                                  alreadyInCart && "bg-emerald-50/40 border-l-4 border-l-emerald-500"
+                                )}
                               >
                                 <div className="min-w-0">
                                   <p className="truncate text-sm font-medium text-slate-800">{getItemLabel(item)}</p>
@@ -5016,158 +5024,186 @@ export default function Borrowing() {
                       </>
                     )}
 
-                    {/* ── Custom Item Form ───────────────────────────────────── */}
-                    <div className="rounded-xl border border-dashed border-slate-300 bg-white p-4">
-                      <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-[#4a1111] mb-3">
-                        Or Add Custom Item (Outside Inventory)
-                      </h4>
-                      <div className="space-y-3">
-                        <div>
-                          <Label className="mb-1 block text-sm font-medium text-slate-700">Item Name</Label>
-                          <Input
-                            type="text"
-                            placeholder="e.g. External Hard Drive"
-                            value={customItemForm.name}
-                            onChange={(e) => setCustomItemForm({ ...customItemForm, name: e.target.value })}
-                            className="h-10"
-                          />
+                    {/* ── Custom Item Modal (nested) ─────────────────────────── */}
+                    {showCustomItemModal && (
+                      <>
+                        <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowCustomItemModal(false)} />
+                        <div className="fixed left-1/2 top-1/2 z-[201] w-[480px] max-h-[85vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
+                          <h3 className="text-base font-semibold text-slate-900">Add Custom Item</h3>
+                          <p className="mt-1 text-sm text-slate-500">Add an item that is not in the inventory catalog.</p>
+                          <div className="mt-4 space-y-3">
+                            <div>
+                              <Label className="mb-1 block text-sm font-medium text-slate-700">Item Name</Label>
+                              <Input
+                                type="text"
+                                placeholder="e.g. External Hard Drive"
+                                value={customItemForm.name}
+                                onChange={(e) => setCustomItemForm({ ...customItemForm, name: e.target.value })}
+                                className="h-10"
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <Label className="mb-1 block text-sm font-medium text-slate-700">
+                                  Brand <span className="text-slate-400 font-normal">(optional)</span>
+                                </Label>
+                                <Input
+                                  type="text"
+                                  placeholder="e.g. Samsung"
+                                  value={customItemForm.brand}
+                                  onChange={(e) => setCustomItemForm({ ...customItemForm, brand: e.target.value })}
+                                  className="h-10"
+                                />
+                              </div>
+                              <div>
+                                <Label className="mb-1 block text-sm font-medium text-slate-700">Quantity</Label>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  placeholder="e.g. 1"
+                                  value={customItemForm.quantity}
+                                  onChange={(e) => setCustomItemForm({ ...customItemForm, quantity: e.target.value })}
+                                  className="no-number-spinner h-10"
+                                />
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <Label className="mb-1 block text-sm font-medium text-slate-700">Condition</Label>
+                                <Select value={customItemForm.condition} onValueChange={(val) => setCustomItemForm({ ...customItemForm, condition: val })}>
+                                  <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Working">Working</SelectItem>
+                                    <SelectItem value="Defective">Defective</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label className="mb-1 block text-sm font-medium text-slate-700">
+                                  Remarks <span className="text-slate-400 font-normal">(optional)</span>
+                                </Label>
+                                <Input
+                                  type="text"
+                                  placeholder="Any notes..."
+                                  value={customItemForm.remarks}
+                                  onChange={(e) => setCustomItemForm({ ...customItemForm, remarks: e.target.value })}
+                                  className="h-10"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-5 flex items-center justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setShowCustomItemModal(false)} className="rounded-lg">Cancel</Button>
+                            <Button
+                              size="sm"
+                              onClick={() => { addCustomItemToCart(); setShowCustomItemModal(false); }}
+                              disabled={!canAddCustom}
+                              className={cn(
+                                "rounded-lg",
+                                canAddCustom
+                                  ? "bg-[#4a1111] hover:bg-[#5a1717] text-white"
+                                  : "bg-slate-100 text-slate-400 cursor-not-allowed hover:bg-slate-100"
+                              )}
+                            >
+                              + Add to List
+                            </Button>
+                          </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <Label className="mb-1 block text-sm font-medium text-slate-700">
-                              Brand <span className="text-slate-400 font-normal">(optional)</span>
-                            </Label>
-                            <Input
-                              type="text"
-                              placeholder="e.g. Samsung"
-                              value={customItemForm.brand}
-                              onChange={(e) => setCustomItemForm({ ...customItemForm, brand: e.target.value })}
-                              className="h-10"
-                            />
-                          </div>
-                          <div>
-                            <Label className="mb-1 block text-sm font-medium text-slate-700">Quantity</Label>
-                            <Input
-                              type="number"
-                              min="1"
-                              placeholder="e.g. 1"
-                              value={customItemForm.quantity}
-                              onChange={(e) => setCustomItemForm({ ...customItemForm, quantity: e.target.value })}
-                              className="no-number-spinner h-10"
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <Label className="mb-1 block text-sm font-medium text-slate-700">Condition</Label>
-                            <Select value={customItemForm.condition} onValueChange={(val) => setCustomItemForm({ ...customItemForm, condition: val })}>
-                              <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Working">Working</SelectItem>
-                                <SelectItem value="Defective">Defective</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label className="mb-1 block text-sm font-medium text-slate-700">
-                              Remarks <span className="text-slate-400 font-normal">(optional)</span>
-                            </Label>
-                            <Input
-                              type="text"
-                              placeholder="Any notes..."
-                              value={customItemForm.remarks}
-                              onChange={(e) => setCustomItemForm({ ...customItemForm, remarks: e.target.value })}
-                              className="h-10"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      <Button
-                        variant="default"
-                        onClick={addCustomItemToCart}
-                        disabled={!canAddCustom}
-                        className={cn(
-                          "mt-4 w-full h-10 text-sm font-semibold",
-                          canAddCustom
-                            ? "bg-[#4a1111] hover:bg-[#5a1717]"
-                            : "bg-slate-100 text-slate-400 cursor-not-allowed hover:bg-slate-100"
-                        )}
-                      >
-                        + Add Custom Item
-                      </Button>
-                    </div>
+                      </>
+                    )}
 
-                    {/* ── Cart Summary with +/- controls ─────────────────────── */}
-                    {borrowCart.length > 0 && (
-                      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                        <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
-                          <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">
+                    {/* ── Cart Modal (nested) ───────────────────────────────── */}
+                    {showCartModal && (
+                      <>
+                        <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowCartModal(false)} />
+                        <div className="fixed left-1/2 top-1/2 z-[201] w-[540px] max-h-[85vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
+                          <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                            <ShoppingCart className="h-5 w-5 text-[#4a1111]" />
                             Cart ({borrowCart.length} {borrowCart.length === 1 ? "item" : "items"})
                           </h3>
-                        </div>
-                        <div className="grid grid-cols-[1fr_80px_120px_32px] gap-3 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                          <span>Item</span>
-                          <span className="text-center">Status</span>
-                          <span className="text-center">Quantity</span>
-                          <span />
-                        </div>
-                        <div className="divide-y divide-slate-100 max-h-[180px] overflow-y-auto">
-                          {borrowCart.map((item) => (
-                            <div key={item.cartId} className="grid grid-cols-[1fr_80px_120px_32px] gap-3 items-center px-3 py-2.5">
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-slate-800 truncate">
-                                  {item.label || getItemLabel(item)}
-                                </p>
-                                <p className="text-xs text-slate-400">
-                                  {item.isCustom ? "Custom Item" : `${item.tabName} / ${item.sectionName}`}
-                                </p>
-                              </div>
-                              <div className="text-center">
-                                {getItemRemark(item) ? (
-                                  <span className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600">
-                                    {getItemRemark(item)}
-                                  </span>
-                                ) : (
-                                  <span className="text-xs text-slate-400">—</span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <Button
-                                  type="button"
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-6 w-6 rounded-full border-slate-200"
-                                  onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)}
-                                  disabled={item.quantity <= 1}
-                                >
-                                  <Minus className="h-3 w-3" />
-                                </Button>
-                                <span className="w-8 text-center text-sm font-semibold text-slate-700">
-                                  {item.quantity}
-                                </span>
-                                <Button
-                                  type="button"
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-6 w-6 rounded-full border-slate-200"
-                                  onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)}
-                                  disabled={item.quantity >= (item.maxQuantity || 999)}
-                                >
-                                  <Plus className="h-3 w-3" />
-                                </Button>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => removeFromCart(item.cartId)}
-                                className="shrink-0 rounded-md p-1.5 text-rose-500 transition hover:bg-rose-50"
-                                title="Remove"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
+                          <div className="mt-4 rounded-xl border border-slate-200 bg-white overflow-hidden">
+                            <div className="grid grid-cols-[1fr_80px_120px_32px] gap-3 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                              <span>Item</span>
+                              <span className="text-center">Status</span>
+                              <span className="text-center">Quantity</span>
+                              <span />
                             </div>
-                          ))}
+                            <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto">
+                              {borrowCart.length === 0 ? (
+                                <div className="px-3 py-8 text-center text-sm text-slate-400">Your cart is empty.</div>
+                              ) : (
+                                borrowCart.map((item) => (
+                                  <div key={item.cartId} className="grid grid-cols-[1fr_80px_120px_32px] gap-3 items-center px-3 py-2.5">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium text-slate-800 truncate">{item.label || getItemLabel(item)}</p>
+                                      <p className="text-xs text-slate-400">{item.isCustom ? "Custom Item" : `${item.tabName} / ${item.sectionName}`}</p>
+                                    </div>
+                                    <div className="text-center">
+                                      {getItemRemark(item) ? (
+                                        <span className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600">{getItemRemark(item)}</span>
+                                      ) : (
+                                        <span className="text-xs text-slate-400">—</span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 pl-4">
+                                      <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                                        onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)} disabled={item.quantity <= 1}>
+                                        <Minus className="h-3 w-3" />
+                                      </Button>
+                                      <span className="w-8 text-center text-sm font-semibold text-slate-700">{item.quantity}</span>
+                                      <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                                        onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)} disabled={item.quantity >= (item.maxQuantity || 999)}>
+                                        <Plus className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                    <button type="button" onClick={() => removeFromCart(item.cartId)}
+                                      className="shrink-0 rounded-md p-1.5 text-rose-500 transition hover:bg-rose-50" title="Remove">
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                          <Button type="button" variant="outline" onClick={() => setShowCartModal(false)}
+                            className="mt-4 w-full">
+                            <ArrowLeft className="mr-2 h-4 w-4" />
+                            Return to Item Selection
+                          </Button>
                         </div>
-                      </div>
+                      </>
+                    )}
+
+                    {/* ── Custom Item Button (opens modal) ──────────────────── */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        catalogScrollRef.current = window.scrollY;
+                        setShowCustomItemModal(true);
+                      }}
+                      className="w-full h-10 border-dashed border-2 border-slate-300 text-slate-500 hover:text-[#4a1111] hover:border-[#4a1111]/40 hover:bg-[#4a1111]/5"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Custom Item (Outside Inventory)
+                    </Button>
+
+                    {/* ── Floating Cart Button ────────────────────────────────── */}
+                    {borrowCart.length > 0 && (
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          catalogScrollRef.current = window.scrollY;
+                          setShowCartModal(true);
+                        }}
+                        className="fixed bottom-20 right-6 z-50 h-8 rounded-full shadow-md bg-[#4a1111] hover:bg-[#5a1717] px-3.5 text-white font-semibold text-[11px]"
+                      >
+                        <ShoppingCart className="mr-2 h-4 w-4" />
+                        View Cart
+                        <span className="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-[#4a1111]">
+                          {borrowCart.length}
+                        </span>
+                      </Button>
                     )}
 
                     {formError && (
