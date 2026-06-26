@@ -85,20 +85,22 @@ export const fetchDefectRateBySection = async () => {
   const activeBorrows = borrowsRes.data || [];
   const allBorrowItems = borrowItemsRes.data || [];
 
-  // Build tab_id → tab name lookup
-  const tabNameById = {};
+  // Build tab_id → tab lookup
+  const tabById = {};
   for (const tab of tabs) {
-    tabNameById[tab.id] = tab.name;
+    tabById[tab.id] = tab;
   }
 
-  // Build section_id → { name, slug, tabId, tabName } lookup
+  // Build section_id → { name, slug, tabId, tabName, tabSlug } lookup
   const sectionMap = {};
   for (const section of sections) {
+    const tab = tabById[section.tab_id];
     sectionMap[section.id] = {
       name: section.name,
       slug: section.slug || "",
       tabId: section.tab_id,
-      tabName: tabNameById[section.tab_id] || "",
+      tabName: tab?.name || "",
+      tabSlug: tab?.slug || "",
     };
   }
 
@@ -142,6 +144,7 @@ export const fetchDefectRateBySection = async () => {
           sectionSlug: section.slug || "",
           tabId: section.tabId,
           tabName: section.tabName,
+          tabSlug: section.tabSlug,
           total: 0,
           defective: 0,
         };

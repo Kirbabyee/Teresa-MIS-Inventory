@@ -229,77 +229,102 @@ function ChartLegend() {
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTION STACKED BAR — 100% stacked asset allocation per section
 // ═══════════════════════════════════════════════════════════════════════════
-function SectionStackedBar({ name, total, defective, borrowed, isLab = false, onClick }) {
+function SectionStackedBar({ name, slug, inventorySlug, total, defective, borrowed, isLab = false, onDotClick }) {
   const safeTotal = total > 0 ? total : 1;
-
   const defectivePct = Math.round((defective / safeTotal) * 100);
+  const borrowedPct = Math.round((borrowed / safeTotal) * 100);
+  const availablePct = Math.max(0, 100 - defectivePct - borrowedPct);
 
-  const wrapperClass = onClick
-    ? "cursor-pointer rounded-lg p-2 -m-2 transition-colors hover:bg-slate-50 active:bg-slate-100"
-    : "";
-
-  const content = (() => {
-    if (isLab) {
-      return (
-        <div className="space-y-1.5">
-          <div className="flex items-center">
-            <span className="text-xs font-medium text-slate-700 truncate">{name}</span>
-          </div>
-          <div className="flex items-center gap-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-            <span className="flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
-              {total} PCs
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-              {defective} defective components
-            </span>
-          </div>
-        </div>
-      );
+  const handleDotClick = (e, filterType) => {
+    e.stopPropagation();
+    if (onDotClick) {
+      onDotClick({ slug, inventorySlug, name, filterType, isLab });
     }
+  };
 
-    const borrowedPct = Math.round((borrowed / safeTotal) * 100);
-    const availablePct = Math.max(0, 100 - defectivePct - borrowedPct);
+  const dotBase = "h-2.5 w-2.5 rounded-full transition-all duration-150 cursor-pointer";
+  const dotHover = {
+    slate: "hover:bg-slate-400 hover:scale-125 hover:shadow-md hover:shadow-slate-200",
+    amber: "hover:bg-amber-600 hover:scale-125 hover:shadow-md hover:shadow-amber-200",
+    rose: "hover:bg-rose-600 hover:scale-125 hover:shadow-md hover:shadow-rose-200",
+  };
 
+  if (isLab) {
     return (
       <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-slate-700 truncate max-w-[60%]">{name}</span>
-          <span className="text-[11px] font-mono text-slate-400">{total}</span>
-        </div>
-        <div className="h-2.5 w-full bg-slate-100 rounded-full flex overflow-hidden shadow-inner/5">
-          {availablePct > 0 && (
-            <div className="h-2.5 bg-slate-300 transition-all duration-500" style={{ width: `${availablePct}%` }} title={`Available: ${Math.round((availablePct / 100) * total)}`} />
-          )}
-          {borrowedPct > 0 && (
-            <div className="h-2.5 bg-amber-500 transition-all duration-500" style={{ width: `${borrowedPct}%` }} title={`Borrowed: ${borrowed}`} />
-          )}
-          {defectivePct > 0 && (
-            <div className="h-2.5 bg-rose-500 transition-all duration-500" style={{ width: `${defectivePct}%` }} title={`Defective: ${defective}`} />
-          )}
+        <div className="flex items-center">
+          <span className="text-xs font-medium text-slate-700 truncate">{name}</span>
         </div>
         <div className="flex items-center gap-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-          <span className="flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
-            {Math.max(0, Math.round((availablePct / 100) * total))}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-            {borrowed}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-            {defective}
-          </span>
+          <button
+            type="button"
+            className={`flex items-center gap-1.5 group`}
+            onClick={(e) => handleDotClick(e, "section")}
+            title={`View ${name} inventory`}
+          >
+            <span className={`${dotBase} bg-slate-300 ${dotHover.slate}`} />
+            <span className="group-hover:text-slate-600 transition-colors">{total} PCs</span>
+          </button>
+          <button
+            type="button"
+            className={`flex items-center gap-1.5 group`}
+            onClick={(e) => handleDotClick(e, "defective")}
+            title={`View defective items in ${name}`}
+          >
+            <span className={`${dotBase} bg-rose-500 ${dotHover.rose}`} />
+            <span className="group-hover:text-rose-600 transition-colors">{defective} defective</span>
+          </button>
         </div>
       </div>
     );
-  })();
+  }
 
   return (
-    <div className={wrapperClass} onClick={onClick} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined} onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}>
-      {content}
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-slate-700 truncate max-w-[60%]">{name}</span>
+        <span className="text-[11px] font-mono text-slate-400">{total}</span>
+      </div>
+      <div className="h-2.5 w-full bg-slate-100 rounded-full flex overflow-hidden shadow-inner/5">
+        {availablePct > 0 && (
+          <div className="h-2.5 bg-slate-300 transition-all duration-500" style={{ width: `${availablePct}%` }} title={`Available: ${Math.round((availablePct / 100) * total)}`} />
+        )}
+        {borrowedPct > 0 && (
+          <div className="h-2.5 bg-amber-500 transition-all duration-500" style={{ width: `${borrowedPct}%` }} title={`Borrowed: ${borrowed}`} />
+        )}
+        {defectivePct > 0 && (
+          <div className="h-2.5 bg-rose-500 transition-all duration-500" style={{ width: `${defectivePct}%` }} title={`Defective: ${defective}`} />
+        )}
+      </div>
+      <div className="flex items-center gap-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+        <button
+          type="button"
+          className="flex items-center gap-1.5 group"
+          onClick={(e) => handleDotClick(e, "section")}
+          title={`View ${name} inventory`}
+        >
+          <span className={`${dotBase} bg-slate-300 ${dotHover.slate}`} />
+          <span className="group-hover:text-slate-600 transition-colors">{Math.max(0, Math.round((availablePct / 100) * total))}</span>
+        </button>
+        <button
+          type="button"
+          className="flex items-center gap-1.5 group"
+          onClick={(e) => handleDotClick(e, "borrowed")}
+          title={`View borrowed items in ${name}`}
+        >
+          <span className={`${dotBase} bg-amber-500 ${dotHover.amber}`} />
+          <span className="group-hover:text-amber-600 transition-colors">{borrowed}</span>
+        </button>
+        <button
+          type="button"
+          className="flex items-center gap-1.5 group"
+          onClick={(e) => handleDotClick(e, "defective")}
+          title={`View defective items in ${name}`}
+        >
+          <span className={`${dotBase} bg-rose-500 ${dotHover.rose}`} />
+          <span className="group-hover:text-rose-600 transition-colors">{defective}</span>
+        </button>
+      </div>
     </div>
   );
 }
@@ -553,6 +578,12 @@ export default function Dashboard() {
         : defectBySection;
     }
 
+    // Build a tab_id → slug lookup from inventoryTabs for reliable resolution
+    const tabSlugById = {};
+    for (const tab of inventoryTabs || []) {
+      tabSlugById[tab.id] = tab.slug;
+    }
+
     return [...source]
       .sort((a, b) => (Number(b.total) || 0) - (Number(a.total) || 0))
       .slice(0, 5)
@@ -560,6 +591,7 @@ export default function Dashboard() {
         id: s.sectionId,
         slug: s.sectionSlug || "",
         name: s.sectionName,
+        inventorySlug: s.tabSlug || tabSlugById[s.tabId] || tabSlugById[allocationFilter] || "inventory",
         total: Number(s.total) || 0,
         available: (Number(s.total) || 0) - (Number(s.defective) || 0) - (Number(s.borrowed) || 0),
         borrowed: Number(s.borrowed) || 0,
@@ -567,6 +599,25 @@ export default function Dashboard() {
         isLab: false,
       }));
   }, [allocationFilter, defectBySection, compLabInventory, inventoryTabs]);
+
+  // Handle dot clicks — navigate to inventory section with optional filter
+  // Circulating assets: /inventory/{tab-slug}?section={section-slug}
+  // Computer laboratories: /inventory/laboratory?labId={id}
+  const handleSectionDotClick = useMemo(() => {
+    return ({ slug, inventorySlug, name, filterType, isLab }) => {
+      if (isLab) {
+        if (filterType === "defective") {
+          navigate(`/inventory/laboratory?labId=${slug}&defectiveOnly=true`);
+        } else {
+          navigate(`/inventory/laboratory?labId=${slug}`);
+        }
+      } else if (filterType === "defective") {
+        navigate(`/inventory/${inventorySlug}?section=${slug}&defectiveOnly=true`);
+      } else {
+        navigate(`/inventory/${inventorySlug}?section=${slug}`);
+      }
+    };
+  }, [navigate]);
 
   const chartSummary = useMemo(() => {
     if (!velocityData.length) {
@@ -876,10 +927,13 @@ export default function Dashboard() {
                   <SectionStackedBar
                     key={row.id}
                     name={row.name}
+                    slug={row.slug || row.id}
+                    inventorySlug={row.inventorySlug}
                     total={row.total}
                     defective={row.defective}
                     borrowed={row.borrowed}
                     isLab={row.isLab}
+                    onDotClick={handleSectionDotClick}
                   />
                 ))}
               </div>
