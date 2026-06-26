@@ -758,3 +758,112 @@ export const updateBorrowingItemsRemarks = async (recordId, remarksMap = {}) => 
   const updateError = results.find((result) => result.error)?.error;
   if (updateError) throw updateError;
 };
+
+// ── Pending Approval Records ──────────────────────────────────────────────
+
+/**
+ * Fetches all pending approval requests from the staging tables.
+ * Returns records in the same shape as fetchBorrowingRecords (camelCase + items array).
+ */
+export const fetchPendingApprovals = async () => {
+  const [recordsRes, itemsRes] = await Promise.all([
+    supabase
+      .from("borrowing_records_approval")
+      .select(
+        "id, borrower_name, borrower_id_number, borrower_role, borrowed_at, expected_return_at, status, created_at"
+      )
+      .eq("status", "pending")
+      .order("created_at", { ascending: true }),
+    supabase.from("borrowing_items_approval").select("*"),
+  ]);
+
+  if (recordsRes.error) throw recordsRes.error;
+  if (itemsRes.error) throw itemsRes.error;
+
+  const records = recordsRes.data || [];
+  const allItems = itemsRes.data || [];
+
+  const itemsByRecord = {};
+  for (const item of allItems) {
+    const rid = item.borrowing_record_id;
+    if (!itemsByRecord[rid]) itemsByRecord[rid] = [];
+    itemsByRecord[rid].push(item);
+  }
+
+  return records.map((record) => ({
+    ...mapBorrowingRecord({
+      ...record,
+      borrowing_items: itemsByRecord[record.id] || [],
+    }),
+    _source: "approval",
+  }));
+};
+
+/**
+ * Approves a pending request: moves it from staging → live tables.
+ */
+export const approvePendingRecord = async (recordId) => {
+  const { data: approvalRecord, error: fetchErr } = await supabase
+    .from("borrowing_records_approval")
+    .select("*")
+    .eq("id", recordId)
+    .single();
+  if (fetchErr) throw fetchErr;
+
+  const { data: inserted, error: insertErr } = await supabase
+    .from("borrowing_records")
+    .insert([
+      {
+        borrower_name: approvalRecord.borrower_name,
+        borrower_id_number: approvalRecord.borrower_id_number,
+        borrower_role: approvalRecord.borrower_role,
+        status: "borrowed",
+        expected_return_at: approvalRecord.expected_return_at,
+        borrowed_at:
+          approvalRecord.borrowed_at || approvalRecord.created_at,
+      },
+    ])
+    .select("id")
+    .single();
+  if (insertErr) throw insertErr;
+
+  const { data: approvalItems } = await supabase
+    .from("borrowing_items_approval")
+    .select("*")
+    .eq("borrowing_record_id", recordId);
+
+  if (approvalItems && approvalItems.length > 0) {
+    const liveItems = approvalItems.map((item) => ({
+      borrowing_record_id: inserted.id,
+      inventory_item_id: item.inventory_item_id,
+      inventory_tab_id: item.inventory_tab_id,
+      inventory_section_id: item.inventory_section_id,
+      inventory_table_name: item.inventory_table_name,
+      item_label: item.item_label,
+      item_details: item.item_details,
+    }));
+    const { error: itemsErr } = await supabase
+      .from("borrowing_items")
+      .insert(liveItems);
+    if (itemsErr) throw itemsErr;
+  }
+
+  const { error: updateErr } = await supabase
+    .from("borrowing_records_approval")
+    .update({ status: "approved" })
+    .eq("id", recordId);
+  if (updateErr) throw updateErr;
+
+  return { id: inserted.id };
+};
+
+/**
+ * Denies a pending request: marks it as "denied" in the staging table.
+ */
+export const denyPendingRecord = async (recordId) => {
+  const { error } = await supabase
+    .from("borrowing_records_approval")
+    .update({ status: "denied" })
+    .eq("id", recordId);
+  if (error) throw error;
+};

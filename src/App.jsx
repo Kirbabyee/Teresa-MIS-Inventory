@@ -24,7 +24,7 @@ import AnalyticsDashboard from "./pages/AnalyticsDashboard";
 import ActivateAccount from "./pages/ActivateAccount";
 import ForgotPassword from "./pages/ForgotPassword";
 import PublicBorrow from "./pages/PublicBorrow";
-import BorrowingApprovals from "./pages/BorrowingApprovals";
+
 import { LoadingPopup } from "@/components/loaders/LoadingPopUp";
 import { useAuth } from "@/lib/AuthContext";
 import SecurityRoute from "@/components/SecurityRoute";
@@ -124,14 +124,6 @@ function AppContent() {
           />
 
           <Route path="borrowing" element={<Borrowing />} />
-          <Route
-            path="borrowing/approvals"
-            element={
-              <SecurityRoute requiredRole="admin">
-                <BorrowingApprovals />
-              </SecurityRoute>
-            }
-          />
           <Route path="inventory" element={<Navigate to="/manage/inventory" replace />} />
           <Route path="inventory/manage" element={<Navigate to="/manage/inventory" replace />} />
           <Route path="inventory/laboratory" element={<ComputerLaboratoryInventory />} />

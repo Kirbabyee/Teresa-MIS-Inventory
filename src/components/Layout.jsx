@@ -25,7 +25,6 @@ import {
   Boxes,
   FlaskConical,
   ShieldAlert,
-  ShieldCheck,
   Settings,
   BarChart3,
 } from "lucide-react";
@@ -438,7 +437,6 @@ export default function Layout() {
         path: "/borrowing",
         children: [
           { label: "Active Records", icon: ClipboardList, path: "/borrowing" },
-          { label: "Approval Queue", icon: ShieldCheck, path: "/borrowing/approvals" },
         ],
       },
     ];
