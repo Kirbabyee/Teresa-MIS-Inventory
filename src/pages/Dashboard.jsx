@@ -1,15 +1,13 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   AlertCircle,
-  ArrowUpRight,
-  Boxes,
+  BarChart3,
   ClipboardList,
-  Cpu,
+  Clock,
   Package,
-  RotateCcw,
-  Trophy,
+  ShieldAlert,
+  ShieldCheck,
   TrendingUp,
-  CircleAlert,
 } from "lucide-react";
 import {
   Bar,
@@ -21,16 +19,117 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { supabase } from "@/api/supabaseClient";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/api/supabaseClient";
+import { fetchBorrowingVelocity } from "@/lib/borrowingApi";
 import {
-  fetchBorrowingRecords,
-  fetchBorrowingVelocity,
-  markOverdueBorrowingRecords,
-} from "@/lib/borrowingApi";
-import { getTabTableConfig, useInventoryCatalog } from "@/lib/inventoryApi";
+  fetchDefectRateBySection,
+  fetchSecurityThreatAssessment,
+  fetchAuditAnomalies,
+} from "@/lib/analyticsApi";
+import { useInventoryCatalog } from "@/lib/inventoryApi";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-// ─── Custom Tooltip ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// SKELETON LOADER
+// ═══════════════════════════════════════════════════════════════════════════
+function Skeleton({ className = "" }) {
+  return (
+    <div
+      className={`animate-pulse rounded-lg bg-slate-200 ${className}`}
+    />
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STAT CARD — Primary metric display with optional progress bar
+// ═══════════════════════════════════════════════════════════════════════════
+function StatCard({
+  icon: Icon,
+  iconBg = "bg-slate-50 border border-slate-200/60",
+  iconColor = "text-slate-600",
+  label,
+  value,
+  barPercent,
+  barColor = "#4a1111",
+  barLabel,
+  sub,
+  onClick,
+}) {
+  return (
+    <div
+      className={`group rounded-xl bg-white p-4 shadow-sm border border-slate-200/80 transition-all duration-200 overflow-hidden flex flex-col justify-between ${
+        onClick
+          ? "cursor-pointer hover:shadow-md hover:border-slate-300/80"
+          : "hover:shadow-md hover:border-slate-300/80"
+      }`}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") onClick();
+            }
+          : undefined
+      }
+    >
+      <div className="flex flex-col gap-2.5">
+        <div className="flex items-center gap-2">
+          <div
+            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${iconBg}`}
+          >
+            <Icon className={`h-4 w-4 ${iconColor}`} />
+          </div>
+          <p className="text-[10px] font-semibold text-slate-500 leading-tight uppercase tracking-wide">
+            {label}
+          </p>
+        </div>
+
+        <p className="text-2xl font-bold font-sans text-slate-800 tracking-tight block mt-1">
+          {value}
+        </p>
+
+        {barPercent !== undefined ? (
+          <div>
+            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="h-1.5 rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(Math.max(barPercent, 0), 100)}%`,
+                  backgroundColor: barColor,
+                }}
+              />
+            </div>
+            <div className="mt-1.5">
+              <span className="inline-flex items-center text-[10px] font-medium tracking-wide text-slate-400 bg-slate-50 border border-slate-100 rounded px-1.5 py-0.5 lowercase first-letter:uppercase">
+                {barLabel || `${barPercent}%`}
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        {sub && (
+          <div className="mt-1">
+            <span className="inline-flex items-center text-[10px] font-medium tracking-wide text-slate-400 bg-slate-50 border border-slate-100 rounded px-1.5 py-0.5 lowercase first-letter:uppercase">
+              {sub}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CHART TOOLTIP — Custom HTML tooltip for the velocity ComposedChart
+// ═══════════════════════════════════════════════════════════════════════════
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
 
@@ -42,15 +141,23 @@ function ChartTooltip({ active, payload, label }) {
   const returnRate = total > 0 ? Math.round((returned / total) * 100) : 0;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white/95 backdrop-blur-sm p-4 shadow-xl min-w-[220px]">
-      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+    <div className="rounded-xl border border-slate-200/60 bg-white/90 backdrop-blur-md p-4 shadow-xl min-w-[220px]">
+      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-3">
         {label}
       </p>
 
       <div className="space-y-2.5">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+            <span className="h-2.5 w-2.5 rounded-full bg-slate-400" />
+            <span className="text-xs text-slate-500">Total Borrowed</span>
+          </div>
+          <span className="text-sm font-bold text-slate-700">{total}</span>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
             <span className="text-xs text-slate-500">Returned</span>
           </div>
           <span className="text-sm font-bold text-emerald-600">{returned}</span>
@@ -58,7 +165,7 @@ function ChartTooltip({ active, payload, label }) {
 
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+            <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
             <span className="text-xs text-slate-500">Outstanding</span>
           </div>
           <span className="text-sm font-bold text-rose-500">{outstanding}</span>
@@ -67,26 +174,26 @@ function ChartTooltip({ active, payload, label }) {
         <div className="border-t border-slate-100 pt-2.5">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-indigo-400" />
-              <span className="text-xs text-slate-500">Total Borrowed</span>
-            </div>
-            <span className="text-sm font-bold text-slate-800">{total}</span>
-          </div>
-        </div>
-
-        <div className="border-t border-slate-100 pt-2.5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-3 w-3 text-amber-500" />
+              <TrendingUp className="h-3 w-3 text-[#4a1111]" />
               <span className="text-xs text-slate-500">Transactions</span>
             </div>
-            <span className="text-sm font-bold text-amber-600">{transactions}</span>
+            <span className="text-sm font-bold text-[#4a1111]">
+              {transactions}
+            </span>
           </div>
         </div>
 
         <div className="border-t border-slate-100 pt-2.5 flex items-center justify-between">
           <span className="text-xs text-slate-400">Return Rate</span>
-          <span className={`text-xs font-bold ${returnRate >= 70 ? "text-emerald-600" : returnRate >= 40 ? "text-amber-600" : "text-rose-600"}`}>
+          <span
+            className={`text-xs font-bold ${
+              returnRate >= 70
+                ? "text-emerald-600"
+                : returnRate >= 40
+                ? "text-amber-600"
+                : "text-rose-600"
+            }`}
+          >
             {returnRate}%
           </span>
         </div>
@@ -95,12 +202,14 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-// ─── Custom Legend ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// CHART LEGEND — Inline color-coded legend below the chart
+// ═══════════════════════════════════════════════════════════════════════════
 function ChartLegend() {
   const items = [
-    { color: "#34d399", label: "Returned", dotClass: "bg-emerald-400" },
-    { color: "#fb7185", label: "Outstanding", dotClass: "bg-rose-400" },
-    { color: "#818cf8", label: "Transactions", dotClass: "bg-indigo-400" },
+    { label: "Total Borrowed", dotClass: "bg-slate-400" },
+    { label: "Returned", dotClass: "bg-emerald-500" },
+    { label: "Outstanding", dotClass: "bg-rose-500" },
   ];
 
   return (
@@ -108,209 +217,368 @@ function ChartLegend() {
       {items.map((item) => (
         <div key={item.label} className="flex items-center gap-1.5">
           <span className={`h-2.5 w-2.5 rounded-full ${item.dotClass}`} />
-          <span className="text-[11px] text-slate-500 font-medium">{item.label}</span>
+          <span className="text-[11px] text-slate-400 font-medium">
+            {item.label}
+          </span>
         </div>
       ))}
     </div>
   );
 }
 
-// ─── Stat Card Components ───────────────────────────────────────────────
-function InventoryStatCard({ icon: Icon, iconBg, label, value, accent, barPercent, barColor, sub }) {
-  return (
-    <div className="group rounded-xl bg-white p-5 shadow-sm border border-slate-200/80 hover:shadow-md hover:border-slate-300/80 transition-all duration-200">
-      <div className="flex flex-col gap-2.5">
-        <div className="flex items-center gap-2">
-          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconBg}`}>
-            <Icon className="h-4 w-4 text-white" />
+// ═══════════════════════════════════════════════════════════════════════════
+// SECTION STACKED BAR — 100% stacked asset allocation per section
+// ═══════════════════════════════════════════════════════════════════════════
+function SectionStackedBar({ name, total, defective, borrowed, isLab = false, onClick }) {
+  const safeTotal = total > 0 ? total : 1;
+
+  const defectivePct = Math.round((defective / safeTotal) * 100);
+
+  const wrapperClass = onClick
+    ? "cursor-pointer rounded-lg p-2 -m-2 transition-colors hover:bg-slate-50 active:bg-slate-100"
+    : "";
+
+  const content = (() => {
+    if (isLab) {
+      return (
+        <div className="space-y-1.5">
+          <div className="flex items-center">
+            <span className="text-xs font-medium text-slate-700 truncate">{name}</span>
           </div>
-          <p className="text-xs font-semibold text-slate-500 leading-tight">{label}</p>
+          <div className="flex items-center gap-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+            <span className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+              {total} PCs
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+              {defective} defective components
+            </span>
+          </div>
         </div>
-        <p className={`text-3xl font-extrabold ${accent || "text-slate-900"}`}>
-          {value}
-        </p>
-        {barPercent !== undefined ? (
-          <div>
-            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-1.5 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(barPercent, 100)}%`, backgroundColor: barColor || "#4a1111" }}
-              />
-            </div>
-            <p className="mt-1.5 text-[11px] text-slate-400">{barPercent}% defective rate</p>
-          </div>
-        ) : null}
-        {sub ? <p className="text-[11px] text-slate-400">{sub}</p> : null}
+      );
+    }
+
+    const borrowedPct = Math.round((borrowed / safeTotal) * 100);
+    const availablePct = Math.max(0, 100 - defectivePct - borrowedPct);
+
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-slate-700 truncate max-w-[60%]">{name}</span>
+          <span className="text-[11px] font-mono text-slate-400">{total}</span>
+        </div>
+        <div className="h-2.5 w-full bg-slate-100 rounded-full flex overflow-hidden shadow-inner/5">
+          {availablePct > 0 && (
+            <div className="h-2.5 bg-slate-300 transition-all duration-500" style={{ width: `${availablePct}%` }} title={`Available: ${Math.round((availablePct / 100) * total)}`} />
+          )}
+          {borrowedPct > 0 && (
+            <div className="h-2.5 bg-amber-500 transition-all duration-500" style={{ width: `${borrowedPct}%` }} title={`Borrowed: ${borrowed}`} />
+          )}
+          {defectivePct > 0 && (
+            <div className="h-2.5 bg-rose-500 transition-all duration-500" style={{ width: `${defectivePct}%` }} title={`Defective: ${defective}`} />
+          )}
+        </div>
+        <div className="flex items-center gap-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+            {Math.max(0, Math.round((availablePct / 100) * total))}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            {borrowed}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+            {defective}
+          </span>
+        </div>
       </div>
+    );
+  })();
+
+  return (
+    <div className={wrapperClass} onClick={onClick} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined} onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}>
+      {content}
     </div>
   );
 }
 
-function BorrowingStatCard({ icon: Icon, iconBg, label, value, sub, onClick, accent }) {
-  return (
-    <div
-      className="group rounded-xl bg-white p-5 shadow-sm border border-slate-200/80 hover:shadow-md hover:border-slate-300/80 transition-all duration-200 cursor-pointer"
-      onClick={onClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onClick?.(); }}
-    >
-      <div className="flex flex-col gap-2.5">
-        <div className="flex items-center gap-2">
-          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconBg}`}>
-            <Icon className="h-4 w-4 text-white" />
-          </div>
-          <p className="text-xs font-semibold text-slate-500 leading-tight">{label}</p>
-        </div>
-        <p className={`text-3xl font-extrabold ${accent || "text-slate-900"}`}>
-          {value ?? 0}
-        </p>
-        <p className="text-[11px] text-slate-400">{sub}</p>
-      </div>
-    </div>
-  );
-}
-
-// ─── Skeleton ───────────────────────────────────────────────────────────
-function Skeleton({ className = "" }) {
-  return <div className={`animate-pulse bg-slate-200 rounded ${className}`} />;
-}
-
-// ─── Main Dashboard ─────────────────────────────────────────────────────
-const COMPUTER_LABS_TAB = {
-  id: "computer-laboratories",
-  name: "Computer Laboratories",
-  slug: "laboratory",
-  isComputerLabs: true,
-};
-
-const defaultBorrowingStats = {
-  borrowedToday: 0,
-  unreturned: 0,
-  defectiveReturned: [],
-  mostBorrowedItem: null,
-};
-
-const getBorrowedQuantity = (item = {}) => {
-  const quantityDetail = (item.details || []).find((detail) => {
-    const key = String(detail.key || "").toLowerCase();
-    const label = String(detail.label || "").toLowerCase();
-    return key === "quantity" || label === "quantity";
-  });
-  const quantity = Number(quantityDetail?.value ?? item.quantity ?? 1);
-  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
-};
-
-const isSameLocalDay = (value, date = new Date()) => {
-  if (!value) return false;
-  const target = new Date(value);
-  if (Number.isNaN(target.getTime())) return false;
-  return (
-    target.getFullYear() === date.getFullYear() &&
-    target.getMonth() === date.getMonth() &&
-    target.getDate() === date.getDate()
-  );
-};
-
-const isDefectiveBorrowingItem = (item = {}) => {
-  const values = [
-    item.returnCondition,
-    item.returnRemarks,
-    ...(item.details || []).map((detail) => detail.value),
-  ];
-  return values.some((value) => String(value || "").toLowerCase().includes("defect"));
-};
-
-const summarizeBorrowingRecords = (records = []) => {
-  const borrowedToday = records.reduce((total, record) => {
-    if (!isSameLocalDay(record.date)) return total;
-    return total + (record.items || []).reduce((sum, item) => sum + getBorrowedQuantity(item), 0);
-  }, 0);
-
-  const unreturned = records.reduce((total, record) => {
-    const status = String(record.status || "").toLowerCase();
-    if (!["borrowed", "not_returned"].includes(status)) return total;
-    return total + (record.items || []).reduce((sum, item) => sum + getBorrowedQuantity(item), 0);
-  }, 0);
-
-  const defectiveReturned = records.flatMap((record) => {
-    const status = String(record.status || "").toLowerCase();
-    if (!["returned", "returned_late"].includes(status)) return [];
-    return (record.items || [])
-      .filter(isDefectiveBorrowingItem)
-      .map((item) => ({
-        id: `${record.id}-${item.id}`,
-        item: item.label || "Item",
-        borrower: record.name || "Unknown borrower",
-        returnedAt: record.returnedAt,
-        remarks: item.returnRemarks || "Defective",
-      }));
-  });
-
-  const itemCounts = new Map();
-  records.forEach((record) => {
-    (record.items || []).forEach((item) => {
-      const label = item.label || "Item";
-      const quantity = getBorrowedQuantity(item);
-      itemCounts.set(label, (itemCounts.get(label) || 0) + quantity);
-    });
-  });
-
-  const mostBorrowedItem = [...itemCounts.entries()]
-    .map(([label, count]) => ({ label, count }))
-    .sort((left, right) => right.count - left.count)[0] || null;
-
-  return { borrowedToday, unreturned, defectiveReturned, mostBorrowedItem };
-};
-
-const isDefectiveValue = (value) => {
-  const normalized = String(value || "").trim().toUpperCase();
-  return normalized.includes("DEFECT") || normalized.includes("BROKEN");
-};
-
-const getInventoryQuantity = (item = {}) => {
-  const quantityValue = item.quantity ?? item.data?.quantity ?? 1;
-  const quantity = Number(quantityValue);
-  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
-};
-
-const isDefectiveRecord = (record = {}) =>
-  Object.entries(record).some(([key, value]) => {
-    if (["id", "section_id", "created_at", "updated_at", "sort_order"].includes(key)) return false;
-    if (value && typeof value === "object") return isDefectiveRecord(value);
-    return isDefectiveValue(value);
-  });
-
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN DASHBOARD COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════
 export default function Dashboard() {
   const navigate = useNavigate();
-  const tabsRef = useRef(null);
-  const [tabsHeight, setTabsHeight] = useState(0);
-  const [isLg, setIsLg] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
+  const { tabs: inventoryTabs } = useInventoryCatalog();
+
+  // ── State ──────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
-  const [labs, setLabs] = useState([]);
-  const [overall, setOverall] = useState({ total: 0, defective: 0 });
-  const [borrowingStats, setBorrowingStats] = useState(defaultBorrowingStats);
   const [error, setError] = useState("");
-  const { tabs: inventoryTabs, loading: tabsLoading, error: tabsError } = useInventoryCatalog();
-  const [selectedTabSlug, setSelectedTabSlug] = useState("");
-  const dashboardTabs = useMemo(() => [COMPUTER_LABS_TAB, ...inventoryTabs], [inventoryTabs]);
+  const [allocationFilter, setAllocationFilter] = useState("all");
 
-  // Borrowing velocity chart data (fetched from Supabase, last 30 days)
+  // Analytics data
+  const [defectBySection, setDefectBySection] = useState([]);
+  const [threatAssessment, setThreatAssessment] = useState(null);
+  const [auditAnomalies, setAuditAnomalies] = useState([]);
+
+  // Borrowing data
   const [velocityData, setVelocityData] = useState([]);
-  const [velocityLoading, setVelocityLoading] = useState(true);
-  const [velocityError, setVelocityError] = useState("");
+  const [activeBorrowings, setActiveBorrowings] = useState(0);
 
-  const defectiveRate = overall.total
-    ? Math.round((overall.defective / overall.total) * 100)
-    : 0;
-  const activeDashboardTab = dashboardTabs.find((tab) => tab.slug === selectedTabSlug) || COMPUTER_LABS_TAB;
-  const isComputerLabsSelected = activeDashboardTab.isComputerLabs;
+  // Computer laboratory inventory
+  const [compLabInventory, setCompLabInventory] = useState([]);
 
-  // ─── Derived chart metrics ──────────────────────────────────────────
+  // ── Data Loading ──────────────────────────────────────────────────────
+  const loadDashboard = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const [defectResult, threatResult, auditResult, velocityResult] =
+        await Promise.allSettled([
+          fetchDefectRateBySection(),
+          fetchSecurityThreatAssessment(),
+          fetchAuditAnomalies(7),
+          fetchBorrowingVelocity({ days: 30 }),
+        ]);
+
+      if (defectResult.status === "fulfilled") {
+        setDefectBySection(defectResult.value || []);
+      } else {
+        console.error("Defect rate fetch failed:", defectResult.reason);
+        setDefectBySection([]);
+      }
+
+      if (threatResult.status === "fulfilled") {
+        setThreatAssessment(threatResult.value || null);
+      } else {
+        console.error("Security threat fetch failed:", threatResult.reason);
+        setThreatAssessment(null);
+      }
+
+      if (auditResult.status === "fulfilled") {
+        const anomalies = auditResult.value?.offHoursChanges || [];
+        setAuditAnomalies(anomalies);
+      } else {
+        console.error("Audit anomalies fetch failed:", auditResult.reason);
+        setAuditAnomalies([]);
+      }
+
+      if (velocityResult.status === "fulfilled") {
+        setVelocityData(velocityResult.value || []);
+      } else {
+        console.error("Borrowing velocity fetch failed:", velocityResult.reason);
+        setVelocityData([]);
+      }
+
+      // ── Active Borrowings (currently out, not yet returned) ──────────────
+      const { count: activeCount, error: activeErr } = await supabase
+        .from("borrowing_records")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["borrowed", "not_returned"]);
+      if (activeErr) {
+        console.error("Active borrowings fetch failed:", activeErr);
+        setActiveBorrowings(0);
+      } else {
+        setActiveBorrowings(activeCount || 0);
+      }
+
+      // ── Computer Laboratory Inventory ──────────────────────────────────────
+      const { data: labRows, error: labErr } = await supabase
+        .from("lab_numbers")
+        .select("id, lab_number, name")
+        .order("lab_number", { ascending: true });
+
+      if (labErr) throw labErr;
+
+      let allComponents = [];
+      let from = 0;
+      const batchSize = 1000;
+
+      while (true) {
+        const { data, error } = await supabase
+          .from("computers_components")
+          .select("computer_number, status, lab_number_id")
+          .range(from, from + batchSize - 1);
+
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allComponents = [...allComponents, ...data];
+        from += batchSize;
+        if (data.length < batchSize) break;
+      }
+
+      const grouped = {};
+      for (const comp of allComponents) {
+        if (!comp.lab_number_id) continue;
+        const labId = comp.lab_number_id;
+        const computerKey = String(comp.computer_number || "Unknown").trim();
+        if (!grouped[labId]) grouped[labId] = {};
+        if (!grouped[labId][computerKey]) {
+          grouped[labId][computerKey] = { defectiveComponentCount: 0 };
+        }
+        const statusStr = String(comp.status || "").toUpperCase();
+        if (statusStr.includes("DEFECT") || statusStr.includes("BROKEN")) {
+          grouped[labId][computerKey].defectiveComponentCount += 1;
+        }
+      }
+
+      const compLabSummaries = (labRows || []).map((lab) => {
+        const pcs = Object.values(grouped[lab.id] || {});
+        const total = pcs.length;
+        const defective = pcs.reduce((sum, pc) => sum + pc.defectiveComponentCount, 0);
+        return {
+          id: lab.id,
+          name: lab.name || `Laboratory ${lab.lab_number}`,
+          total_pcs: total,
+          available_pcs: total - defective,
+          borrowed_pcs: 0,
+          defective_pcs: defective,
+        };
+      }).filter((lab) => lab.total_pcs > 0 || lab.defective_pcs > 0);
+
+      setCompLabInventory(compLabSummaries);
+
+      const allFailed = [
+        defectResult,
+        threatResult,
+        auditResult,
+        velocityResult,
+      ].every((r) => r.status === "rejected");
+      if (allFailed) {
+        setError("Failed to load dashboard data. Please try again.");
+      }
+    } catch (err) {
+      console.error("Dashboard data loading failed:", err);
+      setError(err.message || "Failed to load dashboard data");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  // ── Derived Metrics ────────────────────────────────────────────────────
+
+  const totalAssets = useMemo(
+    () =>
+      defectBySection.reduce(
+        (sum, row) => sum + (Number(row.total) || 0),
+        0
+      ),
+    [defectBySection]
+  );
+
+  const totalDefective = useMemo(
+    () =>
+      defectBySection.reduce(
+        (sum, row) => sum + (Number(row.defective) || 0),
+        0
+      ),
+    [defectBySection]
+  );
+
+  const totalBorrowed = useMemo(
+    () =>
+      velocityData.reduce(
+        (sum, row) => sum + (Number(row.total_items_borrowed) || 0),
+        0
+      ),
+    [velocityData]
+  );
+
+  const defectRate = useMemo(
+    () =>
+      totalAssets > 0
+        ? Math.round((totalDefective / totalAssets) * 10000) / 100
+        : 0,
+    [totalAssets, totalDefective]
+  );
+
+  const totalSections = defectBySection.length;
+
+  const { totalLabPcs, totalOperationalLabPcs } = useMemo(
+    () =>
+      (compLabInventory || []).reduce(
+        (acc, lab) => ({
+          totalLabPcs: acc.totalLabPcs + (lab.total_pcs || 0),
+          totalOperationalLabPcs: acc.totalOperationalLabPcs + (lab.available_pcs || 0),
+        }),
+        { totalLabPcs: 0, totalOperationalLabPcs: 0 }
+      ),
+    [compLabInventory]
+  );
+
+  const labOperationalRate = useMemo(
+    () =>
+      totalLabPcs > 0
+        ? Math.round((totalOperationalLabPcs / totalLabPcs) * 1000) / 10
+        : 0,
+    [totalLabPcs, totalOperationalLabPcs]
+  );
+
+  // ── Filtered Allocation Data ───────────────────────────────────────────
+  // Unified data source for the Asset Allocation card. Switches between
+  // lab mode (2-tier bars) and section mode (3-tier bars) based on the
+  // dropdown filter selection.
+  const allocationRows = useMemo(() => {
+    if (allocationFilter === "labs") {
+      // Labs mode: 2-tier bars (Total PCs vs Defective)
+      return (compLabInventory || []).map((lab) => ({
+        id: lab.id,
+        name: lab.name,
+        total: lab.total_pcs,
+        available: lab.available_pcs,
+        borrowed: 0,
+        defective: lab.defective_pcs,
+        isLab: true,
+      }));
+    }
+
+    // For "all" or a specific tab, use circulating sections
+    let source = defectBySection;
+
+    // If a specific tab is selected, filter sections by tab_id
+    if (allocationFilter !== "all") {
+      source = defectBySection.filter((s) => s.tabId === allocationFilter);
+    } else {
+      // "all" — exclude laboratory sections
+      source = (inventoryTabs || []).length > 0
+        ? defectBySection.filter((section) => {
+            const sectionName = String(section.sectionName || "").toLowerCase();
+            return !sectionName.includes("lab") && !sectionName.includes("laboratory");
+          })
+        : defectBySection;
+    }
+
+    return [...source]
+      .sort((a, b) => (Number(b.total) || 0) - (Number(a.total) || 0))
+      .slice(0, 5)
+      .map((s) => ({
+        id: s.sectionId,
+        slug: s.sectionSlug || "",
+        name: s.sectionName,
+        total: Number(s.total) || 0,
+        available: (Number(s.total) || 0) - (Number(s.defective) || 0) - (Number(s.borrowed) || 0),
+        borrowed: Number(s.borrowed) || 0,
+        defective: Number(s.defective) || 0,
+        isLab: false,
+      }));
+  }, [allocationFilter, defectBySection, compLabInventory, inventoryTabs]);
+
   const chartSummary = useMemo(() => {
-    const data = velocityData;
-    if (!data.length) return { totalBorrowed: 0, totalReturned: 0, totalOutstanding: 0, totalTransactions: 0, avgReturnRate: 0 };
-    const totals = data.reduce(
+    if (!velocityData.length) {
+      return {
+        totalBorrowed: 0,
+        totalReturned: 0,
+        totalOutstanding: 0,
+        totalTransactions: 0,
+        avgReturnRate: 0,
+      };
+    }
+    const totals = velocityData.reduce(
       (acc, d) => {
         const returned = Number(d.items_returned ?? d.items_return ?? 0);
         const outstanding = Number(d.items_outstanding ?? 0);
@@ -328,475 +596,411 @@ export default function Dashboard() {
       totalReturned: totals.returned,
       totalOutstanding: totals.outstanding,
       totalTransactions: totals.transactions,
-      avgReturnRate: totals.borrowed > 0 ? Math.round((totals.returned / totals.borrowed) * 100) : 0,
+      avgReturnRate:
+        totals.borrowed > 0
+          ? Math.round((totals.returned / totals.borrowed) * 100)
+          : 0,
     };
   }, [velocityData]);
 
-  // ─── Tab selection ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (dashboardTabs.length === 0) return;
-    if (!selectedTabSlug && dashboardTabs.length > 0) {
-      setSelectedTabSlug(dashboardTabs[0].slug);
-    }
-  }, [selectedTabSlug, dashboardTabs]);
-
-  // Measure tabs height so we can align right column content to the same top offset on large screens
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-
-    const measure = () => {
-      const tabsElHeight = tabsRef.current?.offsetHeight || 0;
-      const isLarge = window.innerWidth >= 1024;
-      // larger extra gap on desktop, smaller on mobile/tablet
-      const gap = isLarge ? 55 : 20;
-      setTabsHeight(tabsElHeight + gap);
-      setIsLg(isLarge);
-    };
-
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [dashboardTabs, tabsLoading]);
-
-  // ─── Data loading ──────────────────────────────────────────────────
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      setLoading(true);
-      setError("");
-
-      try {
-        // Fetch borrowing velocity in parallel with other dashboard data
-        setVelocityLoading(true);
-        setVelocityError("");
-        const velocityPromise = fetchBorrowingVelocity({ days: 30 }).then(
-          (result) => {
-            if (!cancelled) {
-              setVelocityData(result);
-              setVelocityLoading(false);
-            }
-          },
-          (err) => {
-            console.error("Failed to fetch borrowing velocity:", err);
-            if (!cancelled) {
-              setVelocityError(err.message || "Failed to load velocity data");
-              setVelocityLoading(false);
-            }
-          }
-        );
-
-        await markOverdueBorrowingRecords({ days: 3 });
-        const borrowingRecords = await fetchBorrowingRecords({ status: null });
-        const borrowingSummary = summarizeBorrowingRecords(borrowingRecords);
-
-        // Ensure velocity fetch completes before we finish loading
-        await velocityPromise;
-
-        if (!selectedTabSlug) {
-          if (!cancelled) {
-            setLabs([]);
-            setOverall({ total: 0, defective: 0 });
-            setBorrowingStats(borrowingSummary);
-            setLoading(false);
-          }
-          return;
-        }
-
-        const selectedTab = dashboardTabs.find((tab) => tab.slug === selectedTabSlug);
-        if (!selectedTab) {
-          if (!cancelled) {
-            setLabs([]);
-            setOverall({ total: 0, defective: 0 });
-            setBorrowingStats(borrowingSummary);
-            setLoading(false);
-          }
-          return;
-        }
-
-        let labSummaries = [];
-        let overallTotal = 0;
-        let totalDefectiveCount = 0;
-
-        if (selectedTab.isComputerLabs) {
-          const { data: labRows, error: labErr } = await supabase
-            .from("lab_numbers")
-            .select("id, lab_number, name")
-            .order("lab_number", { ascending: true });
-
-          if (labErr) throw labErr;
-
-          let allComponents = [];
-          let from = 0;
-          const batchSize = 1000;
-
-          while (true) {
-            const { data, error } = await supabase
-              .from("computers_components")
-              .select("computer_number, status, lab_number_id")
-              .range(from, from + batchSize - 1);
-
-            if (error) throw error;
-            if (!data || data.length === 0) break;
-            allComponents = [...allComponents, ...data];
-            from += batchSize;
-            if (data.length < batchSize) break;
-          }
-
-          const grouped = {};
-          for (const comp of allComponents) {
-            if (!comp.lab_number_id) continue;
-            const labId = comp.lab_number_id;
-            const computerKey = String(comp.computer_number || "Unknown").trim();
-            if (!grouped[labId]) grouped[labId] = {};
-            if (!grouped[labId][computerKey]) {
-              grouped[labId][computerKey] = { defectiveComponentCount: 0 };
-            }
-            if (isDefectiveValue(comp.status)) {
-              totalDefectiveCount++;
-              grouped[labId][computerKey].defectiveComponentCount += 1;
-            }
-          }
-
-          labSummaries = (labRows || [])
-            .map((lab) => {
-              const pcs = Object.values(grouped[lab.id] || {});
-              const total = pcs.length;
-              const defective = pcs.reduce((sum, pc) => sum + pc.defectiveComponentCount, 0);
-              overallTotal += total;
-              return {
-                id: lab.id,
-                label: lab.name || `Laboratory ${lab.lab_number}`,
-                total,
-                defective,
-                path: `/inventory/laboratory?labId=${lab.id}&defectiveOnly=1`,
-              };
-            })
-            .filter((lab) => lab.total > 0 || lab.defective > 0);
-        } else {
-          const sectionData = selectedTab.sections || [];
-          const sectionIds = sectionData.map((section) => section.id);
-          const grouped = sectionData.reduce((acc, section) => {
-            acc[section.id] = {
-              id: section.id,
-              label: section.name,
-              total: 0,
-              defective: 0,
-              path: `/inventory/${selectedTab.slug}?section=${section.slug}&defectiveOnly=1`,
-            };
-            return acc;
-          }, {});
-
-          if (sectionIds.length > 0) {
-            const tabConfig = await getTabTableConfig(selectedTab.id);
-            const tableName = tabConfig?.tableName;
-
-            if (tableName) {
-              let allItems = [];
-              let from = 0;
-              const batchSize = 1000;
-
-              while (true) {
-                const { data, error } = await supabase
-                  .from(tableName)
-                  .select("*")
-                  .in("section_id", sectionIds)
-                  .range(from, from + batchSize - 1);
-
-                if (error) throw error;
-                if (!data || data.length === 0) break;
-                allItems = [...allItems, ...data];
-                from += batchSize;
-                if (data.length < batchSize) break;
-              }
-
-              for (const item of allItems) {
-                if (!grouped[item.section_id]) continue;
-                const quantity = getInventoryQuantity(item);
-                grouped[item.section_id].total += quantity;
-                overallTotal += quantity;
-                if (isDefectiveRecord(item)) {
-                  grouped[item.section_id].defective += quantity;
-                  totalDefectiveCount += quantity;
-                }
-              }
-            }
-          }
-
-          labSummaries = Object.values(grouped);
-        }
-
-        if (!cancelled) {
-          setLabs(labSummaries);
-          setOverall({ total: overallTotal, defective: totalDefectiveCount });
-          setBorrowingStats(borrowingSummary);
-        }
-      } catch (err) {
-        console.error("Failed to load dashboard data:", err);
-        if (!cancelled) setError(err.message || "Failed to load dashboard data");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedTabSlug, dashboardTabs]);
-
-  // ─── Loading state ─────────────────────────────────────────────────
+  // ── Loading State ─────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex min-h-[calc(100vh-6rem)] items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-3">
-          <div
-            className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-[#4a1111]"
-            role="status"
-            aria-label="Loading dashboard data"
-          />
+      <div className="p-4 md:p-6 max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-64" />
+            <Skeleton className="h-4 w-80" />
+          </div>
+          <Skeleton className="h-9 w-40" />
         </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-28" />
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          <div className="lg:col-span-2">
+            <Skeleton className="h-[380px]" />
+          </div>
+          <Skeleton className="h-[380px]" />
+        </div>
+
+        <Skeleton className="h-48" />
       </div>
     );
   }
 
+  // ── Main Render ───────────────────────────────────────────────────────
   return (
-    <div className="space-y-6 p-4 md:p-6">
-      {/* Error Banner */}
+    <div className="space-y-6">
+      {/* ── Error Banner ─────────────────────────────────────────────── */}
       {error && (
-        <div className="rounded-lg bg-rose-50 p-4 text-sm text-rose-700 border border-rose-200">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{error}</span>
-          </div>
+        <div className="flex items-center gap-2 rounded-lg bg-rose-50 border border-rose-200 px-4 py-3">
+          <AlertCircle className="h-4 w-4 text-rose-500 shrink-0" />
+          <p className="text-sm text-rose-700">{error}</p>
         </div>
       )}
 
-      {/* ════════════════════════════════════════════════════════════════
-          DUAL-ZONE LAYOUT: Inventory (left) | Borrowing (right)
-         ════════════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+      {/* ── Stat Cards ───────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {/* Card 1: Total Fleet Assets */}
+        <StatCard
+          icon={Package}
+          iconBg="bg-slate-50 border border-slate-200/60"
+          iconColor="text-slate-600"
+          label="Number of Sections"
+          value={totalSections.toLocaleString()}
+          sub={`${totalSections} section${totalSections !== 1 ? "s" : ""} tracked`}
+        />
 
-        {/* ═══════════════════════════════════════════════════════════════
-            LEFT HALF — INVENTORY SECTION
-           ═══════════════════════════════════════════════════════════════ */}
-        <div className="space-y-5 min-w-0">
-          {/* Tab Selection */}
-          {!tabsLoading && !tabsError && dashboardTabs.length > 0 ? (
-            <>
-              <div ref={tabsRef} className="max-w-full overflow-x-auto pb-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  {dashboardTabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setSelectedTabSlug(tab.slug)}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                        tab.slug === selectedTabSlug
-                          ? "bg-[#4a1111] text-white shadow-sm"
-                          : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200"
-                      }`}
-                    >
-                      {tab.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {/* Inventory Stat Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <InventoryStatCard
-                  icon={isComputerLabsSelected ? Cpu : Package}
-                  iconBg="bg-[#4a1111]"
-                  label={isComputerLabsSelected ? "Total PCs" : "Total Stock"}
-                  value={overall.total.toLocaleString()}
-                  sub={isComputerLabsSelected ? "Across all labs" : "All sections"}
-                />
-                <InventoryStatCard
-                  icon={CircleAlert}
-                  iconBg="bg-rose-500"
-                  label={isComputerLabsSelected ? "Defective Components" : "Defective Items"}
-                  value={overall.defective.toLocaleString()}
-                  accent="text-rose-600"
-                  sub={isComputerLabsSelected ? "Total defective parts" : "Marked defective"}
-                />
-                <InventoryStatCard
-                  icon={Boxes}
-                  iconBg="bg-slate-700"
-                  label={isComputerLabsSelected ? "Labs" : "Sections"}
-                  value={labs.length.toLocaleString()}
-                  accent="text-slate-900"
-                  sub={isComputerLabsSelected ? "Active laboratories" : "Active sections"}
-                />
-              </div>
-            </>
-          ) : tabsLoading ? (
-            <Skeleton className="h-8 w-48" />
-          ) : tabsError ? (
-            <div className="rounded-md bg-rose-50 p-3 text-sm text-rose-700 border border-rose-200">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
-                <span>{tabsError}</span>
-              </div>
+        {/* Card 2: System Defect Status */}
+        <StatCard
+          icon={AlertCircle}
+          iconBg="bg-rose-50 border border-rose-100"
+          iconColor="text-rose-600"
+          label="System Defect Status"
+          value={totalDefective.toLocaleString()}
+          barPercent={defectRate}
+          barColor={
+            defectRate > 15
+              ? "#e11d48"
+              : defectRate > 10
+              ? "#f59e0b"
+              : "#e11d48"
+          }
+          barLabel={`${defectRate}% defect rate`}
+         
+        />
+
+        {/* Card 3: Active Borrowings */}
+        <StatCard
+          icon={ClipboardList}
+          iconBg="bg-slate-50 border border-slate-200/60"
+          iconColor="text-slate-600"
+          label="Active Borrowings"
+          value={activeBorrowings.toLocaleString()}
+          sub="Active transactions not yet returned"
+          onClick={() => navigate("/borrowing")}
+        />
+
+        {/* Card 4: Lab Operational Rate */}
+        <StatCard
+          icon={ShieldCheck}
+          iconBg="bg-emerald-50 border border-emerald-100"
+          iconColor="text-emerald-600"
+          label="Lab Operational Rate"
+          value={`${labOperationalRate}%`}
+          barPercent={labOperationalRate}
+          barColor="#10b981"
+          barLabel={`${labOperationalRate}% operational`}
+        />
+      </div>
+
+      {/* ── Chart + Asset Allocation Breakdown ────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* 30-Day Borrowing Velocity Chart */}
+        <div className="lg:col-span-2 rounded-xl border border-slate-200/80 bg-white shadow-sm p-6">
+          {/* ── Header ──────────────────────────────────────────────────── */}
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">
+                30-Day Borrowing Velocity
+              </h2>
+              <p className="text-xs text-slate-400 tracking-wide mt-0.5">
+                Daily borrowing, returns, and outstanding items
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider">Avg Return Rate</p>
+              <p
+                className={`text-xl font-bold ${
+                  chartSummary.avgReturnRate >= 70
+                    ? "text-emerald-600"
+                    : chartSummary.avgReturnRate >= 40
+                    ? "text-amber-600"
+                    : "text-rose-600"
+                }`}
+              >
+                {chartSummary.avgReturnRate}%
+              </p>
+            </div>
+          </div>
+
+          {/* ── Chart Canvas ────────────────────────────────────────────── */}
+          {velocityData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[300px] text-slate-400">
+              <BarChart3 className="h-10 w-10 mb-2 opacity-40" />
+              <p className="text-sm">No borrowing data for the selected period</p>
             </div>
           ) : (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-2 text-sm text-slate-500">
-              No inventory tabs found. Add one from the inventory manager.
-            </div>
+            <>
+              <div className="h-[300px] -ml-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart
+                    data={velocityData}
+                    margin={{ top: 8, right: 8, bottom: 0, left: -16 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="#f1f5f9"
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey="display_date"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 10, fill: "#94a3b8" }}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 10, fill: "#94a3b8" }}
+                    />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Bar
+                      dataKey="total_items_borrowed"
+                      name="Total Borrowed"
+                      fill="#cbd5e1"
+                      maxBarSize={28}
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Line
+                      type="linear"
+                      dataKey="items_returned"
+                      name="Returned"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      dot={{ fill: "#10b981", strokeWidth: 0, r: 3 }}
+                      activeDot={{ r: 5, fill: "#059669" }}
+                    />
+                    <Line
+                      type="linear"
+                      dataKey="items_outstanding"
+                      name="Outstanding"
+                      stroke="#f43f5e"
+                      strokeWidth={2}
+                      dot={{ fill: "#f43f5e", strokeWidth: 0, r: 3 }}
+                      activeDot={{ r: 5, fill: "#e11d48" }}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+              <ChartLegend />
+            </>
           )}
 
-
-
-          {/* Lab / Section Details Table */}
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            {labs.length === 0 ? (
-              <div className="p-8 text-center">
-                <Package className="mx-auto h-10 w-10 text-slate-300" />
-                <p className="mt-2 text-sm text-slate-500">No data found for this tab</p>
+          {/* ── Metric Footers ──────────────────────────────────────────── */}
+          {velocityData.length > 0 && (
+            <div className="grid grid-cols-4 mt-5 pt-5 border-t border-slate-100">
+              <div className="text-center border-r border-slate-100">
+                <p className="text-xl font-mono font-bold text-slate-600">
+                  {chartSummary.totalBorrowed}
+                </p>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">
+                  Total Borrowed
+                </p>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-100">
-                  <thead className="bg-slate-50/80">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Name</th>
-                      <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                        {isComputerLabsSelected ? "PCs" : "Items"}
-                      </th>
-                      <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                        {isComputerLabsSelected ? "Defective" : "Defective"}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {labs.map((lab) => (
-                      <tr
-                        key={lab.id}
-                        className="hover:bg-slate-50/60 transition-colors cursor-pointer"
-                        onClick={() => navigate(lab.path || `/inventory/laboratory?labId=${lab.id}&defectiveOnly=1`)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ")
-                            navigate(lab.path || `/inventory/laboratory?labId=${lab.id}&defectiveOnly=1`);
-                        }}
-                      >
-                        <td className="px-4 py-3 text-sm font-medium text-slate-700 hover:text-slate-900">
-                          {lab.label}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-slate-600">{lab.total}</td>
-                        <td className="px-4 py-3 text-sm font-medium">
-                          <span className={lab.defective > 0 ? "text-rose-600" : "text-slate-400"}>
-                            {lab.defective}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="text-center border-r border-slate-100">
+                <p className="text-xl font-mono font-bold text-emerald-600">
+                  {chartSummary.totalReturned}
+                </p>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">
+                  Returned
+                </p>
               </div>
-            )}
-          </div>
-
-        </div>
-
-        {/* ═══════════════════════════════════════════════════════════════
-            RIGHT HALF — BORROWING SECTION
-           ═══════════════════════════════════════════════════════════════ */}
-        <div className="space-y-5 min-w-0" style={tabsHeight ? { paddingTop: `${tabsHeight}px` } : undefined}>
-
-          {/* Borrowing Stat Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <BorrowingStatCard
-              icon={ClipboardList}
-              iconBg="bg-[#4a1111]"
-              label="Borrowed Today"
-              value={borrowingStats.borrowedToday}
-              sub="Items borrowed today"
-              onClick={() => navigate("/borrowing")}
-            />
-            <BorrowingStatCard
-              icon={RotateCcw}
-              iconBg="bg-rose-500"
-              label="Unreturned"
-              value={borrowingStats.unreturned}
-              sub="Still borrowed"
-              accent="text-rose-600"
-              onClick={() => navigate("/borrowing")}
-            />
-            <BorrowingStatCard
-              icon={Trophy}
-              iconBg="bg-amber-500"
-              label="Most Borrowed"
-              value={borrowingStats.mostBorrowedItem?.label || "—"}
-              sub={
-                borrowingStats.mostBorrowedItem
-                  ? `${borrowingStats.mostBorrowedItem.count} borrows`
-                  : "No records"
-              }
-              onClick={() => navigate("/borrowing")}
-            />
-          </div>
-
-          {/* ─── Inventory Velocity Combo Chart ──────────────────────── */}
-          
-
-          {/* Defective Items Returned */}
-          <div
-            className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden cursor-pointer hover:border-slate-300 transition-colors"
-            onClick={() => navigate("/borrowing?view=history")}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") navigate("/borrowing?view=history");
-            }}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <div>
-                <p className="text-sm font-semibold text-slate-800">Defective Items Returned</p>
-                <p className="text-[11px] text-slate-400">Items marked defective during return</p>
+              <div className="text-center border-r border-slate-100">
+                <p className="text-xl font-mono font-bold text-rose-500">
+                  {chartSummary.totalOutstanding}
+                </p>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">
+                  Outstanding
+                </p>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600">
-                  {borrowingStats.defectiveReturned.length}
-                </span>
-                <ArrowUpRight className="h-3.5 w-3.5 text-slate-400" />
+              <div className="text-center">
+                <p className="text-xl font-mono font-bold text-[#4a1111]">
+                  {chartSummary.totalTransactions}
+                </p>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">
+                  Transactions
+                </p>
               </div>
             </div>
+          )}
+        </div>
 
-            {borrowingStats.defectiveReturned.length === 0 ? (
-              <div className="p-8 text-center">
-                <AlertCircle className="mx-auto h-10 w-10 text-slate-300" />
-                <p className="mt-2 text-sm text-slate-500">No defective returned items</p>
-              </div>
-            ) : (
-              <div className="max-h-[280px] overflow-y-auto divide-y divide-slate-100">
-                {borrowingStats.defectiveReturned.map((item) => (
-                  <div key={item.id} className="px-5 py-3.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-800">{item.item}</p>
-                        <p className="mt-0.5 text-xs text-slate-500">Borrower: {item.borrower}</p>
-                        <p className="mt-0.5 text-xs text-slate-400">
-                          Returned:{" "}
-                          {item.returnedAt
-                            ? new Date(item.returnedAt).toLocaleString()
-                            : "N/A"}
-                        </p>
-                      </div>
-                      <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
-                        Defective
-                      </span>
-                    </div>
-                    {item.remarks ? (
-                      <p className="mt-1.5 text-xs text-slate-500">{item.remarks}</p>
-                    ) : null}
-                  </div>
+        {/* ── Asset Allocation Card (Filterable) ────────────────────────── */}
+        <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden flex flex-col h-full">
+          {/* ── Card Header with Filter Dropdown ────────────────────────── */}
+          <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50/50">
+            <h2 className="text-xs font-bold tracking-wider text-slate-800 uppercase font-sans">
+              Asset Distribution
+            </h2>
+            <Select value={allocationFilter} onValueChange={setAllocationFilter}>
+              <SelectTrigger className="h-8 w-auto gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm focus:ring-2 focus:ring-[#4a1111]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="rounded-md border-slate-200 bg-white shadow-lg">
+                <SelectItem value="all" className="text-xs font-medium">All Circulating Assets</SelectItem>
+                <SelectItem value="labs" className="text-xs font-medium">Computer Laboratories</SelectItem>
+                {(inventoryTabs || []).map((tab) => (
+                  <SelectItem key={tab.id} value={String(tab.id)} className="text-xs font-medium">
+                    {tab.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* ── Dynamic Content ──────────────────────────────────────────── */}
+          {allocationRows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[280px] text-slate-400 px-5">
+              <Package className="h-10 w-10 mb-2 opacity-40" />
+              <p className="text-sm text-center">
+                {allocationFilter === "labs"
+                  ? "No laboratory data available"
+                  : "No inventory data for this filter"}
+              </p>
+              <p className="text-xs text-slate-300 mt-1">
+                {allocationFilter === "labs"
+                  ? "Add laboratories and components to populate this view"
+                  : "Ensure inventory items exist in this category"}
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col flex-1">
+              <div className="px-5 py-5 space-y-5">
+                {allocationRows.map((row) => (
+                  <SectionStackedBar
+                    key={row.id}
+                    name={row.name}
+                    total={row.total}
+                    defective={row.defective}
+                    borrowed={row.borrowed}
+                    isLab={row.isLab}
+                  />
                 ))}
               </div>
-            )}
-          </div>
+
+              {/* ── Contextual Footer Legend ───────────────────────────── */}
+              <div className="mt-auto p-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-center gap-x-5">
+                {allocationFilter === "labs" ? (
+                  <>
+                    <span className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                      <span className="h-2 w-2 rounded-full bg-slate-300" />
+                      Total PCs
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                      <span className="h-2 w-2 rounded-full bg-rose-500" />
+                      Defective
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                      <span className="h-2 w-2 rounded-full bg-slate-300" />
+                      Available
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                      <span className="h-2 w-2 rounded-full bg-amber-500" />
+                      Borrowed
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                      <span className="h-2 w-2 rounded-full bg-rose-500" />
+                      Defective
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* ── Off-Hours Transaction Anomalies ───────────────────────────── */}
+      {auditAnomalies.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/50 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-amber-200/60">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500">
+                <Clock className="h-4 w-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-800">
+                  Off-Hours Transaction Anomalies
+                </h2>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  {auditAnomalies.length} unauthorized mutation
+                  {auditAnomalies.length !== 1 ? "s" : ""} detected outside
+                  business hours
+                </p>
+              </div>
+            </div>
+            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
+              {auditAnomalies.length} alert
+              {auditAnomalies.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          <div className="max-h-[320px] overflow-y-auto divide-y divide-amber-100">
+            {auditAnomalies.map((anomaly, idx) => {
+              const action = String(
+                anomaly.action || "UNKNOWN"
+              ).toUpperCase();
+              const tableName =
+                anomaly.tableName || anomaly.table_name || "—";
+              const changedBy =
+                anomaly.changedBy || anomaly.changed_by || "—";
+              const changeTs =
+                anomaly.changeTs || anomaly.change_ts || anomaly.timestamp;
+
+              return (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between px-5 py-3 hover:bg-amber-50 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span
+                      className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        action === "DELETE"
+                          ? "bg-rose-100 text-rose-700"
+                          : action === "INSERT"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : action === "UPDATE"
+                          ? "bg-indigo-100 text-indigo-700"
+                          : "bg-slate-100 text-slate-700"
+                      }`}
+                    >
+                      {action}
+                    </span>
+                    <span className="text-sm font-medium text-slate-700 truncate">
+                      {tableName}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      by {changedBy}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-4 shrink-0 ml-4">
+                    {anomaly.hour !== undefined && (
+                      <span className="text-xs text-amber-700 font-medium">
+                        {anomaly.hour}:00 UTC
+                      </span>
+                    )}
+                    {changeTs && (
+                      <span className="text-xs text-slate-400">
+                        {new Date(changeTs).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

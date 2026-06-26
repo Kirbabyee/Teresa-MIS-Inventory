@@ -869,10 +869,14 @@ export default function PublicBorrow() {
                               )}
                             </div>
                           </div>
-                          <Button type="button" variant="outline" onClick={() => setShowCartModal(false)} className="mt-4 w-full">
+                          <button
+                            type="button"
+                            onClick={() => setShowCartModal(false)}
+                            className="mt-4 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                          >
                             <ArrowLeft className="mr-2 h-4 w-4" />
                             Return to Item Selection
-                          </Button>
+                          </button>
                         </div>
                       </>
                     )}

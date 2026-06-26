@@ -66,23 +66,42 @@ const mapBorrowingRecord = (record = {}) => ({
 });
 
 export const fetchBorrowingRecords = async ({ status = "borrowed" } = {}) => {
-  let query = supabase
+  // Use simple queries (no nested joins) to avoid Supabase schema cache errors
+  let recordsQuery = supabase
     .from("borrowing_records")
     .select(
-      "id, borrower_name, borrower_id_number, borrower_role, borrowed_at, returned_at, status, created_at, borrowing_items(*)"
+      "id, borrower_name, borrower_id_number, borrower_role, borrowed_at, returned_at, expected_return_at, status, created_at"
     )
     .order("borrowed_at", { ascending: false });
 
   if (status === "borrowed") {
-    query = query.in("status", ["borrowed", "not_returned"]);
+    recordsQuery = recordsQuery.in("status", ["borrowed", "not_returned"]);
   } else if (status) {
-    query = query.eq("status", status);
+    recordsQuery = recordsQuery.eq("status", status);
   }
 
-  const { data, error } = await query;
-  if (error) throw error;
+  const [recordsRes, itemsRes] = await Promise.all([
+    recordsQuery,
+    supabase.from("borrowing_items").select("*"),
+  ]);
 
-  return (data || []).map(mapBorrowingRecord);
+  if (recordsRes.error) throw recordsRes.error;
+  if (itemsRes.error) throw itemsRes.error;
+
+  const records = recordsRes.data || [];
+  const allItems = itemsRes.data || [];
+
+  // Build lookup: borrowing_record_id → [items]
+  const itemsByRecord = {};
+  for (const item of allItems) {
+    const rid = item.borrowing_record_id;
+    if (!itemsByRecord[rid]) itemsByRecord[rid] = [];
+    itemsByRecord[rid].push(item);
+  }
+
+  return records.map((record) => ({
+    ...mapBorrowingRecord({ ...record, borrowing_items: itemsByRecord[record.id] || [] }),
+  }));
 };
 
 /**
@@ -106,22 +125,36 @@ export const fetchBorrowingVelocity = async ({ days = 30 } = {}) => {
   cutoff.setDate(cutoff.getDate() - days);
   cutoff.setHours(0, 0, 0, 0);
 
-  const { data, error } = await supabase
-    .from("borrowing_records")
-    .select(
-      "id, borrowed_at, returned_at, borrowing_items(id, quantity)"
-    )
-    .gte("borrowed_at", cutoff.toISOString())
-    .order("borrowed_at", { ascending: true });
+  // Use simple queries (no nested joins) to avoid Supabase schema cache errors
+  const [recordsRes, itemsRes] = await Promise.all([
+    supabase
+      .from("borrowing_records")
+      .select("id, borrowed_at, returned_at")
+      .gte("borrowed_at", cutoff.toISOString())
+      .order("borrowed_at", { ascending: true }),
+    supabase
+      .from("borrowing_items")
+      .select("borrowing_record_id, quantity"),
+  ]);
 
-  if (error) throw error;
+  if (recordsRes.error) throw recordsRes.error;
+  if (itemsRes.error) throw itemsRes.error;
 
-  const rows = data || [];
+  const records = recordsRes.data || [];
+  const items = itemsRes.data || [];
+
+  // Build lookup: borrowing_record_id → [quantity, ...]
+  const itemsByRecord = {};
+  for (const item of items) {
+    const rid = item.borrowing_record_id;
+    if (!itemsByRecord[rid]) itemsByRecord[rid] = [];
+    itemsByRecord[rid].push(item);
+  }
 
   // Group by local date string YYYY-MM-DD
   const byDate = new Map();
 
-  for (const record of rows) {
+  for (const record of records) {
     const borrowedAt = record.borrowed_at ? new Date(record.borrowed_at) : null;
     if (!borrowedAt || Number.isNaN(borrowedAt.getTime())) continue;
 
@@ -145,8 +178,8 @@ export const fetchBorrowingVelocity = async ({ days = 30 } = {}) => {
     const bucket = byDate.get(rawKey);
     bucket.transactionIds.add(record.id);
 
-    const items = record.borrowing_items || [];
-    for (const item of items) {
+    const recordItems = itemsByRecord[record.id] || [];
+    for (const item of recordItems) {
       const qty = Number(item.quantity) && item.quantity > 0 ? item.quantity : 1;
       bucket.total_items_borrowed += qty;
       if (record.returned_at) {

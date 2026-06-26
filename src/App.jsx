@@ -20,6 +20,7 @@ import ComputerLaboratoryInventory from "./pages/ComputerLaboratoryInventory";
 import UserAccounts from "./pages/UserAccounts";
 import SecurityMonitor from "./pages/SecurityMonitor";
 import SystemSettings from "./pages/SystemSettings";
+import AnalyticsDashboard from "./pages/AnalyticsDashboard";
 import ActivateAccount from "./pages/ActivateAccount";
 import ForgotPassword from "./pages/ForgotPassword";
 import PublicBorrow from "./pages/PublicBorrow";
@@ -107,6 +108,16 @@ function AppContent() {
             element={
               <SecurityRoute requiredRole="admin">
                 <SystemSettings />
+              </SecurityRoute>
+            }
+          />
+
+          {/* ── Admin-only: Analytics Dashboard ─────────────── */}
+          <Route
+            path="analytics"
+            element={
+              <SecurityRoute requiredRole="admin">
+                <AnalyticsDashboard />
               </SecurityRoute>
             }
           />

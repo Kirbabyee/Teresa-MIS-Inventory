@@ -26,6 +26,7 @@ import {
   FlaskConical,
   ShieldAlert,
   Settings,
+  BarChart3,
 } from "lucide-react";
 const arkLogo = "/folder/teresalogo-removebg-preview.png";
 import { useAuth } from "@/lib/AuthContext";
@@ -428,12 +429,13 @@ export default function Layout() {
 
     const items = [
       { label: "Dashboard", icon: Home, path: "/" },
+      { label: "Analytics", icon: BarChart3, path: "/analytics" },
       { label: "Inventory", icon: Boxes, path: "/manage/inventory", children: inventoryChildren },
       { label: "Borrowing", icon: ClipboardList, path: "/borrowing" },
     ];
 
     if (isAdminSession(session)) {
-      items.splice(1, 0, {
+      items.splice(2, 0, {
         label: "Manage",
         icon: Users,
         path: "/manage/accounts",
