@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Calendar as CalendarIcon, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Download, Minus, Package, Plus, Search, ShoppingCart, Trash2, User, X, XCircle, Check, ArrowLeft } from "lucide-react";
+import { Calendar as CalendarIcon, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, Download, History, Minus, Package, Plus, Search, ShoppingCart, Trash2, User, X, XCircle, Check, ArrowLeft } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
@@ -8,7 +8,7 @@ import { format } from "date-fns";
 import "react-day-picker/dist/style.css";
 import { toast } from "sonner";
 import { supabase } from "@/api/supabaseClient";
-
+import ExportLogsPanel from "@/components/ExportLogsPanel";
 import { useAuth } from "@/lib/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1307,7 +1307,26 @@ export default function Borrowing() {
   const [returnError, setReturnError] = useState("");
   const [mergeWithLastBorrow, setMergeWithLastBorrow] = useState(false);
 
-  const [statusFilter, setStatusFilter] = useState("borrowed");
+  const [statusFilter, setStatusFilter] = useState(() =>
+    ["logs", "history"].includes(searchParams.get("view")) ? "all" : "borrowed"
+  );
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+
+    if (statusFilter === "all") {
+      nextParams.set("view", "history");
+    } else {
+      nextParams.delete("view");
+    }
+
+    const nextQuery = nextParams.toString();
+    const currentQuery = searchParams.toString();
+
+    if (nextQuery !== currentQuery) {
+      setSearchParams(nextQuery ? `?${nextQuery}` : "", { replace: true });
+    }
+  }, [searchParams, setSearchParams, statusFilter]);
 
   const [dateRange, setDateRange] = useState({ from: undefined, to: undefined });
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -1453,6 +1472,8 @@ export default function Borrowing() {
   }, [data, form.name, form.studentId]);
 
   // ── Approve / Deny pending requests ───────────────────────────────────
+  const [processingId, setProcessingId] = useState(null);
+
   const handleApproveRecord = async (record) => {
     setProcessingId(record.id);
     try {
@@ -1481,9 +1502,6 @@ export default function Borrowing() {
     }
   };
 
-  // Track which row is being processed (for loading state)
-  const [processingId, setProcessingId] = useState(null);
-
   const loadBorrowings = async (cancelToken = { current: false }) => {
     setBorrowingsLoading(true);
     setBorrowingsError("");
@@ -1494,11 +1512,17 @@ export default function Borrowing() {
         records = await fetchPendingApprovals();
       } else {
         await markOverdueBorrowingRecords({ days: 3 });
-        records = await fetchBorrowingRecords({ status: "borrowed" });
-        records = records.filter((record) => {
-          const rs = deriveReturningStatus(record);
-          return rs === "not fully returned" || rs === "partially returned";
-        });
+        const allRecords = await fetchBorrowingRecords({ status: statusFilter === "all" ? null : "borrowed" });
+        records =
+          statusFilter === "all"
+            ? allRecords.filter((record) => {
+                const rs = deriveReturningStatus(record);
+                return rs === "partially returned" || rs === "fully returned";
+              })
+            : allRecords.filter((record) => {
+                const rs = deriveReturningStatus(record);
+                return rs === "not fully returned" || rs === "partially returned";
+              });
       }
       if (!cancelToken.current) {
         setData(records);
@@ -3081,10 +3105,11 @@ export default function Borrowing() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
             >
-              <option value="borrowed">Status: Borrowed (Active)</option>
-              <option value="pending">Status: Pending Approval</option>
+              <option value="borrowed">Borrowed (Active)</option>
+              <option value="pending">Pending Approval</option>
+              <option value="all">History</option>
             </select>
 
             <div ref={datePickerRef} className="relative z-50">
@@ -3138,7 +3163,7 @@ export default function Borrowing() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-            {statusFilter === "borrowed" && (
+            {statusFilter !== "all" && (
               <button
                 type="button"
                 onClick={() => {
@@ -3198,6 +3223,23 @@ export default function Borrowing() {
               <span>Share</span>
             </button>
 
+            <button
+              type="button"
+              onClick={() => setStatusFilter(statusFilter === "borrowed" ? "all" : "borrowed")}
+              className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition ${statusFilter === "all"
+                ? "bg-[#4a1111] text-white hover:bg-[#5a1717]"
+                : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                }`}
+              title={statusFilter === "borrowed" ? "Show borrowing history" : "Show current borrowed items"}
+              aria-label={statusFilter === "borrowed" ? "Show borrowing history" : "Show current borrowed items"}
+            >
+              {statusFilter === "all" ? (
+                <ChevronLeft className="h-4 w-4" />
+              ) : (
+                <History className="h-4 w-4" />
+              )}
+              <span>{statusFilter === "all" ? "Active Only" : "History"}</span>
+            </button>
           </div>
         </div>
 
@@ -3416,28 +3458,32 @@ export default function Borrowing() {
           </AlertDialogContent>
         </AlertDialog>
 
-        <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-opacity duration-300">
-          {borrowingsError && (
-            <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              Error loading borrowings: {borrowingsError}
-            </div>
-          )}
-          {!borrowingsLoading && filteredData.length === 0 ? (
-            <div className="text-center py-16 text-slate-400">
-              <p>{statusFilter === "pending" ? "No pending approval requests." : "No borrowed items yet."}</p>
-            </div>
+        {statusFilter === "all" ? (
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(440px,1fr)]">
+            <div className="min-w-0 w-full">
+              <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-opacity duration-300">
+                {borrowingsError && (
+                  <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    Error loading borrowings: {borrowingsError}
+                  </div>
+                )}
+                {!borrowingsLoading && filteredData.length === 0 ? (
+                  <div className="text-center py-16 text-slate-400">
+                    <p>No borrowing logs found.</p>
+                  </div>
                 ) : !borrowingsLoading && (
                   <>
                     <div className="borrowing-table-scroll max-h-[36rem] overflow-auto">
                       <table className="w-full min-w-[900px] border-separate border-spacing-0 transition-opacity duration-300">
                         <thead className="sticky top-0 z-10 bg-slate-50 shadow-[inset_0_-1px_0_rgb(226,232,240)]">
                           <tr>
-                            {statusFilter === "pending" ? [
+                            {[
                               "Borrower",
-                              "ID Number",
-                              "Requested At",
+                              "Borrowed At",
                               "Expected Return",
+                              "Returned At",
                               "Items",
+                              "Quantity",
                             ].map((h) => (
                               <th
                                 key={h}
@@ -3445,33 +3491,12 @@ export default function Borrowing() {
                               >
                                 {h}
                               </th>
-                            )) : [
-                              "Borrower",
-                              "Borrowed At",
-                              "Status",
-                              "Items",
-                              "Quantity",
-                              "Condition",
-                            ].map((h) => (
-                              <th
-                                key={h}
-                                className={`bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500${h === "Status" ? " w-[110px]" : ""}${h === "Condition" ? " w-[120px]" : ""}`}
-                              >
-                                {h}
-                              </th>
                             ))}
-                            <th className="bg-slate-50 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              <span className="sr-only">Row actions</span>
-                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {currentPageData.map((record, rowIndex) => {
-                            const isPending = record._source === "approval";
-                            const recordItems = record.items || [];
-                            const activeItemsRaw = isPending
-                              ? recordItems
-                              : recordItems.filter((item) => getReturnedQuantity(item) < getBorrowedQuantity(item));
+                            const activeItemsRaw = (record.items || []).filter((item) => getReturnedQuantity(item) > 0);
                             const searchLower = search.toLowerCase();
                             const activeItems = searchLower
                               ? [...activeItemsRaw].sort((a, b) => {
@@ -3482,209 +3507,107 @@ export default function Borrowing() {
                                   return 0;
                                 })
                               : activeItemsRaw;
-
                             return (
                               <tr
                                 key={record.id}
                                 onClick={() => setSelectedRecord(record)}
                                 className={`cursor-pointer transition-colors hover:bg-slate-200/80 ${rowIndex % 2 === 0 ? "bg-white" : "bg-slate-100/90"}`}
                               >
-                                {/* Borrower */}
                                 <td className="px-4 py-3">
-                                  <p className="text-xs font-bold text-slate-800">{record.name}</p>
-                                  <span className="text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase font-mono mt-0.5 inline-block">
-                                    {record.role || "STUDENT"}
-                                  </span>
+                                  <p className="text-sm font-medium text-slate-900">{record.name}</p>
                                 </td>
-
-                                {isPending ? (
-                                  <>
-                                    {/* ID Number */}
-                                    <td className="px-4 py-3">
-                                      <span className="text-xs font-mono text-slate-600">{record.studentId || "—"}</span>
-                                    </td>
-                                    {/* Requested At */}
-                                    <td className="px-4 py-3">
-                                      <span className="text-xs font-mono text-slate-600">
-                                        {formatExportDate(record.date)}
-                                      </span>
-                                      <div className="text-xs font-mono text-slate-400">
-                                        {formatExportTime(record.date)}
-                                      </div>
-                                    </td>
-                                    {/* Expected Return */}
-                                    <td className="px-4 py-3">
-                                      <span className="text-xs font-mono text-slate-600">
-                                        {record.expectedReturnAt ? formatExportDate(record.expectedReturnAt) : "—"}
-                                      </span>
-                                    </td>
-                                    {/* Items */}
-                                    <td className="px-4 py-3 text-sm text-slate-600">
-                                      {activeItems.length > 1 ? (
-                                        <div className="space-y-0.5">
-                                          {activeItems.slice(0, 5).map((item, idx) => (
-                                            <div key={`${record.id}-${item.id}`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
-                                              {idx === 4 && activeItems.length > 5
-                                                ? `+${activeItems.length - 5} more items`
-                                                : item.label}
-                                            </div>
-                                          ))}
-                                        </div>
-                                      ) : activeItems.length === 1 ? (
-                                        <span>{activeItems[0].label}</span>
-                                      ) : (
-                                        "—"
-                                      )}
-                                    </td>
-                                  </>
-                                ) : (
-                                  <>
-                                    {/* Borrowed At */}
-                                    <td className="px-4 py-3 text-sm text-slate-600">
-                                      <div>{formatExportDate(record.date)}</div>
-                                      <div className="text-xs text-slate-400">{formatExportTime(record.date)}</div>
-                                    </td>
-                                    {/* Status */}
-                                    <td className="px-4 py-3 w-[110px]">
-                                      <span className={`inline-flex w-[90px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${getBorrowingStatusClass(record.status)}`}>
-                                        {formatBorrowingStatus(record.status)}
-                                      </span>
-                                    </td>
-                                    {/* Items */}
-                                    <td className="px-4 py-3 text-sm text-slate-600">
-                                      {activeItems.length > 1 ? (
-                                        <div className="space-y-0.5">
-                                          {activeItems.slice(0, 5).map((item, idx) => (
-                                            <div key={`${record.id}-${item.id}`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
-                                              {idx === 4 && activeItems.length > 5
-                                                ? `+${activeItems.length - 5} more items`
-                                                : item.label}
-                                            </div>
-                                          ))}
-                                        </div>
-                                      ) : activeItems.length === 1 ? (
-                                        <span>{activeItems[0].label}</span>
-                                      ) : (
-                                        "—"
-                                      )}
-                                    </td>
-                                    {/* Quantity */}
-                                    <td className="px-4 py-3 text-sm text-slate-600">
-                                      {activeItems.length > 1 ? (
-                                        <div className="space-y-0.5">
-                                          {activeItems.slice(0, 5).map((item, idx) => {
-                                            const total = getBorrowedQuantity(item);
-                                            const returned = getReturnedQuantity(item);
-                                            const displayQty = Math.max(0, total - returned);
-                                            return (
-                                              <div key={`${record.id}-${item.id}-qty`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
-                                                {idx === 4 && activeItems.length > 5
-                                                  ? `+${activeItems.length - 5} more`
-                                                  : (displayQty || "—")}
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      ) : activeItems.length === 1 ? (
-                                        <span>{Math.max(0, getBorrowedQuantity(activeItems[0]) - getReturnedQuantity(activeItems[0])) || "—"}</span>
-                                      ) : (
-                                        "—"
-                                      )}
-                                    </td>
-                                    {/* Condition */}
-                                    <td className="px-4 py-3 w-[120px]">
-                                      {activeItems.length > 1 ? (
-                                        <div className="space-y-1">
-                                          {activeItems.slice(0, 5).map((item, idx) => {
-                                            const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
-                                            const opLabel = tabMeta.operational || "Working";
-                                            const qLabel = tabMeta.quarantine || "Defective";
-                                            const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
-                                            const label = getReturnConditionLabel(item, opLabel, qLabel);
-                                            return (
-                                              <div key={`${record.id}-${item.id}-condition`} className="flex justify-center">
-                                                {idx === 4 && activeItems.length > 5 ? (
-                                                  <span className="text-xs italic text-slate-400">+{activeItems.length - 5} more</span>
-                                                ) : (
-                                                  <span className={`inline-flex min-w-[72px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-rose-100 text-rose-700 border border-rose-200"}`}>
-                                                    {label}
-                                                  </span>
-                                                )}
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      ) : activeItems.length === 1 ? (
-                                        (() => {
-                                          const item = activeItems[0];
-                                          const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
-                                          const opLabel = tabMeta.operational || "Working";
-                                          const qLabel = tabMeta.quarantine || "Defective";
-                                          const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
-                                          const label = getReturnConditionLabel(item, opLabel, qLabel);
-                                          return (
-                                            <div className="flex justify-center">
-                                              <span className={`inline-flex min-w-[72px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-rose-100 text-rose-700 border border-rose-200"}`}>
-                                                {label}
-                                              </span>
-                                            </div>
-                                          );
-                                        })()
-                                      ) : (
-                                        "—"
-                                      )}
-                                    </td>
-                                  </>
-                                )}
-
-                                {/* Actions */}
-                                <td className="px-4 py-3">
-                                  <div className="flex items-center justify-end">
-                                    {isPending ? (
-                                      <>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleApproveRecord(record);
-                                          }}
-                                          disabled={processingId !== null}
-                                          className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/60 hover:bg-emerald-100/80 rounded px-2.5 py-1 transition-colors mr-2 disabled:opacity-50"
-                                        >
-                                          <span className="inline-flex items-center gap-1">
-                                            <CheckCircle className="h-3.5 w-3.5" />
-                                            Approve
-                                          </span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDenyRecord(record);
-                                          }}
-                                          disabled={processingId !== null}
-                                          className="text-xs font-medium text-slate-400 hover:text-rose-600 rounded px-2 py-1 transition-colors disabled:opacity-50"
-                                        >
-                                          <span className="inline-flex items-center gap-1">
-                                            <XCircle className="h-3.5 w-3.5" />
-                                            Deny
-                                          </span>
-                                        </button>
-                                      </>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          requestReturn(record);
-                                        }}
-                                        className="rounded-lg bg-[#4a1111] text-white px-3 py-1 text-xs font-medium hover:bg-[#3a0d0d] transition-colors"
-                                      >
-                                        Return
-                                      </button>
-                                    )}
-                                  </div>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  <div>{formatExportDate(record.date)}</div>
+                                  <div className="text-xs text-slate-400">{formatExportTime(record.date)}</div>
                                 </td>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  {record.expectedReturnAt ? (
+                                    <div>{formatExportDate(record.expectedReturnAt)}</div>
+                                  ) : (
+                                    <span className="text-xs text-slate-400">—</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  {record.returnedAt ? (
+                                    <>
+                                      <div>{formatExportDate(record.returnedAt)}</div>
+                                      <div className="text-xs text-slate-400">{formatExportTime(record.returnedAt)}</div>
+                                    </>
+                                  ) : (
+                                    <span className="text-xs text-amber-600">Partially returned</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  {activeItems.length > 1 ? (
+                                    <div className="space-y-0.5">
+                                      {activeItems.slice(0, 5).map((item, idx) => (
+                                        <div key={`${record.id}-${item.id}`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
+                                          {idx === 4 && activeItems.length > 5
+                                            ? `+${activeItems.length - 5} more items`
+                                            : item.label}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : activeItems.length === 1 ? (
+                                    <span>{activeItems[0].label}</span>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  {activeItems.length > 1 ? (
+                                    <div className="space-y-0.5">
+                                      {activeItems.slice(0, 5).map((item, idx) => {
+                                        const returned = getReturnedQuantity(item);
+                                        return (
+                                          <div key={`${record.id}-${item.id}-qty`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
+                                            {idx === 4 && activeItems.length > 5
+                                              ? `+${activeItems.length - 5} more`
+                                              : (returned || "—")}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : activeItems.length === 1 ? (
+                                    <span>{getReturnedQuantity(activeItems[0]) || "—"}</span>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                {/*<td className="px-4 py-3">
+                                  {activeItems.length > 1 ? (
+                                    <div className="space-y-1">
+                                      {activeItems.map((item) => {
+                                        const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
+                                        const opLabel = tabMeta.operational || "Working";
+                                        const qLabel = tabMeta.quarantine || "Defective";
+                                        const label = getReturnConditionLabel(item, opLabel, qLabel);
+                                        return (
+                                          <div key={`${record.id}-${item.id}-condition`}>
+                                            <span className="rounded-md px-2 py-1 text-xs font-semibold border border-rose-200 bg-rose-100 text-rose-700">
+                                              {label}
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : activeItems.length === 1 ? (
+                                    (() => {
+                                      const item = activeItems[0];
+                                      const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
+                                      const opLabel = tabMeta.operational || "Working";
+                                      const qLabel = tabMeta.quarantine || "Defective";
+                                      return (
+                                        <span className="inline-flex min-w-[100px] justify-center whitespace-nowrap rounded-full border border-rose-200 bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                                          {getReturnConditionLabel(item, opLabel, qLabel)}
+                                        </span>
+                                      );
+                                    })()
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td> */}
+
                               </tr>
                             );
                           })}
@@ -3734,7 +3657,325 @@ export default function Borrowing() {
                   </>
                 )}
               </div>
+            </div>
+            <div className="min-w-0 w-full xl:min-w-[440px]">
+              <ExportLogsPanel
+                searchQuery={search}
+                refreshToken={exportLogRefreshToken}
+                fileNamePrefix="borrowing-records"
+              />
+            </div>
           </div>
+        ) : (
+          <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-opacity duration-300">
+            {borrowingsError && (
+              <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                Error loading borrowings: {borrowingsError}
+              </div>
+            )}
+            {!borrowingsLoading && filteredData.length === 0 ? (
+              <div className="text-center py-16 text-slate-400">
+                <p>{statusFilter === "pending" ? "No pending approval requests." : "No borrowed items yet."}</p>
+              </div>
+            ) : !borrowingsLoading && (
+              <>
+                <div className="borrowing-table-scroll max-h-[36rem] overflow-auto">
+                  <table className="w-full min-w-[900px] border-separate border-spacing-0 transition-opacity duration-300">
+                    <thead className="sticky top-0 z-10 bg-slate-50 shadow-[inset_0_-1px_0_rgb(226,232,240)]">
+                      <tr>
+                        {statusFilter === "pending"
+                          ? [
+                              "Borrower",
+                              "ID Number",
+                              "Requested At",
+                              "Expected Return",
+                              "Items",
+                              "Status",
+                            ].map((h) => (
+                              <th
+                                key={h}
+                                className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
+                              >
+                                {h}
+                              </th>
+                            ))
+                          : [
+                              "Borrower",
+                              "Borrowed At",
+                              "Status",
+                              "Items",
+                              "Quantity",
+                              "Condition",
+                            ].map((h) => (
+                              <th
+                                key={h}
+                                className={`bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500${h === "Status" ? " w-[110px]" : ""}${h === "Condition" ? " w-[120px]" : ""}`}
+                              >
+                                {h}
+                              </th>
+                            ))}
+                        <th className="bg-slate-50 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          <span className="sr-only">Row actions</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {currentPageData.map((record, rowIndex) => {
+                        const isPending = record._source === "approval";
+                        const activeItemsRaw = (record.items || []).filter((item) => getReturnedQuantity(item) < getBorrowedQuantity(item));
+                        const searchLower = search.toLowerCase();
+                        const activeItems = searchLower
+                          ? [...activeItemsRaw].sort((a, b) => {
+                              const aMatch = String(a.label || "").toLowerCase().includes(searchLower);
+                              const bMatch = String(b.label || "").toLowerCase().includes(searchLower);
+                              if (aMatch && !bMatch) return -1;
+                              if (!aMatch && bMatch) return 1;
+                              return 0;
+                            })
+                          : activeItemsRaw;
+                        return (
+                          <tr
+                            key={record.id}
+                            onClick={() => setSelectedRecord(record)}
+                            className={`cursor-pointer transition-colors hover:bg-slate-200/80 ${rowIndex % 2 === 0 ? "bg-white" : "bg-slate-100/90"}`}
+                          >
+                            <td className="px-4 py-3">
+                              <p className="text-sm font-medium text-slate-900">{record.name}</p>
+                              {!isPending && (
+                                <span className="mt-0.5 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                                  {record.role || "STUDENT"}
+                                </span>
+                              )}
+                              {isPending && (
+                                <span className="mt-0.5 inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+                                  {record.role || record.borrower_role || "STUDENT"}
+                                </span>
+                              )}
+                            </td>
+                            {isPending ? (
+                              <>
+                                <td className="px-4 py-3 text-sm font-mono text-slate-600">
+                                  {record.studentId || record.borrower_id_number || "—"}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  <div>{formatExportDate(record.date || record.created_at)}</div>
+                                  <div className="text-xs text-slate-400">{formatExportTime(record.date || record.created_at)}</div>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  {record.expectedReturnAt || record.expected_return_at ? (
+                                    <div>{formatExportDate(record.expectedReturnAt || record.expected_return_at)}</div>
+                                  ) : (
+                                    <span className="text-xs text-slate-400">—</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  {activeItems.length > 1 ? (
+                                    <div className="space-y-0.5">
+                                      {activeItems.slice(0, 5).map((item, idx) => (
+                                        <div key={`${record.id}-${item.id}`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
+                                          {idx === 4 && activeItems.length > 5
+                                            ? `+${activeItems.length - 5} more items`
+                                            : item.label}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : activeItems.length === 1 ? (
+                                    <span>{activeItems[0].label}</span>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+                                    Pending
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleApproveRecord(record);
+                                      }}
+                                      disabled={processingId === record.id}
+                                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+                                    >
+                                      {processingId === record.id ? "..." : "Approve"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDenyRecord(record);
+                                      }}
+                                      disabled={processingId === record.id}
+                                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                                    >
+                                      Deny
+                                    </button>
+                                  </div>
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  <div>{formatExportDate(record.date)}</div>
+                                  <div className="text-xs text-slate-400">{formatExportTime(record.date)}</div>
+                                </td>
+                                <td className="px-4 py-3 w-[110px]">
+                                  <span className={`inline-flex w-[90px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${getBorrowingStatusClass(record.status)}`}>
+                                    {formatBorrowingStatus(record.status)}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  {activeItems.length > 1 ? (
+                                    <div className="space-y-0.5">
+                                      {activeItems.slice(0, 5).map((item, idx) => (
+                                        <div key={`${record.id}-${item.id}`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
+                                          {idx === 4 && activeItems.length > 5
+                                            ? `+${activeItems.length - 5} more items`
+                                            : item.label}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : activeItems.length === 1 ? (
+                                    <span>{activeItems[0].label}</span>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  {activeItems.length > 1 ? (
+                                    <div className="space-y-0.5">
+                                      {activeItems.slice(0, 5).map((item, idx) => {
+                                        const total = getBorrowedQuantity(item);
+                                        const returned = getReturnedQuantity(item);
+                                        const displayQty = Math.max(0, total - returned);
+                                        return (
+                                          <div key={`${record.id}-${item.id}-qty`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
+                                            {idx === 4 && activeItems.length > 5
+                                              ? `+${activeItems.length - 5} more`
+                                              : (displayQty || "—")}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : activeItems.length === 1 ? (
+                                    <span>{Math.max(0, getBorrowedQuantity(activeItems[0]) - getReturnedQuantity(activeItems[0])) || "—"}</span>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 w-[120px]">
+                                  {activeItems.length > 1 ? (
+                                    <div className="space-y-1">
+                                      {activeItems.slice(0, 5).map((item, idx) => {
+                                        const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
+                                        const opLabel = tabMeta.operational || "Working";
+                                        const qLabel = tabMeta.quarantine || "Defective";
+                                        const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
+                                        const label = getReturnConditionLabel(item, opLabel, qLabel);
+                                        return (
+                                          <div key={`${record.id}-${item.id}-condition`} className="flex justify-center">
+                                            {idx === 4 && activeItems.length > 5 ? (
+                                              <span className="text-xs italic text-slate-400">+{activeItems.length - 5} more</span>
+                                            ) : (
+                                              <span className={`inline-flex min-w-[72px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-rose-100 text-rose-700 border border-rose-200"}`}>
+                                                {label}
+                                              </span>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : activeItems.length === 1 ? (
+                                    (() => {
+                                      const item = activeItems[0];
+                                      const tabMeta = conditionMetaByTab[item.inventoryTabId] || {};
+                                      const opLabel = tabMeta.operational || "Working";
+                                      const qLabel = tabMeta.quarantine || "Defective";
+                                      const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
+                                      const label = getReturnConditionLabel(item, opLabel, qLabel);
+                                      return (
+                                        <div className="flex justify-center">
+                                          <span className={`inline-flex min-w-[72px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-rose-100 text-rose-700 border border-rose-200"}`}>
+                                            {label}
+                                          </span>
+                                        </div>
+                                      );
+                                    })()
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        requestReturn(record);
+                                      }}
+                                      className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                                    >
+                                      Return
+                                    </button>
+                                  </div>
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {filteredData.length > 0 && (
+                  <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
+                    <div className="text-sm text-slate-500">
+                      Showing {Math.min(pageStartIndex + 1, filteredData.length)}–{Math.min(pageEndIndex, filteredData.length)} of {filteredData.length}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                        className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label="Previous page"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      {visiblePageNumbers.map((pageNumber) => {
+                        const isActive = page === pageNumber;
+                        return (
+                          <button
+                            key={pageNumber}
+                            type="button"
+                            onClick={() => setPage(pageNumber)}
+                            className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
+                          >
+                            {pageNumber}
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={page === totalPages || totalPages === 0}
+                        className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label="Next page"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ── Record Detail Dialog ──────────────────────────────────────────── */}
       {selectedRecord && (
@@ -3822,8 +4063,15 @@ export default function Borrowing() {
                 const allItems = selectedRecord.items || [];
 
                 // ── Filter items based on view ──
+                // History view ("all"): show returned items; if fully returned, show all items
                 // Borrowed view: show ALL items
-                const visibleItems = allItems;
+                const isHistoryView = statusFilter === "all";
+                const isFullyReturned = returningStatus === "fully returned";
+                const visibleItems = isHistoryView
+                  ? isFullyReturned
+                    ? allItems
+                    : allItems.filter((item) => getReturnedQuantity(item) > 0)
+                  : allItems;
 
                 // Count returned vs total for header
                 const totalReturnedQty = allItems.reduce(
@@ -3833,9 +4081,13 @@ export default function Borrowing() {
                   (sum, item) => sum + getBorrowedQuantity(item), 0
                 );
 
-                // ── Split into still-borrowed vs returned ──
-                const borrowedItems = visibleItems.filter((item) => getReturnedQuantity(item) < getBorrowedQuantity(item));
-                const returnedItems = visibleItems.filter((item) => getReturnedQuantity(item) > 0);
+                // ── For borrowed view: split into still-borrowed vs returned ──
+                const borrowedItems = statusFilter !== "all"
+                  ? visibleItems.filter((item) => getReturnedQuantity(item) < getBorrowedQuantity(item))
+                  : [];
+                const returnedItems = statusFilter !== "all"
+                  ? visibleItems.filter((item) => getReturnedQuantity(item) > 0)
+                  : [];
                 // An item can appear in both lists if partially returned
                 const hasSegregation = borrowedItems.length > 0 && returnedItems.length > 0;
 
