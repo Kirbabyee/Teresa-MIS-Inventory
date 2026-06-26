@@ -248,7 +248,7 @@ export default function PublicBorrow() {
         expectedReturnAt.setHours(23, 59, 59, 0);
       }
 
-      await createBorrowingRecord({
+      const result = await createBorrowingRecord({
         borrowerName: form.name,
         borrowerIdNumber: form.studentId,
         borrowerRole: form.role,
@@ -256,7 +256,12 @@ export default function PublicBorrow() {
         borrowDate: borrowDate.toISOString(),
         expectedReturnAt: expectedReturnAt.toISOString(),
       });
-      toast.success("Borrowing submitted. Thank you.");
+
+      if (result?.status === "pending_approval") {
+        toast.success("Borrowing request submitted. Awaiting administrator approval.");
+      } else {
+        toast.success("Borrowing submitted. Thank you.");
+      }
       setForm({ name: "", studentId: "", role: "", borrowDate: "", expectedReturnAt: "" });
       setCustomItems([]);
       setBorrowCart([]);

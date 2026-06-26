@@ -228,6 +228,41 @@ export const markOverdueBorrowingRecords = async ({ days = 3 } = {}) => {
   return data || [];
 };
 
+/**
+ * Check whether administrative approval is required for borrowing.
+ * Reads from inventory_settings → borrowing.require_admin_approval
+ */
+export const isAdminApprovalRequired = async () => {
+  try {
+    const { data, error } = await supabase
+      .from("inventory_settings")
+      .select("value")
+      .eq("key", "borrowing.require_admin_approval")
+      .maybeSingle();
+
+    if (error || !data) return false;
+    const val = data.value;
+    if (typeof val === "boolean") return val;
+    if (typeof val === "string") return val.toLowerCase() === "true";
+    if (typeof val === "object" && val !== null) {
+      // JSONB stored as { value: true } or similar
+      const inner = val.value ?? val.enabled ?? val;
+      if (typeof inner === "boolean") return inner;
+      if (typeof inner === "string") return inner.toLowerCase() === "true";
+    }
+    return false;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Create a borrowing record.
+ * When approval is required, inserts into borrowing_records_approval (staging)
+ * and returns { status: "pending_approval", record }.
+ * When approval is NOT required, inserts directly into borrowing_records
+ * and returns { status: "approved", record }.
+ */
 export const createBorrowingRecord = async ({
   borrowerName,
   borrowerIdNumber,
@@ -235,6 +270,60 @@ export const createBorrowingRecord = async ({
   items = [],
   expectedReturnAt = null,
 }) => {
+  const requiresApproval = await isAdminApprovalRequired();
+
+  if (requiresApproval) {
+    // ── Staging path: insert into approval queue ──────────────────────
+    const { data: record, error: recordError } = await supabase
+      .from("borrowing_records_approval")
+      .insert([
+        {
+          borrower_name: borrowerName,
+          borrower_id_number: borrowerIdNumber,
+          borrower_role: borrowerRole,
+          status: "pending",
+          expected_return_at: expectedReturnAt,
+          borrowed_at: new Date().toISOString(),
+        },
+      ])
+      .select("id, borrower_name, borrower_id_number, borrower_role, borrowed_at, expected_return_at, status, created_at")
+      .single();
+
+    if (recordError) throw recordError;
+
+    if (items.length > 0) {
+      const itemPayload = items.map((item) => ({
+        borrowing_record_id: record.id,
+        inventory_item_id: item.inventoryItemId || null,
+        inventory_tab_id: item.inventoryTabId || null,
+        inventory_section_id: item.inventorySectionId || null,
+        inventory_table_name: item.inventoryTableName || "",
+        item_label: item.label,
+        item_details: item.details || [],
+      }));
+
+      const { error: itemsError } = await supabase
+        .from("borrowing_items_approval")
+        .insert(itemPayload);
+      if (itemsError) throw itemsError;
+    }
+
+    return {
+      status: "pending_approval",
+      record: {
+        id: record.id,
+        borrowerName: record.borrower_name,
+        borrowerIdNumber: record.borrower_id_number,
+        borrowerRole: record.borrower_role,
+        borrowedAt: record.borrowed_at,
+        expectedReturnAt: record.expected_return_at,
+        status: record.status,
+        createdAt: record.created_at,
+      },
+    };
+  }
+
+  // ── Direct path: insert into live table ────────────────────────────
   const { data: record, error: recordError } = await supabase
     .from("borrowing_records")
     .insert([
@@ -274,18 +363,21 @@ export const createBorrowingRecord = async ({
   }
 
   return {
-    ...mapBorrowingRecord({ ...record, borrowing_items: insertedItems }),
-    items: insertedItems.map((savedItem, index) => ({
-      id: savedItem.id,
-      inventoryItemId: savedItem.inventory_item_id ?? null,
-      inventoryTabId: savedItem.inventory_tab_id,
-      inventorySectionId: savedItem.inventory_section_id,
-      label: savedItem.item_label || items[index]?.label || "Item",
-      details: Array.isArray(savedItem.item_details) ? savedItem.item_details : [],
-      tab: items[index]?.inventoryTabName || "",
-      section: items[index]?.inventorySectionName || "",
-      tableName: savedItem.inventory_table_name || items[index]?.inventoryTableName || "",
-    })),
+    status: "approved",
+    record: {
+      ...mapBorrowingRecord({ ...record, borrowing_items: insertedItems }),
+      items: insertedItems.map((savedItem, index) => ({
+        id: savedItem.id,
+        inventoryItemId: savedItem.inventory_item_id ?? null,
+        inventoryTabId: savedItem.inventory_tab_id,
+        inventorySectionId: savedItem.inventory_section_id,
+        label: savedItem.item_label || items[index]?.label || "Item",
+        details: Array.isArray(savedItem.item_details) ? savedItem.item_details : [],
+        tab: items[index]?.inventoryTabName || "",
+        section: items[index]?.inventorySectionName || "",
+        tableName: savedItem.inventory_table_name || items[index]?.inventoryTableName || "",
+      })),
+    },
   };
 };
 

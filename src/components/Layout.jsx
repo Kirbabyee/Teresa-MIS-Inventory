@@ -25,6 +25,7 @@ import {
   Boxes,
   FlaskConical,
   ShieldAlert,
+  ShieldCheck,
   Settings,
   BarChart3,
 } from "lucide-react";
@@ -431,7 +432,15 @@ export default function Layout() {
       { label: "Dashboard", icon: Home, path: "/" },
       { label: "Analytics", icon: BarChart3, path: "/analytics" },
       { label: "Inventory", icon: Boxes, path: "/manage/inventory", children: inventoryChildren },
-      { label: "Borrowing", icon: ClipboardList, path: "/borrowing" },
+      {
+        label: "Borrowing",
+        icon: ClipboardList,
+        path: "/borrowing",
+        children: [
+          { label: "Active Records", icon: ClipboardList, path: "/borrowing" },
+          { label: "Approval Queue", icon: ShieldCheck, path: "/borrowing/approvals" },
+        ],
+      },
     ];
 
     if (isAdminSession(session)) {

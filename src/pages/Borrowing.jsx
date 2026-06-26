@@ -2798,7 +2798,7 @@ export default function Borrowing() {
           )
         );
       } else {
-        const savedRecord = await createBorrowingRecord({
+        const result = await createBorrowingRecord({
           borrowerName: form.name.trim(),
           borrowerIdNumber: form.studentId.trim(),
           borrowerRole: form.role,
@@ -2806,7 +2806,14 @@ export default function Borrowing() {
           expectedReturnAt: expectedReturnAt.toISOString(),
         });
 
+        // Admin-initiated borrows always use the live record.
+        // If approval is required, the record was staged — show notice.
+        const savedRecord = result.status === "pending_approval" ? result.record : result.record;
         setData((prev) => [savedRecord, ...prev]);
+
+        if (result.status === "pending_approval") {
+          toast.success("Request submitted to approval queue for admin review.");
+        }
       }
 
       setInventoryItems((currentItems) =>
