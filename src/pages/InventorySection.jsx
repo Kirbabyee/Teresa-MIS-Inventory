@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, ChevronsUpDown, Check, ChevronLeft, ChevronRight, ChevronDown, Download, FileText, PencilLine, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowRightLeft, ArrowUp, ChevronsUpDown, Check, ChevronLeft, ChevronRight, ChevronDown, Download, FileText, Loader2, PencilLine, Plus, Search, Trash2, X } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { DayPicker } from "react-day-picker";
@@ -48,6 +48,7 @@ import {
 import arkLogoUrl from "@/assets/imgs/ark-logo.png";
 import InventorySectionHistoryView from "@/components/InventorySectionHistoryView";
 import InventorySectionExportPanel from "@/components/InventorySectionExportPanel";
+import ItemTransferModal from "@/components/ItemTransferModal";
 import { useAuth } from "@/lib/AuthContext";
 import {
   INVENTORY_ITEMS_CHANGED_EVENT,
@@ -62,6 +63,7 @@ import {
   callDropInventoryLogsTable,
   getInventoryLogsTableEndpoint,
   getInventoryDropLogsTableEndpoint,
+  transferInventoryItem,
 } from "@/lib/inventoryApi";
 import { fetchBorrowingRecords } from "@/lib/borrowingApi";
 import { cn } from "@/lib/utils";
@@ -181,7 +183,10 @@ const getCanonicalTemplateOrder = (columns = []) => {
   return matchedOrder || [];
 };
 
-const isIdentifierField = (fieldKey = "") => IDENTIFIER_FIELD_KEYS.has(String(fieldKey || "").trim());
+const isIdentifierField = (fieldKey = "") => {
+  const normalized = String(fieldKey || "").trim().toLowerCase();
+  return IDENTIFIER_FIELD_KEYS.has(normalized) || normalized.endsWith("_item_number") || normalized.endsWith("_computer_number");
+};
 
 const orderTemplateColumns = (columns = []) => {
   const ordered = Array.isArray(columns) ? [...columns] : [];
@@ -682,11 +687,13 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
     }
 
     const isRemarksDescField = remarksDescFieldKey && fieldKey === remarksDescFieldKey;
+    const isIdentifier = isIdentifierField(fieldKey);
 
     return (
       <Input
         className={cn(
           "mt-1",
+          isIdentifier && "bg-slate-100 cursor-not-allowed",
           isNameField && nameErr
             ? "border-rose-400 bg-rose-50/50 focus-visible:ring-rose-400"
             : isNameField && !nameErr && dynamicForm[fieldKey]?.trim()
@@ -705,7 +712,9 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
               : "text"
         }
         value={dynamicForm[fieldKey] ?? ""}
+        readOnly={isIdentifier}
         onChange={(event) => {
+          if (isIdentifier) return;
           setDynamicForm((current) => ({
             ...current,
             [fieldKey]: event.target.value,
@@ -1104,6 +1113,7 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
                         <Input
                           className={cn(
                             "mt-1",
+                            isIdentifierField(column.key) && "bg-slate-100 cursor-not-allowed",
                             useTemplate && nameFieldKey && column.key === nameFieldKey && nameError
                               ? "border-rose-400 bg-rose-50/50 focus-visible:ring-rose-400"
                               : useTemplate && nameFieldKey && column.key === nameFieldKey && !nameError && dynamicForm[column.key]?.trim()
@@ -1124,7 +1134,9 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
                                 : "text"
                           }
                           value={dynamicForm[column.key] ?? ""}
+                          readOnly={isIdentifierField(column.key)}
                           onChange={(event) => {
+                            if (isIdentifierField(column.key)) return;
                             setDynamicForm((current) => ({
                               ...current,
                               [column.key]: event.target.value,
@@ -1155,10 +1167,11 @@ function ItemModal({ section, item, onClose, onSaved, tableName, templateColumns
                     Computer #
                   </label>
                   <Input
-                    className="mt-1"
+                    className="mt-1 bg-slate-100 cursor-not-allowed"
                     type="number"
                     min="1"
                     value={legacyForm.computerNumber}
+                    readOnly
                     onChange={(event) =>
                       setLegacyForm((current) => ({
                         ...current,
@@ -1456,6 +1469,11 @@ export default function InventorySection() {
   const [remarkSaving, setRemarkSaving] = useState(false);
   const [remarkInlineEdit, setRemarkInlineEdit] = useState(null);
   const [defectiveConfirmModal, setDefectiveConfirmModal] = useState(null);
+  // { item, currentRemark, allRemarkOptions, remarkColumnKey, quantityKey }
+
+  // ── Item Transfer state ──
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferSourceItem, setTransferSourceItem] = useState(null);
   // { item, currentRemark, allRemarkOptions, remarkColumnKey, quantityKey }
 
   const historyDatePickerRef = useRef(null);
@@ -3046,10 +3064,11 @@ export default function InventorySection() {
                                                   <input
                                                     type={fieldEditorType === "date" ? "date" : ["int", "integer", "float", "number", "numeric"].includes(fieldEditorType) ? "number" : "text"}
                                                     value={fieldDraftValue}
-                                                    disabled={savingCellKey === fieldDraftKey || deletingId !== null}
-                                                    onChange={(event) => handleCellDraftChange(item.id, fieldKey, event.target.value)}
-                                                    onBlur={() => handleInlineCellSave(item, fieldKey, subColumn)}
+                                                    disabled={savingCellKey === fieldDraftKey || deletingId !== null || isIdentifierField(fieldKey)}
+                                                    onChange={(event) => { if (!isIdentifierField(fieldKey)) handleCellDraftChange(item.id, fieldKey, event.target.value); }}
+                                                    onBlur={() => { if (!isIdentifierField(fieldKey)) handleInlineCellSave(item, fieldKey, subColumn); }}
                                                     onKeyDown={(event) => {
+                                                      if (isIdentifierField(fieldKey)) return;
                                                       if (event.key === "Enter") event.currentTarget.blur();
                                                       if (event.key === "Escape") {
                                                         setCellDrafts((current) => {
@@ -3060,7 +3079,10 @@ export default function InventorySection() {
                                                         event.currentTarget.blur();
                                                       }
                                                     }}
-                                                    className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100"
+                                                    className={cn(
+                                                      "w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100",
+                                                      isIdentifierField(fieldKey) && "bg-slate-100 cursor-not-allowed opacity-70"
+                                                    )}
                                                   />
                                                 )
                                               ) : (
@@ -3152,10 +3174,11 @@ export default function InventorySection() {
                                         <input
                                           type={columnEditorType === "date" ? "date" : ["int", "integer", "float", "number", "numeric"].includes(columnEditorType) ? "number" : "text"}
                                           value={columnDraftValue}
-                                          disabled={savingCellKey === columnDraftKey || deletingId !== null}
-                                          onChange={(event) => handleCellDraftChange(item.id, columnKey, event.target.value)}
-                                          onBlur={() => handleInlineCellSave(item, columnKey, column)}
+                                          disabled={savingCellKey === columnDraftKey || deletingId !== null || isIdentifierField(columnKey)}
+                                          onChange={(event) => { if (!isIdentifierField(columnKey)) handleCellDraftChange(item.id, columnKey, event.target.value); }}
+                                          onBlur={() => { if (!isIdentifierField(columnKey)) handleInlineCellSave(item, columnKey, column); }}
                                           onKeyDown={(event) => {
+                                            if (isIdentifierField(columnKey)) return;
                                             if (event.key === "Enter") event.currentTarget.blur();
                                             if (event.key === "Escape") {
                                               setCellDrafts((current) => {
@@ -3166,7 +3189,10 @@ export default function InventorySection() {
                                               event.currentTarget.blur();
                                             }
                                           }}
-                                          className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100"
+                                          className={cn(
+                                            "w-full rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 focus:border-[#4a1111] focus:outline-none disabled:bg-slate-100",
+                                            isIdentifierField(columnKey) && "bg-slate-100 cursor-not-allowed opacity-70"
+                                          )}
                                         />
                                       )
                                     ) : (
@@ -3179,16 +3205,31 @@ export default function InventorySection() {
                               })}
                             {gridEditMode && isAdmin && (
                               <td className="px-4 py-4 align-middle text-center">
-                                <button
-                                  type="button"
-                                  disabled={deletingId === item.id}
-                                  onClick={() => handleDelete(item.id)}
-                                  className="inline-flex items-center justify-center rounded-lg bg-red-500 p-2 text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:bg-slate-300"
-                                  title="Delete item"
-                                  aria-label="Delete item"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={deletingId === item.id}
+                                    onClick={() => {
+                                      setTransferSourceItem(item);
+                                      setShowTransferModal(true);
+                                    }}
+                                    className="inline-flex items-center justify-center rounded-lg bg-[#4a1111] p-2 text-white transition hover:bg-[#5a1717] disabled:cursor-not-allowed disabled:bg-slate-300"
+                                    title="Transfer item"
+                                    aria-label="Transfer item"
+                                  >
+                                    <ArrowRightLeft className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={deletingId === item.id}
+                                    onClick={() => handleDelete(item.id)}
+                                    className="inline-flex items-center justify-center rounded-lg bg-red-500 p-2 text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                    title="Delete item"
+                                    aria-label="Delete item"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
                               </td>
                             )}
                           </tr>
@@ -3295,6 +3336,25 @@ export default function InventorySection() {
           onSaved={handleSaved}
         />
       )}
+
+      <ItemTransferModal
+        open={showTransferModal}
+        onOpenChange={(nextOpen) => {
+          setShowTransferModal(nextOpen);
+          if (!nextOpen) setTransferSourceItem(null);
+        }}
+        sourceItem={transferSourceItem}
+        sourceTableName={tabTableName || ""}
+        sourceSectionId={selectedSection?.id || ""}
+        sourceTab={tab ? { id: tab.id, name: tab.name, slug: tab.slug } : null}
+        allTabs={tabs}
+        quantityColumn={displayTemplateColumns.find((c) => c.key === "quantity")?.key || "quantity"}
+        onTransferred={() => {
+          setTransferSourceItem(null);
+          setRefreshKey((current) => current + 1);
+        }}
+      />
+
       {showExportModal && (
         <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
           <DialogContent className="flex max-h-[85vh] max-w-lg flex-col gap-0 overflow-hidden rounded-[28px] p-0">

@@ -2118,3 +2118,357 @@ export const getInstanceCounts = (instances = [], conditionOptions = null) => {
 
   return { working, defective, underRepair, total: instances.length };
 };
+
+// ─── Item Transfer ──────────────────────────────────────────────────────────
+
+/**
+ * Transfer a quantity of an item from one inventory table/section to another.
+ * Uses Supabase RPC for atomicity when available; falls back to client-side
+ * sequential operations with rollback on failure.
+ *
+ * @param {Object} params
+ * @param {string} params.sourceItemId   - UUID of the source item row
+ * @param {string} params.sourceTable    - Source physical table name
+ * @param {string} params.sourceSectionId - Source section UUID
+ * @param {string} params.destTable      - Destination physical table name
+ * @param {string} params.destSectionId  - Destination section UUID
+ * @param {number} params.transferQty    - Quantity to transfer (> 0)
+ * @param {string} [params.quantityColumn='quantity'] - Name of the qty column
+ * @returns {Promise<{success:boolean, sourceId?:string, destId?:string, sourceRemaining?:number, destTotalQty?:number, error?:string}>}
+ */
+export const transferInventoryItem = async ({
+  sourceItemId,
+  sourceTable,
+  sourceSectionId,
+  destTable,
+  destSectionId,
+  transferQty,
+  quantityColumn = "quantity",
+}) => {
+  const qty = Math.floor(Number(transferQty));
+  if (!qty || qty <= 0) {
+    return { success: false, error: "Transfer quantity must be a positive integer." };
+  }
+  if (!sourceItemId) return { success: false, error: "Source item ID is required." };
+  if (!sourceTable) return { success: false, error: "Source table name is required." };
+  if (!sourceSectionId) return { success: false, error: "Source section ID is required." };
+  if (!destTable) return { success: false, error: "Destination table name is required." };
+  if (!destSectionId) return { success: false, error: "Destination section ID is required." };
+
+  const sameTable = sourceTable === destTable;
+  const sameSection = sameTable && sourceSectionId === destSectionId;
+  if (sameSection) {
+    return { success: false, error: "Cannot transfer an item to the same section it is already in." };
+  }
+
+  // ── Attempt RPC first (atomic) ──
+  try {
+    const { data, error } = await supabase.rpc("transfer_inventory_item", {
+      p_source_item_id: sourceItemId,
+      p_source_table: sourceTable,
+      p_source_section_id: sourceSectionId,
+      p_dest_table: destTable,
+      p_dest_section_id: destSectionId,
+      p_transfer_qty: qty,
+      p_quantity_column: quantityColumn,
+    });
+
+    if (error) {
+      console.warn("[transferInventoryItem] RPC failed, falling back to client-side:", error.message);
+    } else if (data?.success === true) {
+      notifyInventoryItemsChanged();
+      return {
+        success: true,
+        sourceId: data.source_id,
+        destId: data.dest_id,
+        sourceRemaining: data.source_remaining,
+        destTotalQty: data.dest_total_qty,
+      };
+    } else if (data?.success === false) {
+      return { success: false, error: data.error || "Transfer rejected by database." };
+    }
+  } catch (rpcErr) {
+    console.warn("[transferInventoryItem] RPC threw, falling back to client-side:", rpcErr.message);
+  }
+
+  // ── Client-side fallback (non-atomic but with rollback) ──
+  const norm = (v) => String(v ?? "").trim().toLowerCase();
+
+  // 1. Fetch source row
+  const { data: sourceRow, error: srcErr } = await supabase
+    .from(sourceTable)
+    .select("*")
+    .eq("id", sourceItemId)
+    .eq("section_id", sourceSectionId)
+    .single();
+  if (srcErr || !sourceRow) {
+    return { success: false, error: "Source item not found: " + (srcErr?.message || "unknown") };
+  }
+
+  const sourceQty = Number(sourceRow[quantityColumn]) || 0;
+  if (sourceQty < qty) {
+    return { success: false, error: `Insufficient quantity. Available: ${sourceQty}, Requested: ${qty}` };
+  }
+
+  const remainingQty = sourceQty - qty;
+
+  // 2. Build destination row data (copy only columns that exist in the destination table)
+  //    This prevents "Could not find the 'X' column" schema cache errors.
+  const skipKeys = new Set(["id", "section_id", "created_at", "updated_at", "sort_order", quantityColumn]);
+  const destRecordData = {};
+
+  if (sameTable) {
+    // Same table — all source columns are valid
+    for (const [key, value] of Object.entries(sourceRow)) {
+      if (!skipKeys.has(key)) {
+        destRecordData[key] = value;
+      }
+    }
+  } else {
+    // Cross-table — fetch one row from destination to discover its columns,
+    // or use the Supabase PostgREST OpenAPI spec. Simpler: try insert with
+    // all columns and retry with fewer if it fails. Safest: fetch dest config.
+    // We'll fetch the tab config for the destination to get column names.
+    // Alternative: probe by selecting a row (even 0 rows) and checking keys.
+    // Best practical approach: fetch a single row to detect schema, then filter.
+    let destColumnKeys = null;
+
+    // Try to detect destination columns from an existing row
+    const { data: destSampleRows } = await supabase
+      .from(destTable)
+      .select("*")
+      .limit(1);
+
+    if (destSampleRows && destSampleRows.length > 0) {
+      destColumnKeys = new Set(Object.keys(destSampleRows[0]));
+    } else {
+      // No rows in destination table — try inserting and rolling back to detect schema.
+      // Simpler: assume common columns and filter on insert error.
+      // Best: use the tab's template columns configuration.
+      destColumnKeys = null; // will use "try and trim" approach below
+    }
+
+    for (const [key, value] of Object.entries(sourceRow)) {
+      if (!skipKeys.has(key)) {
+        // Only include if we know it exists in the destination table
+        if (!destColumnKeys || destColumnKeys.has(key)) {
+          destRecordData[key] = value;
+        }
+      }
+    }
+  }
+
+  // ── Try to find a merge target in the destination table ──
+  // A merge target is an existing row that represents the same item
+  // (same item_number/computer_number, or all non-qty fields match).
+  // If found, we add quantity to it instead of creating a duplicate row.
+
+  const identifierKey = Object.keys(destRecordData).find((k) =>
+    ["item_number", "computer_number"].includes(String(k).trim())
+  ) || null;
+
+  let mergeTarget = null;
+
+  // Find a merge target: an existing row in the destination that is the
+  // SAME item (all non-system, non-qty fields match). We never merge
+  // just on item_number alone — different items can share the same number.
+
+  // Build fingerprint keys (all non-system, non-qty field keys)
+  const fpKeys = Object.keys(destRecordData).filter(
+    (k) => !["id", "section_id", "created_at", "updated_at", "sort_order", quantityColumn].includes(k)
+  );
+
+  if (fpKeys.length > 0) {
+    // Try to narrow candidates using identifier column first for efficiency,
+    // then verify with full fingerprint comparison.
+    const identifierKey = Object.keys(destRecordData).find((k) =>
+      ["item_number", "computer_number"].includes(String(k).trim())
+    ) || null;
+
+    let candidates = [];
+
+    if (identifierKey && sourceRow[identifierKey] != null) {
+      // Narrow search by identifier — but STILL verify fingerprint
+      const { data: identMatches } = await supabase
+        .from(destTable)
+        .select("*")
+        .eq("section_id", destSectionId)
+        .eq(identifierKey, sourceRow[identifierKey])
+        .limit(20);
+      candidates = identMatches || [];
+    }
+
+    if (candidates.length === 0) {
+      // No identifier match or no identifier column — fetch all rows in section
+      const { data: allRows } = await supabase
+        .from(destTable)
+        .select("*")
+        .eq("section_id", destSectionId)
+        .limit(200);
+      candidates = allRows || [];
+    }
+
+    mergeTarget = candidates.find((row) => {
+      if (row.id === sourceItemId) return false;
+      return fpKeys.every((k) => norm(row[k]) === norm(destRecordData[k]));
+    }) || null;
+  }
+
+  if (mergeTarget) {
+    // ── MERGE: consolidate quantity into existing destination row ──
+    const newDestQty = (Number(mergeTarget[quantityColumn]) || 0) + qty;
+
+    const { error: updErr } = await supabase
+      .from(destTable)
+      .update({ [quantityColumn]: newDestQty, updated_at: new Date().toISOString() })
+      .eq("id", mergeTarget.id);
+    if (updErr) return { success: false, error: "Failed to update destination: " + updErr.message };
+
+    // Update/delete source
+    if (remainingQty <= 0) {
+      const { error: delErr } = await supabase.from(sourceTable).delete().eq("id", sourceItemId);
+      if (delErr) {
+        // Rollback: undo destination update
+        await supabase
+          .from(destTable)
+          .update({ [quantityColumn]: Number(mergeTarget[quantityColumn]) || 0 })
+          .eq("id", mergeTarget.id);
+        return { success: false, error: "Failed to delete source: " + delErr.message };
+      }
+    } else {
+      const { error: srcUpdErr } = await supabase
+        .from(sourceTable)
+        .update({ [quantityColumn]: remainingQty, updated_at: new Date().toISOString() })
+        .eq("id", sourceItemId);
+      if (srcUpdErr) {
+        // Rollback: undo destination update
+        await supabase
+          .from(destTable)
+          .update({ [quantityColumn]: Number(mergeTarget[quantityColumn]) || 0 })
+          .eq("id", mergeTarget.id);
+        return { success: false, error: "Failed to update source: " + srcUpdErr.message };
+      }
+    }
+
+    notifyInventoryItemsChanged();
+    return {
+      success: true,
+      sourceId: sourceItemId,
+      destId: mergeTarget.id,
+      sourceRemaining: remainingQty,
+      destTotalQty: newDestQty,
+    };
+  }
+
+  // 3. No merge target — insert new row at destination
+  //    Reassign item_number / computer_number to the next value in the destination table
+  const destIdentifierKey = Object.keys(destRecordData).find((k) =>
+    ["item_number", "computer_number"].includes(String(k).trim())
+  ) || null;
+
+  if (destIdentifierKey && !sameTable) {
+    // Compute next identifier value in the destination table
+    const { data: destRows } = await supabase
+      .from(destTable)
+      .select(destIdentifierKey)
+      .order(destIdentifierKey, { ascending: false })
+      .limit(1);
+
+    const maxIdent = (destRows || []).reduce((max, row) => {
+      const num = Number.parseInt(String(row[destIdentifierKey] ?? ""), 10);
+      return Number.isFinite(num) && num > max ? num : max;
+    }, 0);
+
+    destRecordData[destIdentifierKey] = maxIdent + 1;
+  } else if (destIdentifierKey && sameTable) {
+    // Same table, different section — still re-number to avoid collision
+    const { data: destRows } = await supabase
+      .from(destTable)
+      .select(destIdentifierKey)
+      .eq("section_id", destSectionId)
+      .order(destIdentifierKey, { ascending: false })
+      .limit(1);
+
+    const maxIdent = (destRows || []).reduce((max, row) => {
+      const num = Number.parseInt(String(row[destIdentifierKey] ?? ""), 10);
+      return Number.isFinite(num) && num > max ? num : max;
+    }, 0);
+
+    destRecordData[destIdentifierKey] = maxIdent + 1;
+  }
+
+  destRecordData[quantityColumn] = qty;
+  const insertPayload = { section_id: destSectionId, ...destRecordData };
+
+  let { data: inserted, error: insErr } = await supabase
+    .from(destTable)
+    .insert([insertPayload])
+    .select("id")
+    .single();
+
+  // If insert failed due to unknown column, strip the offending column and retry
+  // This handles the case where destination table had no rows and we couldn't detect its schema
+  if (insErr && insErr.message && insErr.message.includes("Could not find")) {
+    const columnMatch = insErr.message.match(/'(\w+)'/);
+    if (columnMatch) {
+      const badCol = columnMatch[1];
+      const trimmedPayload = { ...insertPayload };
+      delete trimmedPayload[badCol];
+      const retry = await supabase
+        .from(destTable)
+        .insert([trimmedPayload])
+        .select("id")
+        .single();
+      if (!retry.error && retry.data) {
+        inserted = retry.data;
+        insErr = null;
+      } else if (retry.error) {
+        // Keep trying to strip bad columns up to 5 times
+        let attempt = trimmedPayload;
+        let lastErr = retry.error;
+        for (let i = 0; i < 5 && lastErr?.message?.includes("Could not find"); i++) {
+          const m = lastErr.message.match(/'(\w+)'/);
+          if (m) {
+            delete attempt[m[1]];
+            const r = await supabase.from(destTable).insert([attempt]).select("id").single();
+            if (!r.error && r.data) { inserted = r.data; insErr = null; break; }
+            lastErr = r.error;
+          } else break;
+        }
+      }
+    }
+  }
+
+  if (insErr || !inserted) {
+    return { success: false, error: "Failed to insert at destination: " + (insErr?.message || "unknown") };
+  }
+
+  // 4. Update/delete source
+  if (remainingQty <= 0) {
+    const { error: delErr } = await supabase.from(sourceTable).delete().eq("id", sourceItemId);
+    if (delErr) {
+      // Rollback: delete the inserted destination row
+      await supabase.from(destTable).delete().eq("id", inserted.id);
+      return { success: false, error: "Failed to delete source: " + delErr.message };
+    }
+  } else {
+    const { error: srcUpdErr } = await supabase
+      .from(sourceTable)
+      .update({ [quantityColumn]: remainingQty, updated_at: new Date().toISOString() })
+      .eq("id", sourceItemId);
+    if (srcUpdErr) {
+      // Rollback: delete the inserted destination row
+      await supabase.from(destTable).delete().eq("id", inserted.id);
+      return { success: false, error: "Failed to update source: " + srcUpdErr.message };
+    }
+  }
+
+  notifyInventoryItemsChanged();
+  return {
+    success: true,
+    sourceId: sourceItemId,
+    destId: inserted.id,
+    sourceRemaining: remainingQty,
+    destTotalQty: qty,
+  };
+};
