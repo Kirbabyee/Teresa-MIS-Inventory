@@ -3683,44 +3683,45 @@ export default function Borrowing() {
               <>
                 <div className="borrowing-table-scroll max-h-[36rem] overflow-auto">
                   <table className="w-full min-w-[900px] border-separate border-spacing-0 transition-opacity duration-300">
-                    <thead className="sticky top-0 z-10 bg-slate-50/60 shadow-[inset_0_-1px_0_rgb(226,232,240)]">
+                    <thead className="sticky top-0 z-10 bg-slate-50 shadow-[inset_0_-1px_0_rgb(226,232,240)]">
                       <tr>
                         {statusFilter === "pending"
                           ? [
-                              { label: "Borrower", align: "text-left" },
-                              { label: "ID Number", align: "text-left" },
-                              { label: "Requested At", align: "text-left" },
-                              { label: "Expected Return", align: "text-left" },
-                              { label: "Items", align: "text-left" },
-                              { label: "Status", align: "text-left" },
-                              { label: "", align: "text-right" },
+                              "Borrower",
+                              "ID Number",
+                              "Requested At",
+                              "Expected Return",
+                              "Items",
+                              "Status",
                             ].map((h) => (
                               <th
-                                key={h.label || "actions"}
-                                className={`text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/60 py-3 px-4 ${h.align} border-b border-slate-100`}
+                                key={h}
+                                className="bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                               >
-                                {h.label || <span className="sr-only">Row actions</span>}
+                                {h}
                               </th>
                             ))
                           : [
-                              { label: "Borrower", align: "text-left" },
-                              { label: "Borrowed At", align: "text-left" },
-                              { label: "Status", align: "text-left" },
-                              { label: "Items", align: "text-left" },
-                              { label: "Quantity", align: "text-right" },
-                              { label: "Condition", align: "text-left" },
-                              { label: "", align: "text-right" },
+                              "Borrower",
+                              "Borrowed At",
+                              "Status",
+                              "Items",
+                              "Quantity",
+                              "Condition",
                             ].map((h) => (
                               <th
-                                key={h.label || "actions"}
-                                className={`text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/60 py-3 px-4 ${h.align} border-b border-slate-100`}
+                                key={h}
+                                className={`bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500${h === "Status" ? " w-[110px]" : ""}${h === "Condition" ? " w-[120px]" : ""}`}
                               >
-                                {h.label || <span className="sr-only">Row actions</span>}
+                                {h}
                               </th>
                             ))}
+                        <th className="bg-slate-50 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          <span className="sr-only">Row actions</span>
+                        </th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-slate-100">
                       {currentPageData.map((record, rowIndex) => {
                         const isPending = record._source === "approval";
                         const activeItemsRaw = (record.items || []).filter((item) => getReturnedQuantity(item) < getBorrowedQuantity(item));
@@ -3744,41 +3745,38 @@ export default function Borrowing() {
                           <tr
                             key={record.id}
                             onClick={() => setSelectedRecord(record)}
-                            className={`border-b border-slate-100 last:border-0 hover:bg-slate-50/40 transition-colors cursor-pointer ${rowIndex % 2 === 0 ? "bg-white" : "bg-slate-50/50"}`}
+                            className={`cursor-pointer transition-colors hover:bg-slate-200/80 ${rowIndex % 2 === 0 ? "bg-white" : "bg-slate-100/90"}`}
                           >
                             {/* Borrower */}
-                            <td className="px-4 py-2.5 align-top">
-                              <p className="text-xs font-medium text-slate-700 tracking-tight">{record.name}</p>
-                              <span className="text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase font-mono mt-1 inline-block">
-                                {record.role || record.borrower_role || "STUDENT"}
-                              </span>
+                            <td className="px-4 py-3">
+                              <p className="text-sm font-medium text-slate-900">{record.name}</p>
                             </td>
 
                             {isPending ? (
                               <>
                                 {/* ID Number */}
-                                <td className="px-4 py-2.5 align-top">
-                                  <span className="text-xs font-mono font-medium text-slate-600">{record.studentId || record.borrower_id_number || "—"}</span>
+                                <td className="px-4 py-3">
+                                  <span className="text-sm text-slate-600">{record.studentId || record.borrower_id_number || "—"}</span>
                                 </td>
                                 {/* Requested At */}
-                                <td className="px-4 py-2.5 align-top">
-                                  <span className="text-xs font-medium text-slate-700">{formatExportDate(record.date || record.created_at)}</span>
-                                  <span className="text-[10px] font-mono text-slate-400 mt-0.5 block">{formatExportTime(record.date || record.created_at)}</span>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  <div>{formatExportDate(record.date || record.created_at)}</div>
+                                  <div className="text-xs text-slate-400">{formatExportTime(record.date || record.created_at)}</div>
                                 </td>
                                 {/* Expected Return */}
-                                <td className="px-4 py-2.5 align-top">
+                                <td className="px-4 py-3 text-sm text-slate-600">
                                   {record.expectedReturnAt || record.expected_return_at ? (
-                                    <span className="text-xs font-medium text-slate-700">{formatExportDate(record.expectedReturnAt || record.expected_return_at)}</span>
+                                    <div>{formatExportDate(record.expectedReturnAt || record.expected_return_at)}</div>
                                   ) : (
-                                    <span className="text-[10px] font-mono text-slate-400">—</span>
+                                    <span className="text-xs text-slate-400">—</span>
                                   )}
                                 </td>
                                 {/* Items */}
-                                <td className="px-4 py-2.5 align-top">
+                                <td className="px-4 py-3 text-sm text-slate-600">
                                   {activeItems.length > 1 ? (
-                                    <div className="text-xs font-semibold text-slate-800 tracking-tight space-y-0.5">
+                                    <div className="space-y-0.5">
                                       {activeItems.slice(0, 5).map((item, idx) => (
-                                        <div key={`${record.id}-${item.id}`} className={idx === 4 && activeItems.length > 5 ? "text-[10px] italic text-slate-400" : ""}>
+                                        <div key={`${record.id}-${item.id}`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
                                           {idx === 4 && activeItems.length > 5
                                             ? `+${activeItems.length - 5} more items`
                                             : item.label}
@@ -3786,20 +3784,20 @@ export default function Borrowing() {
                                       ))}
                                     </div>
                                   ) : activeItems.length === 1 ? (
-                                    <span className="text-xs font-semibold text-slate-800">{activeItems[0].label}</span>
+                                    <span>{activeItems[0].label}</span>
                                   ) : (
-                                    <span className="text-[10px] font-mono text-slate-400">—</span>
+                                    "—"
                                   )}
                                 </td>
                                 {/* Status */}
-                                <td className="px-4 py-2.5 align-top">
-                                  <span className="inline-flex items-center text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-100 uppercase">
+                                <td className="px-4 py-3 w-[110px]">
+                                  <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
                                     Pending
                                   </span>
                                 </td>
                                 {/* Actions */}
-                                <td className="px-4 py-2.5 align-top">
-                                  <div className="flex items-center justify-end">
+                                <td className="px-4 py-3">
+                                  <div className="flex justify-end">
                                     <button
                                       type="button"
                                       onClick={(e) => {
@@ -3807,7 +3805,7 @@ export default function Borrowing() {
                                         handleApproveRecord(record);
                                       }}
                                       disabled={processingId === record.id}
-                                      className="text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/60 rounded px-2.5 py-1 transition-colors duration-150 mr-2 disabled:opacity-50"
+                                      className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 mr-2 disabled:opacity-50"
                                     >
                                       {processingId === record.id ? "..." : "Approve"}
                                     </button>
@@ -3818,7 +3816,7 @@ export default function Borrowing() {
                                         handleDenyRecord(record);
                                       }}
                                       disabled={processingId === record.id}
-                                      className="text-xs font-medium text-slate-400 hover:text-rose-600 px-2 py-1 transition-colors duration-150 disabled:opacity-50"
+                                      className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
                                     >
                                       Deny
                                     </button>
@@ -3828,30 +3826,22 @@ export default function Borrowing() {
                             ) : (
                               <>
                                 {/* Borrowed At */}
-                                <td className="px-4 py-2.5 align-top">
-                                  <span className="text-xs font-medium text-slate-700">{formatExportDate(record.date)}</span>
-                                  <span className="text-[10px] font-mono text-slate-400 mt-0.5 block">{formatExportTime(record.date)}</span>
+                                <td className="px-4 py-3 text-sm text-slate-600">
+                                  <div>{formatExportDate(record.date)}</div>
+                                  <div className="text-xs text-slate-400">{formatExportTime(record.date)}</div>
                                 </td>
                                 {/* Status */}
-                                <td className="px-4 py-2.5 align-top">
-                                  <span
-                                    className={`inline-flex items-center text-[10px] font-bold font-mono px-2 py-0.5 rounded uppercase ${
-                                      record.status === "overdue" || isLate
-                                        ? "bg-rose-50 text-rose-600 border border-rose-100"
-                                        : record.status === "returned"
-                                          ? "bg-slate-50 text-slate-500 border border-slate-100"
-                                          : "bg-blue-50 text-blue-700 border border-blue-100"
-                                    }`}
-                                  >
+                                <td className="px-4 py-3 w-[110px]">
+                                  <span className={`inline-flex w-[90px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${getBorrowingStatusClass(record.status)}`}>
                                     {formatBorrowingStatus(record.status)}
                                   </span>
                                 </td>
                                 {/* Items */}
-                                <td className="px-4 py-2.5 align-top">
+                                <td className="px-4 py-3 text-sm text-slate-600">
                                   {activeItems.length > 1 ? (
-                                    <div className="text-xs text-slate-700 font-medium tracking-tight space-y-0.5">
+                                    <div className="space-y-0.5">
                                       {activeItems.slice(0, 5).map((item, idx) => (
-                                        <div key={`${record.id}-${item.id}`} className={idx === 4 && activeItems.length > 5 ? "text-[10px] italic text-slate-400" : ""}>
+                                        <div key={`${record.id}-${item.id}`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
                                           {idx === 4 && activeItems.length > 5
                                             ? `+${activeItems.length - 5} more items`
                                             : item.label}
@@ -3859,21 +3849,21 @@ export default function Borrowing() {
                                       ))}
                                     </div>
                                   ) : activeItems.length === 1 ? (
-                                    <span className="text-xs text-slate-700 font-medium tracking-tight">{activeItems[0].label}</span>
+                                    <span>{activeItems[0].label}</span>
                                   ) : (
-                                    <span className="text-[10px] font-mono text-slate-300">—</span>
+                                    "—"
                                   )}
                                 </td>
                                 {/* Quantity */}
-                                <td className="px-4 py-2.5 align-top text-right">
+                                <td className="px-4 py-3 text-sm text-slate-600">
                                   {activeItems.length > 1 ? (
-                                    <div className="text-xs font-mono text-slate-600 space-y-0.5">
+                                    <div className="space-y-0.5">
                                       {activeItems.slice(0, 5).map((item, idx) => {
                                         const total = getBorrowedQuantity(item);
                                         const returned = getReturnedQuantity(item);
                                         const displayQty = Math.max(0, total - returned);
                                         return (
-                                          <div key={`${record.id}-${item.id}-qty`} className={idx === 4 && activeItems.length > 5 ? "text-[10px] italic text-slate-400" : ""}>
+                                          <div key={`${record.id}-${item.id}-qty`} className={idx === 4 && activeItems.length > 5 ? "text-xs italic text-slate-400" : ""}>
                                             {idx === 4 && activeItems.length > 5
                                               ? `+${activeItems.length - 5} more`
                                               : (displayQty || "—")}
@@ -3882,13 +3872,13 @@ export default function Borrowing() {
                                       })}
                                     </div>
                                   ) : activeItems.length === 1 ? (
-                                    <span className="text-xs font-mono text-slate-600">{Math.max(0, getBorrowedQuantity(activeItems[0]) - getReturnedQuantity(activeItems[0])) || "—"}</span>
+                                    <span>{Math.max(0, getBorrowedQuantity(activeItems[0]) - getReturnedQuantity(activeItems[0])) || "—"}</span>
                                   ) : (
-                                    <span className="text-[10px] font-mono text-slate-300">—</span>
+                                    "—"
                                   )}
                                 </td>
                                 {/* Condition */}
-                                <td className="px-4 py-2.5 align-top">
+                                <td className="px-4 py-3 w-[120px]">
                                   {activeItems.length > 1 ? (
                                     <div className="space-y-1">
                                       {activeItems.slice(0, 5).map((item, idx) => {
@@ -3898,11 +3888,11 @@ export default function Borrowing() {
                                         const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
                                         const label = getReturnConditionLabel(item, opLabel, qLabel);
                                         return (
-                                          <div key={`${record.id}-${item.id}-condition`}>
+                                          <div key={`${record.id}-${item.id}-condition`} className="flex justify-center">
                                             {idx === 4 && activeItems.length > 5 ? (
-                                              <span className="text-[10px] italic text-slate-400">+{activeItems.length - 5} more</span>
+                                              <span className="text-xs italic text-slate-400">+{activeItems.length - 5} more</span>
                                             ) : (
-                                              <span className={`inline-flex items-center text-[10px] font-bold font-mono px-2 py-0.5 rounded uppercase ${isOperational ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"}`}>
+                                              <span className={`inline-flex min-w-[72px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-rose-100 text-rose-700 border border-rose-200"}`}>
                                                 {label}
                                               </span>
                                             )}
@@ -3919,17 +3909,19 @@ export default function Borrowing() {
                                       const isOperational = getBorrowingItemCondition(item, qLabel, opLabel) === "working";
                                       const label = getReturnConditionLabel(item, opLabel, qLabel);
                                       return (
-                                        <span className={`inline-flex items-center text-[10px] font-bold font-mono px-2 py-0.5 rounded uppercase ${isOperational ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"}`}>
-                                          {label}
-                                        </span>
+                                        <div className="flex justify-center">
+                                          <span className={`inline-flex min-w-[72px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${isOperational ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-rose-100 text-rose-700 border border-rose-200"}`}>
+                                            {label}
+                                          </span>
+                                        </div>
                                       );
                                     })()
                                   ) : (
-                                    <span className="text-[10px] font-mono text-slate-300">—</span>
+                                    "—"
                                   )}
                                 </td>
                                 {/* Actions */}
-                                <td className="px-4 py-2.5 align-top">
+                                <td className="px-4 py-3">
                                   <div className="flex justify-end">
                                     {hasItems ? (
                                       <button
@@ -3938,12 +3930,12 @@ export default function Borrowing() {
                                           e.stopPropagation();
                                           requestReturn(record);
                                         }}
-                                        className="text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded px-2.5 py-1 transition-colors"
+                                        className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
                                       >
                                         Return
                                       </button>
                                     ) : (
-                                      <span className="text-[10px] font-mono text-slate-300">—</span>
+                                      "—"
                                     )}
                                   </div>
                                 </td>
@@ -3956,11 +3948,11 @@ export default function Borrowing() {
                   </table>
                 </div>
                 {filteredData.length > 0 && (
-                  <div className="flex items-center justify-between gap-4 border-t border-slate-100 bg-slate-50/40 px-5 py-3">
+                  <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
                     <div className="text-sm text-slate-500">
                       Showing {Math.min(pageStartIndex + 1, filteredData.length)}–{Math.min(pageEndIndex, filteredData.length)} of {filteredData.length}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => setPage((p) => Math.max(1, p - 1))}
