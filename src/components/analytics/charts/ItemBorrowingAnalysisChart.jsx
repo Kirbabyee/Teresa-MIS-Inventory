@@ -30,13 +30,19 @@ const PALETTE = [
   "#06b6d4", // cyan
 ];
 
+const TOP_N = 4; // top N variants shown individually; the rest collapse into "Others"
+
 /**
  * Aggregates flat borrowing-items records into a stacked bar chart format.
+ *
+ * When `mode === "all"`, only the top 4 most-borrowed variants (by total volume)
+ * are kept as individual stacked rows; every remaining variant is collapsed
+ * into a 5th row named "Others".
  *
  * Input: [{ sectionName, variant, quantity }, ...]
  * Output: [{ sectionName, VariantA: n, VariantB: m, ... }, ...]
  */
-function aggregateChartData(records) {
+function aggregateChartData(records, mode = "all") {
   if (!records || records.length === 0) return { chartData: [], variants: [] };
 
   const sectionMap = new Map();
@@ -60,19 +66,31 @@ function aggregateChartData(records) {
       variantTotals.set(v, (variantTotals.get(v) || 0) + qty);
     }
   }
-  const variants = [...variantTotals.entries()]
+  const sortedVariants = [...variantTotals.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([v]) => v);
+
+  // In "all" mode, keep top N variants and collapse the rest into "Others"
+  const variants =
+    mode === "all" ? sortedVariants.slice(0, TOP_N) : sortedVariants;
+  const hasOthers = mode === "all" && sortedVariants.length > TOP_N;
 
   const chartData = [...sectionMap.entries()].map(([sectionName, variantMap]) => {
     const row = { sectionName };
     for (const v of variants) {
       row[v] = variantMap.get(v) || 0;
     }
+    if (hasOthers) {
+      let others = 0;
+      for (const v of sortedVariants.slice(TOP_N)) {
+        others += variantMap.get(v) || 0;
+      }
+      row.Others = others;
+    }
     return row;
   });
 
-  return { chartData, variants };
+  return { chartData, variants: hasOthers ? [...variants, "Others"] : variants };
 }
 
 function ChartTooltip({ active, payload, label }) {
@@ -130,8 +148,8 @@ export default function ItemBorrowingAnalysisChart({ borrowingItems = [], loadin
   }, [borrowingItems, activeSection]);
 
   const { chartData, variants } = useMemo(
-    () => aggregateChartData(filteredItems),
-    [filteredItems]
+    () => aggregateChartData(filteredItems, activeSection === "all" ? "all" : "section"),
+    [filteredItems, activeSection]
   );
 
   const hasData = chartData.length > 0 && variants.length > 0;
@@ -187,18 +205,28 @@ export default function ItemBorrowingAnalysisChart({ borrowingItems = [], loadin
                 tickLine={false}
               />
               <Tooltip content={<ChartTooltip />} />
-              <Legend
-                iconType="square"
-                iconSize={8}
-                wrapperStyle={{ fontSize: 10, paddingTop: 8, fontWeight: 500 }}
-              />
+              {activeSection === "all" ? (
+                <p className="text-[10px] text-slate-500 font-medium pt-1 pb-0.5">
+                  Each bar represents a section; each stacked row within a column is the top most borrowed item.
+                </p>
+              ) : (
+                <Legend
+                  iconType="square"
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: 10, paddingTop: 8, fontWeight: 500 }}
+                />
+              )}
               {variants.map((variant, index) => (
                 <Bar
                   key={variant}
                   dataKey={variant}
-                  stackId="a"
+                  stackId={activeSection === "all" ? "a" : undefined}
                   fill={PALETTE[index % PALETTE.length]}
-                  radius={index === variants.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]}
+                  radius={
+                    activeSection === "all" && index === variants.length - 1
+                      ? [3, 3, 0, 0]
+                      : [0, 0, 0, 0]
+                  }
                 />
               ))}
             </BarChart>

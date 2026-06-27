@@ -518,13 +518,13 @@ export default function AnalyticsDashboard() {
             <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm flex flex-col justify-between h-[360px] overflow-hidden">
               <div>
                 <SectionHeader
-                  title="Top Borrowers"
+                  title="Compliance Rate Table"
                   subtitle="Ranked by borrowing volume (90 days)"
                 />
               </div>
               <div className="flex-1 overflow-auto scrollbar-thin">
                 <table className="w-full">
-                  <thead>
+                  <thead className="bg-slate-100 sticky top-0 z-10">
                     <tr>
                       <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-left border-b border-slate-100">Name</th>
                       <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-left border-b border-slate-100">Role</th>
@@ -553,7 +553,7 @@ export default function AnalyticsDashboard() {
                       <tr>
                         <td colSpan={4} className="py-10 text-center text-xs text-slate-400">
                           No borrowing data available
-                        </td>
+                        </td> 
                       </tr>
                     )}
                   </tbody>
@@ -588,9 +588,6 @@ export default function AnalyticsDashboard() {
                     <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500">
                       Section
                     </th>
-                    <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500">
-                      Tab
-                    </th>
                     <th className="text-right px-5 py-2.5 text-xs font-semibold text-slate-500">
                       Total
                     </th>
@@ -613,9 +610,7 @@ export default function AnalyticsDashboard() {
                       >
                         <td className="px-5 py-2.5 font-medium text-slate-800">
                           {section.sectionName}
-                        </td>
-                        <td className="px-5 py-2.5 text-slate-500">
-                          {section.tabName}
+                          <p className="text-[12px] text-slate-400 font-normal font-sans mt-0.5">{section.tabName}</p>
                         </td>
                         <td className="px-5 py-2.5 text-right text-slate-700">
                           {section.total}
@@ -641,7 +636,7 @@ export default function AnalyticsDashboard() {
                   {(!defectBySection || defectBySection.length === 0) && (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={4}
                         className="px-5 py-8 text-center text-sm text-slate-400"
                       >
                         No inventory data available
