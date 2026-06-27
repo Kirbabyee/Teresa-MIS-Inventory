@@ -89,7 +89,7 @@ export default function PublicBorrow() {
   const initials = (displayName || "").split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase();
 
   const [activeStep, setActiveStep] = useState(1);
-  const [form, setForm] = useState({ name: "", studentId: "", role: "", borrowDate: "", expectedReturnAt: "" });
+  const [form, setForm] = useState({ name: "", email: "", studentId: "", role: "", borrowDate: "", expectedReturnAt: "" });
   const [formErrors, setFormErrors] = useState({});
   const [customItemForm, setCustomItemForm] = useState({ name: "", brand: "", quantity: 1, condition: "Working", remarks: "" });
   const [customItems, setCustomItems] = useState([]);
@@ -191,6 +191,10 @@ export default function PublicBorrow() {
       if (!v) return "Borrower name is required.";
       if (!/^[A-Za-z\s]+$/.test(v)) return "Name may contain only letters and spaces.";
     }
+    if (name === "email") {
+      if (!v) return "Email is required.";
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "Enter a valid email address.";
+    }
     if (name === "studentId") { if (!v) return "ID number is required."; }
     if (name === "role") { if (!v) return "Select borrower role."; }
     return "";
@@ -199,7 +203,7 @@ export default function PublicBorrow() {
   const validateStep = (step) => {
     const errs = {};
     if (step === 1) {
-      ["name", "studentId", "role"].forEach((k) => {
+      ["name", "email", "studentId", "role"].forEach((k) => {
         const e = validateField(k, form[k]);
         if (e) errs[k] = e;
       });
@@ -213,7 +217,7 @@ export default function PublicBorrow() {
   };
 
   const isStepValid = (step) => {
-    if (step === 1) return ["name", "studentId", "role"].every((k) => !validateField(k, form[k]));
+    if (step === 1) return ["name", "email", "studentId", "role"].every((k) => !validateField(k, form[k]));
     if (step === 2) return borrowCart.length + customItems.length > 0;
     return true;
   };
@@ -262,7 +266,7 @@ export default function PublicBorrow() {
       } else {
         toast.success("Borrowing submitted. Thank you.");
       }
-      setForm({ name: "", studentId: "", role: "", borrowDate: "", expectedReturnAt: "" });
+      setForm({ name: "", email: "", studentId: "", role: "", borrowDate: "", expectedReturnAt: "" });
       setCustomItems([]);
       setBorrowCart([]);
       setActiveStep(1);
@@ -329,6 +333,11 @@ export default function PublicBorrow() {
                   <Label htmlFor="borrow-name" className="mb-1 block text-sm font-medium text-slate-700">Full Name <span className="text-destructive">*</span></Label>
                   <Input id="borrow-name" name="name" placeholder="Enter full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus className={cn("h-10", formErrors.name && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
                   {formErrors.name && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.name}</p>}
+                </div>
+                <div>
+                  <Label htmlFor="borrow-email" className="mb-1 block text-sm font-medium text-slate-700">Email <span className="text-destructive">*</span></Label>
+                  <Input id="borrow-email" name="email" type="email" placeholder="Enter email address" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={cn("h-10", formErrors.email && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
+                  {formErrors.email && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.email}</p>}
                 </div>
                 <div>
                   <Label htmlFor="borrow-studentId" className="mb-1 block text-sm font-medium text-slate-700">ID Number <span className="text-destructive">*</span></Label>
@@ -929,10 +938,14 @@ export default function PublicBorrow() {
                 <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
                   <div className="border-b border-slate-100 bg-slate-50 px-5 py-3"><h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">Borrower</h3></div>
                   <div className="px-5 py-4">
-                    <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Full Name</p>
                         <p className="mt-1 text-sm font-semibold text-slate-800">{form.name.trim()}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Email</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-800">{form.email.trim()}</p>
                       </div>
                       <div>
                         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">ID Number</p>
@@ -1029,7 +1042,7 @@ export default function PublicBorrow() {
               {activeStep > 1 ? (
                 <Button type="button" variant="outline" size="sm" onClick={() => setActiveStep((s) => s - 1)} className="rounded-lg">Back</Button>
               ) : (
-                <Button type="button" variant="outline" size="sm" onClick={() => { setForm({ name: "", studentId: "", role: "", borrowDate: "", expectedReturnAt: "" }); setCustomItems([]); setBorrowCart([]); setActiveStep(1); }} className="rounded-lg">Cancel</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => { setForm({ name: "", email: "", studentId: "", role: "", borrowDate: "", expectedReturnAt: "" }); setCustomItems([]); setBorrowCart([]); setActiveStep(1); }} className="rounded-lg">Cancel</Button>
               )}
 
               {activeStep === 1 && (
