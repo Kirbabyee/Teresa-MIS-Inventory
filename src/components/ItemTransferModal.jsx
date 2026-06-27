@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRightLeft, Loader2 } from "lucide-react";
+import { ArrowRightLeft, Combine, Info, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/api/supabaseClient";
 import {
@@ -71,6 +71,107 @@ export default function ItemTransferModal({
   // ── Resolved destination data (tab config fetched on selection) ──
   const [destTableConfig, setDestTableConfig] = useState(null);
   const [configLoading, setConfigLoading] = useState(false);
+
+  // ── Merge-target detection (procurement-style merge feedback) ──
+  // undefined = no destination selected yet; null = checked, no match; object = match found
+  const [mergeTarget, setMergeTarget] = useState(undefined);
+  const [mergeDetectLoading, setMergeDetectLoading] = useState(false);
+
+  const quantityKey = useMemo(() => {
+    if (!sourceItem) return quantityColumn;
+    const keys = Object.keys(sourceItem);
+    return keys.find((k) => {
+      const nk = String(k || "").trim().toLowerCase();
+      return nk === "quantity" || nk.endsWith("_quantity");
+    }) || quantityColumn;
+  }, [sourceItem, quantityColumn]);
+
+  const fingerprintMatchKeys = useMemo(() => {
+    if (!sourceItem) return [];
+    const skip = new Set(["id", "section_id", "created_at", "updated_at", "sort_order", quantityKey]);
+    return Object.keys(sourceItem).filter((k) => {
+      if (skip.has(k)) return false;
+      const v = sourceItem[k];
+      return v !== null && v !== undefined && String(v).trim() !== "";
+    });
+  }, [sourceItem, quantityKey]);
+
+  // When destination table+section is chosen, look for a matching item to merge into.
+  useEffect(() => {
+    if (!open) return;
+    if (!selectedTableName || !selectedSectionId) {
+      setMergeTarget(undefined);
+      return;
+    }
+    if (!sourceItem || fingerprintMatchKeys.length === 0) {
+      setMergeTarget(null);
+      return;
+    }
+
+    let cancelled = false;
+    const norm = (v) => String(v ?? "").trim().toLowerCase();
+
+    const detect = async () => {
+      setMergeDetectLoading(true);
+      setMergeTarget(undefined);
+      try {
+        // Narrow by identifier column if present, then verify full fingerprint.
+        const identKey = ["item_number", "computer_number"].find(
+          (k) => sourceItem[k] != null && String(sourceItem[k]).trim() !== ""
+        );
+
+        let candidates = [];
+        if (identKey) {
+          const { data } = await supabase
+            .from(selectedTableName)
+            .select("*")
+            .eq("section_id", selectedSectionId)
+            .eq(identKey, sourceItem[identKey])
+            .limit(20);
+          candidates = data || [];
+        } else {
+          const { data } = await supabase
+            .from(selectedTableName)
+            .select("*")
+            .eq("section_id", selectedSectionId)
+            .limit(200);
+          candidates = data || [];
+        }
+
+        const match = candidates.find((row) => {
+          if (row.id === sourceItem.id) return false;
+          // Only compare fingerprint keys that exist in the destination row
+          return fingerprintMatchKeys.every(
+            (k) => k in row && norm(row[k]) === norm(sourceItem[k])
+          );
+        });
+
+        if (!cancelled) {
+          setMergeTarget(
+            match
+              ? {
+                  id: match.id,
+                  qty: Number(match[quantityKey]) || 0,
+                  name: match.name || match.type || match.description || null,
+                }
+              : null
+          );
+        }
+      } catch {
+        if (!cancelled) setMergeTarget(null);
+      } finally {
+        if (!cancelled) setMergeDetectLoading(false);
+      }
+    };
+
+    detect();
+    return () => { cancelled = true; };
+  }, [open, selectedTableName, selectedSectionId, sourceItem, fingerprintMatchKeys, quantityKey]);
+
+  // Clear merge target when destination resets
+  useEffect(() => {
+    if (!selectedTabId) setMergeTarget(undefined);
+  }, [selectedTabId]);
 
   // ── Available destinations ──
   const availableTabs = useMemo(() => {
@@ -154,6 +255,8 @@ export default function ItemTransferModal({
     setError("");
     setDestTableConfig(null);
     setSaving(false);
+    setMergeTarget(undefined);
+    setMergeDetectLoading(false);
   }, [open, sourceItem?.id]);
 
   // ── Clamp quantity when maxQty changes ──
@@ -337,6 +440,54 @@ export default function ItemTransferModal({
                   </Select>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Merge target indicator (procurement-style feedback) */}
+          {selectedTableName && selectedSectionId && sourceItem && (
+            <div className="space-y-1.5">
+              {mergeDetectLoading ? (
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Checking for existing item at destination...
+                </div>
+              ) : mergeTarget ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-emerald-800">
+                    <Combine className="h-4 w-4" />
+                    Matching item found — quantities will merge
+                  </div>
+                  <p className="mt-1 text-xs text-emerald-700">
+                    A matching item exists in this destination. Transferring will add the quantity to the existing record
+                    (procurement-style merge), keeping the destination item's details unchanged.
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <div className="font-semibold uppercase tracking-wide text-emerald-600/80">
+                        Existing qty
+                      </div>
+                      <div className="mt-0.5 text-base font-semibold text-emerald-900">
+                        {mergeTarget.qty}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="font-semibold uppercase tracking-wide text-emerald-600/80">
+                        After merge
+                      </div>
+                      <div className="mt-0.5 text-base font-semibold text-emerald-900">
+                        {mergeTarget.qty + transferQty}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : mergeTarget === null ? (
+                <div className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                  <span>
+                    No matching item found at destination — a new inventory row will be created.
+                  </span>
+                </div>
+              ) : null}
             </div>
           )}
 
