@@ -3102,15 +3102,17 @@ export default function Borrowing() {
               )}
             </div>
 
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 shadow-sm focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20"
-            >
-              <option value="borrowed">Borrowed (Active)</option>
-              <option value="pending">Pending Approval</option>
-              <option value="all">History</option>
-            </select>
+            {statusFilter !== "all" && (
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="h-9 w-44 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm hover:border-slate-300 focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20 !text-slate-700 ![&>span]:text-slate-700 data-[placeholder]:!text-slate-700">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent className="rounded-lg border border-slate-200 bg-white shadow-md">
+                  <SelectItem value="borrowed" className="text-sm text-slate-700">Borrowed</SelectItem>
+                  <SelectItem value="pending" className="text-sm text-slate-700">Pending Approval</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
 
             <div ref={datePickerRef} className="relative z-50">
               <button
@@ -3733,34 +3735,35 @@ export default function Borrowing() {
                               return 0;
                             })
                           : activeItemsRaw;
+                        const hasItems = activeItems.length > 0;
+                        const isLate = record.expectedReturnAt
+                          ? new Date(record.expectedReturnAt) < new Date() && !record.returnedAt
+                          : record.expected_return_at
+                            ? new Date(record.expected_return_at) < new Date()
+                            : false;
                         return (
                           <tr
                             key={record.id}
                             onClick={() => setSelectedRecord(record)}
                             className={`cursor-pointer transition-colors hover:bg-slate-200/80 ${rowIndex % 2 === 0 ? "bg-white" : "bg-slate-100/90"}`}
                           >
+                            {/* Borrower */}
                             <td className="px-4 py-3">
                               <p className="text-sm font-medium text-slate-900">{record.name}</p>
-                              {!isPending && (
-                                <span className="mt-0.5 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                                  {record.role || "STUDENT"}
-                                </span>
-                              )}
-                              {isPending && (
-                                <span className="mt-0.5 inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
-                                  {record.role || record.borrower_role || "STUDENT"}
-                                </span>
-                              )}
                             </td>
+
                             {isPending ? (
                               <>
-                                <td className="px-4 py-3 text-sm font-mono text-slate-600">
-                                  {record.studentId || record.borrower_id_number || "—"}
+                                {/* ID Number */}
+                                <td className="px-4 py-3">
+                                  <span className="text-sm text-slate-600">{record.studentId || record.borrower_id_number || "—"}</span>
                                 </td>
+                                {/* Requested At */}
                                 <td className="px-4 py-3 text-sm text-slate-600">
                                   <div>{formatExportDate(record.date || record.created_at)}</div>
                                   <div className="text-xs text-slate-400">{formatExportTime(record.date || record.created_at)}</div>
                                 </td>
+                                {/* Expected Return */}
                                 <td className="px-4 py-3 text-sm text-slate-600">
                                   {record.expectedReturnAt || record.expected_return_at ? (
                                     <div>{formatExportDate(record.expectedReturnAt || record.expected_return_at)}</div>
@@ -3768,6 +3771,7 @@ export default function Borrowing() {
                                     <span className="text-xs text-slate-400">—</span>
                                   )}
                                 </td>
+                                {/* Items */}
                                 <td className="px-4 py-3 text-sm text-slate-600">
                                   {activeItems.length > 1 ? (
                                     <div className="space-y-0.5">
@@ -3785,13 +3789,15 @@ export default function Borrowing() {
                                     "—"
                                   )}
                                 </td>
-                                <td className="px-4 py-3">
-                                  <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+                                {/* Status */}
+                                <td className="px-4 py-3 w-[110px]">
+                                  <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
                                     Pending
                                   </span>
                                 </td>
+                                {/* Actions */}
                                 <td className="px-4 py-3">
-                                  <div className="flex items-center justify-end gap-2">
+                                  <div className="flex justify-end">
                                     <button
                                       type="button"
                                       onClick={(e) => {
@@ -3799,7 +3805,7 @@ export default function Borrowing() {
                                         handleApproveRecord(record);
                                       }}
                                       disabled={processingId === record.id}
-                                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+                                      className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 mr-2 disabled:opacity-50"
                                     >
                                       {processingId === record.id ? "..." : "Approve"}
                                     </button>
@@ -3810,7 +3816,7 @@ export default function Borrowing() {
                                         handleDenyRecord(record);
                                       }}
                                       disabled={processingId === record.id}
-                                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                                      className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
                                     >
                                       Deny
                                     </button>
@@ -3819,15 +3825,18 @@ export default function Borrowing() {
                               </>
                             ) : (
                               <>
+                                {/* Borrowed At */}
                                 <td className="px-4 py-3 text-sm text-slate-600">
                                   <div>{formatExportDate(record.date)}</div>
                                   <div className="text-xs text-slate-400">{formatExportTime(record.date)}</div>
                                 </td>
+                                {/* Status */}
                                 <td className="px-4 py-3 w-[110px]">
                                   <span className={`inline-flex w-[90px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${getBorrowingStatusClass(record.status)}`}>
                                     {formatBorrowingStatus(record.status)}
                                   </span>
                                 </td>
+                                {/* Items */}
                                 <td className="px-4 py-3 text-sm text-slate-600">
                                   {activeItems.length > 1 ? (
                                     <div className="space-y-0.5">
@@ -3845,6 +3854,7 @@ export default function Borrowing() {
                                     "—"
                                   )}
                                 </td>
+                                {/* Quantity */}
                                 <td className="px-4 py-3 text-sm text-slate-600">
                                   {activeItems.length > 1 ? (
                                     <div className="space-y-0.5">
@@ -3867,6 +3877,7 @@ export default function Borrowing() {
                                     "—"
                                   )}
                                 </td>
+                                {/* Condition */}
                                 <td className="px-4 py-3 w-[120px]">
                                   {activeItems.length > 1 ? (
                                     <div className="space-y-1">
@@ -3909,18 +3920,23 @@ export default function Borrowing() {
                                     "—"
                                   )}
                                 </td>
+                                {/* Actions */}
                                 <td className="px-4 py-3">
                                   <div className="flex justify-end">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        requestReturn(record);
-                                      }}
-                                      className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                                    >
-                                      Return
-                                    </button>
+                                    {hasItems ? (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          requestReturn(record);
+                                        }}
+                                        className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                                      >
+                                        Return
+                                      </button>
+                                    ) : (
+                                      "—"
+                                    )}
                                   </div>
                                 </td>
                               </>
