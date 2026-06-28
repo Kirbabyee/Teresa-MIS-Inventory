@@ -11,9 +11,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { supabase } from "@/api/supabaseClient";
 import { createBorrowingRecord } from "@/lib/borrowingApi";
 import { useInventoryItems } from "@/hooks/useInventoryItems";
-import { detectItemColumns } from "@/lib/inventoryApi";
+import { detectItemColumns, fetchInventoryItems, getTabTableConfig } from "@/lib/inventoryApi";
 import { User, Package, CheckCircle, Search, X, Plus, Minus, ShoppingCart, Check, ArrowLeft, Calendar as CalendarIcon, Trash2 } from "lucide-react";
 import { DayPicker } from "react-day-picker";
 import { cn } from "@/lib/utils";
@@ -89,7 +90,21 @@ export default function PublicBorrow() {
   const initials = (displayName || "").split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase();
 
   const [activeStep, setActiveStep] = useState(1);
-  const [form, setForm] = useState({ name: "", email: "", studentId: "", role: "", borrowDate: "", expectedReturnAt: "" });
+  // ── Default dates: borrow now, return 3 days from now ──────────────────
+  const getDefaultDates = () => {
+    const now = new Date();
+    const borrowDate = now.toISOString();
+    const ret = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    ret.setHours(23, 59, 59, 0);
+    const y = ret.getFullYear();
+    const m = String(ret.getMonth() + 1).padStart(2, "0");
+    const d = String(ret.getDate()).padStart(2, "0");
+    return { borrowDate, expectedReturnAt: `${y}-${m}-${d}` };
+  };
+  const [form, setForm] = useState(() => {
+    const { borrowDate, expectedReturnAt } = getDefaultDates();
+    return { name: "", email: "", studentId: "", role: "", borrowDate, expectedReturnAt };
+  });
   const [formErrors, setFormErrors] = useState({});
   const [customItemForm, setCustomItemForm] = useState({ name: "", brand: "", quantity: 1, condition: "Working", remarks: "" });
   const [customItems, setCustomItems] = useState([]);
@@ -224,11 +239,18 @@ export default function PublicBorrow() {
 
   // ── Submit ──────────────────────────────────────────────────────────────
   const confirmBorrow = async () => {
+    if (saving) return;
     if (!validateStep(1) || !validateStep(2)) return;
     setSaving(true);
+    setFormError("");
     try {
       const invItems = borrowCart.map((c) => ({
         label: getItemLabel(c),
+        // Preserve inventory reference IDs so the admin side recognizes these as catalog items
+        inventoryItemId: c.id || null,
+        inventoryTabId: c.tabId || null,
+        inventorySectionId: c.sectionId || null,
+        inventoryTableName: c.tableName || "",
         details: (c.details || []).length > 0
           ? c.details
           : [
@@ -252,12 +274,54 @@ export default function PublicBorrow() {
         expectedReturnAt.setHours(23, 59, 59, 0);
       }
 
+      // ── Deduct stock from inventory (same as admin borrow flow) ──
+      const dbUpdates = [];
+      for (const cartItem of borrowCart) {
+        let tableName = cartItem.tableName || "";
+        // Fallback: resolve tableName from tab config if missing
+        if (!tableName && cartItem.tabId) {
+          try {
+            const config = await getTabTableConfig(cartItem.tabId);
+            tableName = config?.tableName || "";
+          } catch { /* ignore */ }
+        }
+        if (!tableName) {
+          console.warn("[PublicBorrow] Skipping item without tableName:", getItemLabel(cartItem));
+          continue;
+        }
+
+        const sectionRows = await fetchInventoryItems(cartItem.sectionId, tableName);
+        const targetRow = sectionRows.find((r) => String(r.id) === String(cartItem.id));
+        if (!targetRow) throw new Error(`Item not found in ${tableName}.`);
+
+        const { quantityKey } = detectItemColumns(targetRow);
+        const borrowedQty = Number(cartItem.quantity || 1);
+        const currentQty = Number(targetRow[quantityKey] || 0);
+
+        if (borrowedQty > currentQty) {
+          throw new Error(`${getItemLabel(cartItem)}: insufficient stock (requested ${borrowedQty}, available ${currentQty}).`);
+        }
+
+        const remaining = currentQty - borrowedQty;
+        dbUpdates.push(
+          supabase.from(tableName).update({ [quantityKey]: remaining }).eq("id", cartItem.id)
+        );
+      }
+
+      // Execute all stock deduction updates
+      if (dbUpdates.length > 0) {
+        const results = await Promise.allSettled(dbUpdates);
+        for (const r of results) {
+          if (r.status === "rejected") throw r.reason;
+        }
+      }
+
+      // ── Stage the borrowing record ──
       const result = await createBorrowingRecord({
         borrowerName: form.name,
         borrowerIdNumber: form.studentId,
         borrowerRole: form.role,
         items: allItems,
-        borrowDate: borrowDate.toISOString(),
         expectedReturnAt: expectedReturnAt.toISOString(),
       });
 
@@ -266,12 +330,17 @@ export default function PublicBorrow() {
       } else {
         toast.success("Borrowing submitted. Thank you.");
       }
-      setForm({ name: "", email: "", studentId: "", role: "", borrowDate: "", expectedReturnAt: "" });
+      const defaults = getDefaultDates();
+      setForm({ name: "", email: "", studentId: "", role: "", borrowDate: defaults.borrowDate, expectedReturnAt: defaults.expectedReturnAt });
       setCustomItems([]);
       setBorrowCart([]);
       setActiveStep(1);
+
+      // Reload page so inventory quantities refetch from DB (deducted stock reflects)
+      setTimeout(() => window.location.reload(), 1200);
     } catch (err) {
       console.error(err);
+      setFormError(err?.message || "Failed to submit borrowing.");
       toast.error(err?.message || "Failed to submit borrowing.");
     } finally {
       setSaving(false);
@@ -463,7 +532,7 @@ export default function PublicBorrow() {
                                 </div>
                               </div>
                               <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
-                                <button type="button" onClick={() => { setForm({ ...form, borrowDate: "" }); setShowBorrowDatePicker(false); }} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100">Clear</button>
+                                <button type="button" onClick={() => { setForm({ ...form, borrowDate: new Date().toISOString() }); setShowBorrowDatePicker(false); }} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100">Reset</button>
                                 <button type="button" onClick={() => setShowBorrowDatePicker(false)} className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]">Done</button>
                               </div>
                             </div>
@@ -524,7 +593,7 @@ export default function PublicBorrow() {
                                 />
                               </div>
                               <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
-                                <button type="button" onClick={() => { setForm({ ...form, expectedReturnAt: "" }); setShowReturnDatePicker(false); }} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100">Clear</button>
+                                <button type="button" onClick={() => { const ret = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000); ret.setHours(23, 59, 59, 0); setForm({ ...form, expectedReturnAt: `${ret.getFullYear()}-${String(ret.getMonth() + 1).padStart(2, "0")}-${String(ret.getDate()).padStart(2, "0")}` }); setShowReturnDatePicker(false); }} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100">Reset</button>
                                 <button type="button" onClick={() => setShowReturnDatePicker(false)} className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]">Done</button>
                               </div>
                             </div>
@@ -990,14 +1059,14 @@ export default function PublicBorrow() {
                       Items ({borrowCart.length + customItems.length})
                     </h3>
                   </div>
-                  <div className="grid grid-cols-[1fr_80px_120px] gap-4 bg-slate-100 px-5 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <div className="grid grid-cols-[1fr_80px_140px] gap-4 bg-slate-100 px-5 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     <span>Item</span>
                     <span className="text-center">Status</span>
                     <span className="text-center">Quantity</span>
                   </div>
                   <div className="divide-y divide-slate-100">
                     {borrowCart.map((item) => (
-                      <div key={item.cartId} className="grid grid-cols-[1fr_80px_120px] gap-4 items-center px-5 py-3.5">
+                      <div key={item.cartId} className="grid grid-cols-[1fr_80px_140px] gap-4 items-center px-5 py-3.5">
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-slate-800">{getItemLabel(item)}</p>
                           <p className="mt-0.5 text-xs text-slate-400">{item.tabName} • {item.sectionName}</p>
@@ -1009,27 +1078,51 @@ export default function PublicBorrow() {
                             <span className="text-xs text-slate-400">—</span>
                           )}
                         </div>
-                        <div className="text-center">
-                          <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{item.quantity}</span>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                            onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)} disabled={item.quantity <= 1}>
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <span className="w-8 text-center text-sm font-semibold text-slate-700">{item.quantity}</span>
+                          <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                            onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)} disabled={item.quantity >= (item.maxQuantity || 999)}>
+                            <Plus className="h-3 w-3" />
+                          </Button>
                         </div>
                       </div>
                     ))}
-                    {customItems.map((item, idx) => (
-                      <div key={`custom-${idx}`} className="grid grid-cols-[1fr_80px_120px] gap-4 items-center px-5 py-3.5">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-800">{item.label}</p>
-                          <p className="mt-0.5 text-xs text-slate-400">Custom Item</p>
+                    {customItems.map((item, idx) => {
+                      const qty = Number((item.details.find(d => d.key === "quantity") || {}).value) || 1;
+                      return (
+                        <div key={`custom-${idx}`} className="grid grid-cols-[1fr_80px_140px] gap-4 items-center px-5 py-3.5">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-800">{item.label}</p>
+                            <p className="mt-0.5 text-xs text-slate-400">Custom Item</p>
+                          </div>
+                          <div className="text-center">
+                            <span className="text-xs text-slate-400">—</span>
+                          </div>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                              onClick={() => {
+                                if (qty <= 1) return;
+                                const newDetails = item.details.map(d => d.key === "quantity" ? { ...d, value: String(qty - 1) } : d);
+                                setCustomItems((prev) => prev.map((c, i) => i === idx ? { ...c, details: newDetails } : c));
+                              }} disabled={qty <= 1}>
+                              <Minus className="h-3 w-3" />
+                            </Button>
+                            <span className="w-8 text-center text-sm font-semibold text-slate-700">{qty}</span>
+                            <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                              onClick={() => {
+                                const newDetails = item.details.map(d => d.key === "quantity" ? { ...d, value: String(qty + 1) } : d);
+                                setCustomItems((prev) => prev.map((c, i) => i === idx ? { ...c, details: newDetails } : c));
+                              }}>
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
-                        <div className="text-center">
-                          <span className="text-xs text-slate-400">—</span>
-                        </div>
-                        <div className="text-center">
-                          <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                            {(item.details.find(d => d.key === "quantity") || {}).value}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>

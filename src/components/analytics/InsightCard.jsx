@@ -1,4 +1,4 @@
-import { AlertTriangle, AlertCircle, Info, CheckCircle } from "lucide-react";
+import { AlertTriangle, AlertCircle, Info, CheckCircle, X } from "lucide-react";
 
 const SEVERITY_DOT = {
   critical: "bg-rose-500",
@@ -16,16 +16,17 @@ const SEVERITY_ICON = {
 
 /**
  * Single insight row in the Prescriptive Decision Ledger.
- * Button-free layout: status dot + title + description.
+ * Status dot + title + description + dismiss (X) button.
  *
  * @param {Object} insight - Insight object from allPrescriptiveActions
+ * @param {Function} onDismiss - Callback to dismiss/remove this insight
  */
-export default function InsightCard({ insight }) {
+export default function InsightCard({ insight, onDismiss }) {
   const dotClass = SEVERITY_DOT[insight.severity] || SEVERITY_DOT.info;
   const Icon = SEVERITY_ICON[insight.severity] || SEVERITY_ICON.info;
 
   return (
-    <div className="py-3 flex items-start gap-3 border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors px-1 rounded-md">
+    <div className="py-3 flex items-start gap-3 border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors px-1 rounded-md group">
       {/* Colored dot */}
       <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dotClass}`} />
 
@@ -46,6 +47,18 @@ export default function InsightCard({ insight }) {
           {insight.message}
         </p>
       </div>
+
+      {/* Dismiss button */}
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onDismiss(); }}
+          className="mt-1 shrink-0 h-4 w-4 flex items-center justify-center rounded-full text-slate-300 opacity-0 group-hover:opacity-100 hover:bg-slate-200 hover:text-slate-600 transition-all"
+          title="Dismiss"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import {
   ShieldAlert,
-  ShieldCheck,
   ClipboardList,
   TrendingUp,
   AlertTriangle,
@@ -21,7 +20,7 @@ import TimeRangeSelector from "@/components/analytics/TimeRangeSelector";
 import InsightPanel from "@/components/analytics/InsightPanel";
 import ItemBorrowingAnalysisChart from "@/components/analytics/charts/ItemBorrowingAnalysisChart";
 import BorrowingComplianceChart from "@/components/analytics/charts/BorrowingComplianceChart";
-import SecurityThreatChart from "@/components/analytics/charts/SecurityThreatChart";
+
 
 // ─── Skeleton Loader ─────────────────────────────────────────────────────
 function Skeleton({ className = "" }) {
@@ -68,6 +67,50 @@ export default function AnalyticsDashboard() {
     lastUpdated,
     refetch,
   } = useAnalytics(timeRange);
+
+  // ── Brand Reliability Data ────────────────────────────────────────────────
+  // Groups items by brand, calculates defect rate per unit (respecting quantity)
+  const brandReliability = useMemo(() => {
+    const brandMap = new Map();
+    for (const item of itemDetails || []) {
+      const brand = String(
+        item.brand || item.manufacturer || item.make || ""
+      ).trim();
+      if (!brand || brand === "Unknown" || brand === "") continue;
+
+      // Get quantity — items can represent multiple units
+      const quantityValue = item.quantity ?? item.data?.quantity ?? 1;
+      const quantity = Number(quantityValue);
+      const qty = Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+
+      if (!brandMap.has(brand)) {
+        brandMap.set(brand, { total: 0, defective: 0 });
+      }
+      const entry = brandMap.get(brand);
+      entry.total += qty;
+
+      // Check if item is defective
+      const statusStr = String(item.status || item.condition || item.item_status || "").toLowerCase();
+      const dataStr = String(
+        item.data ? JSON.stringify(item.data) :
+        item.remarks || item.notes || item.details || ""
+      ).toLowerCase();
+      if (statusStr.includes("defect") || statusStr.includes("broken") || dataStr.includes("defect") || dataStr.includes("broken")) {
+        entry.defective += qty;
+      }
+    }
+
+    return Array.from(brandMap.entries())
+      .map(([brand, data]) => ({
+        brand,
+        total: data.total,
+        defective: data.defective,
+        defectRate: data.total > 0 ? Math.round((data.defective / data.total) * 10000) / 100 : 0,
+      }))
+      .filter((b) => b.total >= 3) // minimum 3 units to qualify
+      .sort((a, b) => b.defectRate - a.defectRate)
+      .slice(0, 10);
+  }, [itemDetails]);
 
   // Build analytics data object for prescriptive engine
   const analyticsData = useMemo(
@@ -196,10 +239,32 @@ export default function AnalyticsDashboard() {
       }
     }
 
+    // ── Type 5: Frequently Borrowed Custom Items → "Consider Inventory Integration" ──
+    // Aggregate custom items (no inventory) by name and flag those borrowed frequently
+    const customItemTotals = new Map();
+    for (const r of borrowingItemsBySection) {
+      const section = r.sectionName || "Custom Item";
+      if (section === "Custom Item" || section === "Uncategorized") {
+        const name = r.variant || "Uncategorized";
+        customItemTotals.set(name, (customItemTotals.get(name) || 0) + (Number(r.quantity) || 1));
+      }
+    }
+    for (const [name, count] of customItemTotals) {
+      if (count >= 3) {
+        actions.push({
+          id: `custom-item-${name}`,
+          severity: "info",
+          type: "inventory_integration",
+          title: "Consider Inventory Integration",
+          message: `"${name}" has been borrowed ${count} times but is not tracked in any inventory section. Consider adding it to the inventory system for better tracking and accountability.`,
+        });
+      }
+    }
+
     // Sort: critical first, then warning, then info
     const severityOrder = { critical: 0, warning: 1, info: 2, success: 3 };
     return actions.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
-  }, [defectBySection, inventoryUtilization, itemDetails]);
+  }, [defectBySection, inventoryUtilization, itemDetails, borrowingItemsBySection]);
 
   // ── Derived Stats ──────────────────────────────────────────────────────
 
@@ -222,15 +287,21 @@ export default function AnalyticsDashboard() {
 
   // Most borrowed item (variant with highest total quantity)
   const mostBorrowedItem = useMemo(() => {
-    if (!borrowingItemsBySection.length) return { name: "—", count: 0 };
+    if (!borrowingItemsBySection.length) return { name: "—", count: 0, isCustom: false };
     const totals = new Map();
     for (const r of borrowingItemsBySection) {
       const v = r.variant || "Uncategorized";
-      totals.set(v, (totals.get(v) || 0) + (Number(r.quantity) || 1));
+      const section = r.sectionName || "Custom Item";
+      const isCustom = section === "Custom Item";
+      const key = `${v}::${section}`;
+      if (!totals.has(key)) {
+        totals.set(key, { name: v, section, count: 0, isCustom });
+      }
+      totals.get(key).count += Number(r.quantity) || 1;
     }
-    let top = { name: "—", count: 0 };
-    for (const [name, count] of totals) {
-      if (count > top.count) top = { name, count };
+    let top = { name: "—", count: 0, isCustom: false, section: "" };
+    for (const entry of totals.values()) {
+      if (entry.count > top.count) top = entry;
     }
     return top;
   }, [borrowingItemsBySection]);
@@ -333,18 +404,6 @@ export default function AnalyticsDashboard() {
   // Top borrower name
   const topBorrowerName = topBorrowers?.[0]?.name || "—";
 
-  // Threat level display
-  const threatDisplay = useMemo(() => {
-    if (!securityThreat) return { label: "—", color: "text-slate-400" };
-    const level = securityThreat.threatLevel;
-    const map = {
-      low: { label: "Low", color: "text-emerald-600" },
-      moderate: { label: "Moderate", color: "text-amber-600" },
-      elevated: { label: "Elevated", color: "text-orange-600" },
-      critical: { label: "Critical", color: "text-rose-600" },
-    };
-    return map[level] || { label: "—", color: "text-slate-400" };
-  }, [securityThreat]);
 
   // ── Insight Action Handler ─────────────────────────────────────────────
   return (
@@ -420,7 +479,11 @@ export default function AnalyticsDashboard() {
               iconColor="text-slate-600"
               label="Most Borrowed Item"
               value={mostBorrowedItem.name}
-              subtext={`${mostBorrowedItem.count} total borrows`}
+              subtext={
+                mostBorrowedItem.isCustom
+                  ? `${mostBorrowedItem.count} borrows · Custom Item`
+                  : `${mostBorrowedItem.count} borrows`
+              }
             />
 
             {/* Most Borrowed Category */}
@@ -471,20 +534,14 @@ export default function AnalyticsDashboard() {
               }
             />
 
-            {/* Threat Level */}
+            {/* Brand Defect Rate */}
             <AnalyticsStatCard
-              icon={securityThreat?.threatLevel === "critical" || securityThreat?.threatLevel === "elevated"
-                ? ShieldAlert
-                : ShieldCheck}
-              iconBg="bg-emerald-50 border border-emerald-100"
-              iconColor="text-emerald-600"
-              label="Threat Level"
-              value={threatDisplay.label}
-              subtext={
-                securityThreat
-                  ? `${securityThreat.activeLockouts} active lockout${securityThreat.activeLockouts !== 1 ? "s" : ""}`
-                  : "Loading..."
-              }
+              icon={Wrench}
+              iconBg="bg-rose-50 border border-rose-100"
+              iconColor="text-rose-600"
+              label="Top Brand Defect Rate"
+              value={brandReliability.length > 0 ? `${brandReliability[0].defectRate}%` : "—"}
+              subtext={brandReliability.length > 0 ? `${brandReliability[0].brand} (${brandReliability[0].defective}/${brandReliability[0].total})` : "No brand data"}
             />
           </>
         )}
@@ -519,7 +576,7 @@ export default function AnalyticsDashboard() {
               <div>
                 <SectionHeader
                   title="Compliance Rate Table"
-                  subtitle="Ranked by borrowing volume (90 days)"
+                  subtitle="Ranked by borrowing volume (90 days, min. 3 borrows)"
                 />
               </div>
               <div className="flex-1 overflow-auto scrollbar-thin">
@@ -527,17 +584,26 @@ export default function AnalyticsDashboard() {
                   <thead className="bg-slate-100 sticky top-0 z-10">
                     <tr>
                       <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-left border-b border-slate-100">Name</th>
-                      <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-left border-b border-slate-100">Role</th>
                       <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-center border-b border-slate-100">Borrows</th>
+                      <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-center border-b border-slate-100">Unreturned Items</th>
+                      <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-center border-b border-slate-100">Defective Returns</th>
                       <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-right border-b border-slate-100">Compliance</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(topBorrowers || []).slice(0, 10).map((user, i) => (
                       <tr key={i} className="border-b border-slate-100/70 last:border-0 hover:bg-slate-50/40 transition-colors">
-                        <td className="py-2 px-3 text-xs font-semibold text-slate-800 truncate max-w-[140px]">{user.name}</td>
-                        <td className="py-2 px-3 text-xs text-slate-500 capitalize">{user.role || "—"}</td>
+                        <td className="py-2 px-3 text-left">
+                          <span className="block text-xs font-semibold text-slate-800 truncate max-w-[160px]">{user.name}</span>
+                          <span className="block text-[10px] text-slate-400 capitalize">{user.role || "—"}</span>
+                        </td>
                         <td className="py-2 px-3 text-xs font-bold font-mono text-slate-700 text-center">{user.totalBorrows}</td>
+                        <td className="py-2 px-3 text-xs font-bold font-mono text-slate-700 text-center">{user.unreturned || 0}</td>
+                        <td className="py-2 px-3 text-xs font-bold font-mono text-center">
+                          <span className={user.defectiveReturns > 0 ? "text-rose-600" : "text-slate-400"}>
+                            {user.defectiveReturns || 0}
+                          </span>
+                        </td>
                         <td className="py-2 px-3 text-right">
                           <span className={`inline-flex items-center text-[10px] font-bold font-mono px-1.5 py-0.5 rounded ${
                             user.complianceRate >= 85
@@ -551,9 +617,9 @@ export default function AnalyticsDashboard() {
                     ))}
                     {(!topBorrowers || topBorrowers.length === 0) && (
                       <tr>
-                        <td colSpan={4} className="py-10 text-center text-xs text-slate-400">
+                        <td colSpan={5} className="py-10 text-center text-xs text-slate-400">
                           No borrowing data available
-                        </td> 
+                        </td>
                       </tr>
                     )}
                   </tbody>
@@ -573,30 +639,21 @@ export default function AnalyticsDashboard() {
       {!loading && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Defective Items by Section */}
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="p-5 border-b border-slate-100">
+          <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm flex flex-col justify-between h-[360px] overflow-hidden">
+            <div>
               <SectionHeader
-                icon={Wrench}
                 title="Defect Rate by Section"
                 subtitle="Items flagged as defective"
               />
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="text-left px-5 py-2.5 text-xs font-semibold text-slate-500">
-                      Section
-                    </th>
-                    <th className="text-right px-5 py-2.5 text-xs font-semibold text-slate-500">
-                      Total
-                    </th>
-                    <th className="text-right px-5 py-2.5 text-xs font-semibold text-slate-500">
-                      Defective
-                    </th>
-                    <th className="text-right px-5 py-2.5 text-xs font-semibold text-slate-500">
-                      Rate
-                    </th>
+            <div className="flex-1 overflow-auto scrollbar-thin">
+              <table className="w-full">
+                <thead className="bg-slate-100 sticky top-0 z-10">
+                  <tr>
+                    <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-left border-b border-slate-100">Section</th>
+                    <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-center border-b border-slate-100">Total</th>
+                    <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-center border-b border-slate-100">Defective</th>
+                    <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-right border-b border-slate-100">Rate</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -606,28 +663,26 @@ export default function AnalyticsDashboard() {
                     .map((section, i) => (
                       <tr
                         key={i}
-                        className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors"
+                        className="border-b border-slate-100/70 last:border-0 hover:bg-slate-50/40 transition-colors"
                       >
-                        <td className="px-5 py-2.5 font-medium text-slate-800">
-                          {section.sectionName}
-                          <p className="text-[12px] text-slate-400 font-normal font-sans mt-0.5">{section.tabName}</p>
+                        <td className="py-2 px-3 text-left">
+                          <span className="block text-xs font-semibold text-slate-800 truncate max-w-[160px]">{section.sectionName}</span>
+                          <span className="block text-[10px] text-slate-400">{section.tabName}</span>
                         </td>
-                        <td className="px-5 py-2.5 text-right text-slate-700">
-                          {section.total}
+                        <td className="py-2 px-3 text-xs font-bold font-mono text-slate-700 text-center">{section.total}</td>
+                        <td className="py-2 px-3 text-xs font-bold font-mono text-center">
+                          <span className={section.defective > 0 ? "text-rose-600" : "text-slate-400"}>
+                            {section.defective}
+                          </span>
                         </td>
-                        <td className="px-5 py-2.5 text-right text-rose-600 font-semibold">
-                          {section.defective}
-                        </td>
-                        <td className="px-5 py-2.5 text-right">
-                          <span
-                            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                              section.defectRate > 15
-                                ? "bg-rose-100 text-rose-700"
-                                : section.defectRate > 10
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-emerald-100 text-emerald-700"
-                            }`}
-                          >
+                        <td className="py-2 px-3 text-right">
+                          <span className={`inline-flex items-center text-[10px] font-bold font-mono px-1.5 py-0.5 rounded ${
+                            section.defectRate > 15
+                              ? "bg-rose-50 text-rose-600 border border-rose-100"
+                              : section.defectRate > 10
+                              ? "bg-amber-50 text-amber-600 border border-amber-100"
+                              : "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                          }`}>
                             {section.defectRate}%
                           </span>
                         </td>
@@ -637,7 +692,7 @@ export default function AnalyticsDashboard() {
                     <tr>
                       <td
                         colSpan={4}
-                        className="px-5 py-8 text-center text-sm text-slate-400"
+                        className="py-10 text-center text-xs text-slate-400"
                       >
                         No inventory data available
                       </td>
@@ -648,12 +703,58 @@ export default function AnalyticsDashboard() {
             </div>
           </div>
 
-          {/* Security Threat Chart */}
-          <SecurityThreatChart
-            activeLockouts={securityThreat?.activeLockouts}
-            highTierLockouts={securityThreat?.highTierLockouts}
-            permanentBans={securityThreat?.permanentBans}
-          />
+          {/* Brand Reliability Index */}
+          <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm flex flex-col justify-between h-[360px] overflow-hidden">
+            <div>
+              <SectionHeader
+                title="Brand Reliability Index"
+                subtitle="Top brands by defect rate (min. 3 items)"
+              />
+            </div>
+            <div className="flex-1 overflow-auto scrollbar-thin">
+              <table className="w-full">
+                <thead className="bg-slate-100 sticky top-0 z-10">
+                  <tr>
+                    <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-left border-b border-slate-100">Brand</th>
+                    <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-center border-b border-slate-100">Total</th>
+                    <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-center border-b border-slate-100">Defective</th>
+                    <th className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 py-2 px-3 text-right border-b border-slate-100">Defective Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {brandReliability.map((b, i) => (
+                    <tr key={i} className="border-b border-slate-100/70 last:border-0 hover:bg-slate-50/40 transition-colors">
+                      <td className="py-2 px-3 text-xs font-semibold text-slate-800 truncate max-w-[160px]">{b.brand}</td>
+                      <td className="py-2 px-3 text-xs font-bold font-mono text-slate-700 text-center">{b.total}</td>
+                      <td className="py-2 px-3 text-xs font-bold font-mono text-center">
+                        <span className={b.defective > 0 ? "text-rose-600" : "text-slate-400"}>
+                          {b.defective}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <span className={`inline-flex items-center text-[10px] font-bold font-mono px-1.5 py-0.5 rounded ${
+                          b.defectRate > 15
+                            ? "bg-rose-50 text-rose-600 border border-rose-100"
+                            : b.defectRate > 10
+                            ? "bg-amber-50 text-amber-600 border border-amber-100"
+                            : "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                        }`}>
+                          {b.defectRate}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {brandReliability.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-10 text-center text-xs text-slate-400">
+                        No brand data available
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
@@ -738,10 +839,10 @@ function MostBorrowedAssetsLeaderboard({ borrowingItems = [] }) {
         {topAssets.length > 0 ? (
           <>
             {topAssets.map((asset, i) => {
-              const showSection =
-                asset.section &&
-                asset.section !== "Custom Item" &&
-                asset.section !== "Uncategorized";
+              const isCustom =
+                !asset.section ||
+                asset.section === "Custom Item" ||
+                asset.section === "Uncategorized";
               return (
                 <div
                   key={`${asset.name}-${asset.section}`}
@@ -756,11 +857,9 @@ function MostBorrowedAssetsLeaderboard({ borrowingItems = [] }) {
                       <p className="text-xs font-bold text-slate-800 truncate">
                         {asset.name}
                       </p>
-                      {showSection && (
-                        <p className="text-[10px] text-slate-400 uppercase tracking-wide mt-0.5">
-                          {asset.section}
-                        </p>
-                      )}
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wide mt-0.5">
+                        {isCustom ? "Custom Item" : asset.section}
+                      </p>
                     </div>
                   </div>
 

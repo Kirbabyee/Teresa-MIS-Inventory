@@ -98,7 +98,7 @@ export default function InsightPanel({ insights }) {
           </div>
         ) : (
           filtered.map((insight) => (
-            <InsightCard key={insight.id} insight={insight} />
+            <InsightCard key={insight.id} insight={insight} onDismiss={() => handleDismiss(insight.id)} />
           ))
         )}
       </div>

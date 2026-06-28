@@ -284,16 +284,70 @@ export const fetchSecurityThreatAssessment = async () => {
 };
 
 // ─── Top Borrowers with Compliance ───────────────────────────────────────
+// Also computes unreturned items and defective returns per user.
+// Defective returns = items returned as defective MINUS those already defective at borrow time.
 export const fetchTopBorrowers = async (days = 90, limit = 15) => {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
 
-  const { data, error } = await supabase
-    .from("borrowing_records")
-    .select("id, borrower_name, borrower_id_number, borrower_role, borrowed_at, returned_at, expected_return_at, status")
-    .gte("borrowed_at", cutoff.toISOString());
+  const [recordsRes, itemsRes] = await Promise.all([
+    supabase
+      .from("borrowing_records")
+      .select("id, borrower_name, borrower_id_number, borrower_role, borrowed_at, returned_at, expected_return_at, status")
+      .gte("borrowed_at", cutoff.toISOString()),
+    supabase
+      .from("borrowing_items")
+      .select("id, borrowing_record_id, item_details, returned_item_details, return_condition"),
+  ]);
 
-  if (error) throw error;
+  if (recordsRes.error) throw recordsRes.error;
+  if (itemsRes.error) throw itemsRes.error;
+
+  const data = recordsRes.data || [];
+  const allItems = itemsRes.data || [];
+
+  // Build lookup: borrowing_record_id → [items]
+  const itemsByRecord = {};
+  for (const item of allItems) {
+    const rid = item.borrowing_record_id;
+    if (!itemsByRecord[rid]) itemsByRecord[rid] = [];
+    itemsByRecord[rid].push(item);
+  }
+
+  // Helper: check if an item was already defective when borrowed
+  const wasDefectiveWhenBorrowed = (item) => {
+    const details = Array.isArray(item.item_details) ? item.item_details : [];
+    for (const d of details) {
+      const k = String(d.key || "").toLowerCase();
+      const l = String(d.label || "").toLowerCase();
+      if (k === "condition" || k === "status" || l === "condition" || l === "status") {
+        const v = String(d.value || "").toLowerCase();
+        if (v.includes("defect") || v.includes("broken") || v.includes("damaged")) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  // Helper: check if an item was returned as defective (per-item, not per-unit)
+  // Returns 1 if defective return, 0 if working or already defective when borrowed
+  const isDefectiveReturn = (item) => {
+    const returnedDetails = Array.isArray(item.returned_item_details)
+      ? item.returned_item_details
+      : [];
+    if (returnedDetails.length === 0) return 0;
+
+    // If item was already defective when borrowed, don't count it
+    if (wasDefectiveWhenBorrowed(item)) return 0;
+
+    // If ANY returned unit has a non-working condition, count as 1 defective return
+    const hasDefective = returnedDetails.some((e) => {
+      const cond = String(e.condition || "").toLowerCase();
+      return cond !== "working" && cond !== "";
+    });
+    return hasDefective ? 1 : 0;
+  };
 
   const userMap = new Map();
   for (const r of data || []) {
@@ -307,6 +361,8 @@ export const fetchTopBorrowers = async (days = 90, limit = 15) => {
         onTime: 0,
         late: 0,
         outstanding: 0,
+        unreturned: 0,
+        defectiveReturns: 0,
         borrowDates: [],
       });
     }
@@ -314,6 +370,21 @@ export const fetchTopBorrowers = async (days = 90, limit = 15) => {
     user.totalBorrows++;
     if (r.borrowed_at) {
       user.borrowDates.push(r.borrowed_at);
+    }
+
+    // Count unreturned items (records not yet returned)
+    const isReturned = !!r.returned_at;
+    if (!isReturned) {
+      const itemsForRecord = itemsByRecord[r.id] || [];
+      user.unreturned += itemsForRecord.length;
+    }
+
+    // Count defective returns (only for returned records, per-item not per-unit)
+    if (isReturned) {
+      const itemsForRecord = itemsByRecord[r.id] || [];
+      for (const item of itemsForRecord) {
+        user.defectiveReturns += isDefectiveReturn(item);
+      }
     }
 
     if (r.returned_at) {
@@ -335,11 +406,14 @@ export const fetchTopBorrowers = async (days = 90, limit = 15) => {
   }
 
   return Array.from(userMap.values())
+    .filter((u) => u.totalBorrows >= 3)
     .map((u) => ({
       ...u,
+      // Compliance = onTime / (onTime + late + defectiveReturns)
+      // Defective returns are treated as non-compliant
       complianceRate:
-        u.onTime + u.late > 0
-          ? Math.round((u.onTime / (u.onTime + u.late)) * 100)
+        u.onTime + u.late + u.defectiveReturns > 0
+          ? Math.round((u.onTime / (u.onTime + u.late + u.defectiveReturns)) * 100)
           : 100,
       // Sort dates descending (most recent first) and format
       borrowDates: u.borrowDates

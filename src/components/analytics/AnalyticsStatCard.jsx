@@ -29,10 +29,15 @@ export default function AnalyticsStatCard({
   subtext,
   trend,
   onClick,
+  highlight = false,
 }) {
   return (
     <div
-      className={`group rounded-xl bg-white p-4 shadow-sm border border-slate-200/80 transition-all duration-200 overflow-hidden flex flex-col justify-between ${
+      className={`group rounded-xl bg-white p-4 shadow-sm border transition-all duration-200 overflow-hidden flex flex-col justify-between ${
+        highlight
+          ? "border-amber-300 ring-1 ring-amber-200/50"
+          : "border-slate-200/80"
+      } ${
         onClick
           ? "cursor-pointer hover:shadow-md hover:border-slate-300/80"
           : "hover:shadow-md hover:border-slate-300/80"
@@ -99,7 +104,14 @@ export default function AnalyticsStatCard({
         {/* Subtext — uniform pill badge */}
         {subtext && (
           <div className="mt-1">
-            <span className="inline-flex items-center text-[10px] font-medium tracking-wide text-slate-400 bg-slate-50 border border-slate-100 rounded px-1.5 py-0.5 lowercase first-letter:uppercase">
+            <span className={`inline-flex items-center text-[10px] font-medium tracking-wide rounded px-1.5 py-0.5 lowercase first-letter:uppercase ${
+              highlight
+                ? "text-amber-700 bg-amber-50 border border-amber-200"
+                : "text-slate-400 bg-slate-50 border border-slate-100"
+            }`}>
+              {highlight && (
+                <span className="mr-1 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+              )}
               {subtext}
             </span>
           </div>

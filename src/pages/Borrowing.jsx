@@ -809,6 +809,7 @@ const ItemCard = ({
   remarkGroups,
   needsCarousel,
   seenRemarks,
+  isPending,
 }) => {
   const [carouselIdx, setCarouselIdx] = useState(0);
 
@@ -1000,7 +1001,7 @@ const ItemCard = ({
           </div>
         </div>
       )}
-      {displayUnits.length > 0 && (
+      {displayUnits.length > 0 && !isPending && (
         <div className={`px-5 ${displayFields.length > 0 ? "pt-1" : "pt-4"} pb-4`}>
           <div className="flex items-baseline justify-between mb-2">
             <p className="text-xs font-medium text-slate-400">
@@ -1274,7 +1275,7 @@ const ItemCard = ({
       {/* ── Body ─────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row">
         {renderLeftPanel()}
-        {needsCarousel ? renderCarouselRightPanel() : renderRightPanel(null, [])}
+        {!isPending && (needsCarousel ? renderCarouselRightPanel() : renderRightPanel(null, []))}
       </div>
     </div>
   );
@@ -1306,6 +1307,54 @@ export default function Borrowing() {
   const [returningBorrow, setReturningBorrow] = useState(false);
   const [returnError, setReturnError] = useState("");
   const [mergeWithLastBorrow, setMergeWithLastBorrow] = useState(false);
+  const [pendingMergeIds, setPendingMergeIds] = useState(new Set());
+  const [reviewingRecord, setReviewingRecord] = useState(null);
+  const [reviewCheckedItems, setReviewCheckedItems] = useState(new Set());
+  const [reviewMerge, setReviewMerge] = useState(false);
+  const [reviewActiveBorrow, setReviewActiveBorrow] = useState(null);
+
+  const openReviewModal = async (record) => {
+    // Fetch the items for this pending request
+    const { data: items } = await supabase
+      .from("borrowing_items_approval")
+      .select("*")
+      .eq("borrowing_record_id", record.id);
+    const allItemIds = (items || []).map((item) => item.id);
+    setReviewingRecord({ ...record, _approvalItems: items || [] });
+    setReviewCheckedItems(new Set(allItemIds));
+    setReviewMerge(false);
+    // Check if borrower has an active borrow (query DB directly since data may only hold pending)
+    const activeBorrow = await findLatestActiveBorrowFromDb(
+      record.name,
+      record.studentId || record.borrower_id_number
+    );
+    setReviewActiveBorrow(activeBorrow);
+  };
+
+  const closeReviewModal = () => {
+    setReviewingRecord(null);
+    setReviewCheckedItems(new Set());
+    setReviewMerge(false);
+    setReviewActiveBorrow(null);
+  };
+
+  const toggleReviewItem = (itemId) => {
+    setReviewCheckedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  };
+
+  const togglePendingMerge = (recordId) => {
+    setPendingMergeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(recordId)) next.delete(recordId);
+      else next.add(recordId);
+      return next;
+    });
+  };
 
   const [statusFilter, setStatusFilter] = useState(() =>
     ["logs", "history"].includes(searchParams.get("view")) ? "all" : "borrowed"
@@ -1348,6 +1397,8 @@ export default function Borrowing() {
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
   const [selectedRecord, setSelectedRecord] = useState(null);
+  // Pending approval detail — separate from borrowing record modal
+  const [viewingPendingRecord, setViewingPendingRecord] = useState(null);
 
   const [data, setData] = useState([]);
   const [depletedItems, setDepletedItems] = useState(new Set());
@@ -1471,14 +1522,152 @@ export default function Borrowing() {
       .sort((a, b) => new Date(b.date) - new Date(a.date))[0] || null;
   }, [data, form.name, form.studentId]);
 
+  // ── Find latest active borrow for a given borrower (by name or ID) ────
+  const findLatestActiveBorrow = (borrowerName, borrowerId) => {
+    const id = String(borrowerId || "").trim().toLowerCase();
+    const name = String(borrowerName || "").trim().toLowerCase();
+
+    if (!id && !name) return null;
+
+    return [...data]
+      .filter((record) => {
+        const status = String(record.status || "").toLowerCase();
+        const sameId = id && String(record.studentId || "").trim().toLowerCase() === id;
+        const sameName = name && String(record.name || "").trim().toLowerCase() === name;
+        return ["borrowed", "not_returned"].includes(status) && (sameId || sameName);
+      })
+      .sort((a, b) => new Date(b.date) - new Date(a.date))[0] || null;
+  };
+
+  // ── Find latest active borrow by querying the DB directly ─────────────
+  // Used in the review modal where `data` may only hold pending records
+  const findLatestActiveBorrowFromDb = async (borrowerName, borrowerId) => {
+    const id = String(borrowerId || "").trim().toLowerCase();
+    const name = String(borrowerName || "").trim().toLowerCase();
+    if (!id && !name) return null;
+
+    const { data: activeRecords } = await supabase
+      .from("borrowing_records")
+      .select("id, borrower_name, borrower_id_number, borrowed_at, status")
+      .in("status", ["borrowed", "not_returned"])
+      .order("borrowed_at", { ascending: false });
+
+    const matches = (activeRecords || []).filter((r) => {
+      const sameId = id && String(r.borrower_id_number || "").trim().toLowerCase() === id;
+      const sameName = name && String(r.borrower_name || "").trim().toLowerCase() === name;
+      return sameId || sameName;
+    });
+
+    if (matches.length === 0) return null;
+    const latest = matches[0];
+    return {
+      id: latest.id,
+      name: latest.borrower_name,
+      studentId: latest.borrower_id_number,
+      date: latest.borrowed_at,
+      status: latest.status,
+    };
+  };
+
   // ── Approve / Deny pending requests ───────────────────────────────────
   const [processingId, setProcessingId] = useState(null);
 
-  const handleApproveRecord = async (record) => {
+  const handleApproveRecord = async (record, selectedItemIds, merge) => {
     setProcessingId(record.id);
     try {
-      await approvePendingRecord(record.id);
-      toast.success(`Approved borrowing request for ${record.name}.`);
+      // Fetch all approval items
+      const { data: allApprovalItems } = await supabase
+        .from("borrowing_items_approval")
+        .select("*")
+        .eq("borrowing_record_id", record.id);
+
+      const approvalItems = (allApprovalItems || []).filter((item) =>
+        selectedItemIds.has(item.id)
+      );
+
+      if (approvalItems.length === 0) {
+        toast.error("Select at least one item to approve.");
+        setProcessingId(null);
+        return;
+      }
+
+      const existingRecord = merge
+        ? await findLatestActiveBorrowFromDb(record.name, record.studentId || record.borrower_id_number)
+        : null;
+
+      if (merge && existingRecord) {
+        // Merge: append selected items into the existing live record
+        const liveItems = approvalItems.map((item) => ({
+          borrowing_record_id: existingRecord.id,
+          inventory_item_id: item.inventory_item_id,
+          inventory_tab_id: item.inventory_tab_id,
+          inventory_section_id: item.inventory_section_id,
+          inventory_table_name: item.inventory_table_name,
+          item_label: item.item_label,
+          item_details: item.item_details,
+        }));
+        const { error: itemsErr } = await supabase
+          .from("borrowing_items")
+          .insert(liveItems);
+        if (itemsErr) throw itemsErr;
+
+        // Mark approval as approved
+        const { error: updateErr } = await supabase
+          .from("borrowing_records_approval")
+          .update({ status: "approved" })
+          .eq("id", record.id);
+        if (updateErr) throw updateErr;
+
+        // Update local state
+        setData((prev) =>
+          prev.map((r) =>
+            String(r.id) === String(existingRecord.id)
+              ? { ...r, items: [...(r.items || []), ...approvalItems.map((ai) => ({ ...ai, id: ai.inventory_item_id }))] }
+              : r
+          )
+        );
+        toast.success(`Approved ${approvalItems.length} item${approvalItems.length !== 1 ? "s" : ""} and merged with existing active borrow for ${record.name}.`);
+      } else {
+        // Standard approve — create a new live record with selected items
+        const { data: inserted, error: insertErr } = await supabase
+          .from("borrowing_records")
+          .insert([{
+            borrower_name: record.name,
+            borrower_id_number: record.studentId || record.borrower_id_number,
+            borrower_role: record.role || record.borrower_role,
+            status: "borrowed",
+            expected_return_at: record.expectedReturnAt || record.expected_return_at,
+            borrowed_at: record.date || record.created_at,
+          }])
+          .select("id")
+          .single();
+        if (insertErr) throw insertErr;
+
+        const liveItems = approvalItems.map((item) => ({
+          borrowing_record_id: inserted.id,
+          inventory_item_id: item.inventory_item_id,
+          inventory_tab_id: item.inventory_tab_id,
+          inventory_section_id: item.inventory_section_id,
+          inventory_table_name: item.inventory_table_name,
+          item_label: item.item_label,
+          item_details: item.item_details,
+        }));
+        const { error: itemsErr } = await supabase
+          .from("borrowing_items")
+          .insert(liveItems);
+        if (itemsErr) throw itemsErr;
+
+        // Mark approval as approved
+        const { error: updateErr } = await supabase
+          .from("borrowing_records_approval")
+          .update({ status: "approved" })
+          .eq("id", record.id);
+        if (updateErr) throw updateErr;
+
+        toast.success(`Approved ${approvalItems.length} item${approvalItems.length !== 1 ? "s" : ""} for ${record.name}.`);
+      }
+
+      closeReviewModal();
       loadBorrowings();
     } catch (err) {
       console.error("Approval failed:", err);
@@ -3744,7 +3933,7 @@ export default function Borrowing() {
                         return (
                           <tr
                             key={record.id}
-                            onClick={() => setSelectedRecord(record)}
+                            onClick={() => isPending ? setViewingPendingRecord(record) : setSelectedRecord(record)}
                             className={`cursor-pointer transition-colors hover:bg-slate-200/80 ${rowIndex % 2 === 0 ? "bg-white" : "bg-slate-100/90"}`}
                           >
                             {/* Borrower */}
@@ -3797,17 +3986,16 @@ export default function Borrowing() {
                                 </td>
                                 {/* Actions */}
                                 <td className="px-4 py-3">
-                                  <div className="flex justify-end">
+                                  <div className="flex items-center justify-end gap-1.5">
                                     <button
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleApproveRecord(record);
+                                        openReviewModal(record);
                                       }}
-                                      disabled={processingId === record.id}
-                                      className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 mr-2 disabled:opacity-50"
+                                      className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
                                     >
-                                      {processingId === record.id ? "..." : "Approve"}
+                                      Review Request
                                     </button>
                                     <button
                                       type="button"
@@ -4403,6 +4591,291 @@ export default function Borrowing() {
                 onClick={() => setSelectedRecord(null)}
               >
                 Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          PENDING APPROVAL DETAIL MODAL
+          ═══════════════════════════════════════════════════════════════════ */}
+      {viewingPendingRecord && (() => {
+        const allItems = viewingPendingRecord.items || viewingPendingRecord.borrowing_items || [];
+        return (
+          <Dialog open={!!viewingPendingRecord} onOpenChange={(open) => !open && setViewingPendingRecord(null)}>
+            <DialogContent
+              className="flex max-h-[85vh] max-w-3xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
+              onPointerDownOutside={(e) => e.preventDefault()}
+            >
+              {/* ── Header ───────────────────────────────────────────────────── */}
+              <DialogHeader className="border-b border-slate-200 bg-white px-8 pt-8 pb-6 sm:px-10">
+                <DialogTitle className="text-lg font-semibold text-slate-900">
+                  Pending Approval Request
+                </DialogTitle>
+              </DialogHeader>
+
+              {/* ── Body ─────────────────────────────────────────────────────── */}
+              <div className="flex-1 space-y-8 overflow-y-auto px-8 py-8 sm:px-10">
+
+                {/* Transaction Overview — Borrower + Timeline */}
+                <div className="rounded-lg border border-slate-200 bg-white p-6">
+                  <h3 className="mb-5 text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">
+                    Transaction Details
+                  </h3>
+                  <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+                    {/* Left column: Borrower */}
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-xs font-medium text-slate-400">Full Name</p>
+                        <p className="mt-0.5 text-base font-semibold text-slate-900">{viewingPendingRecord.name}</p>
+                      </div>
+                      <div className="flex gap-6">
+                        <div>
+                          <p className="text-xs font-medium text-slate-400">ID Number</p>
+                          <p className="mt-0.5 text-sm font-semibold text-slate-900">{viewingPendingRecord.studentId || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-slate-400">Role</p>
+                          <p className="mt-0.5 text-sm font-semibold text-slate-900">{viewingPendingRecord.role || "—"}</p>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Right column: Dates + Status */}
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-xs font-medium text-slate-400">Date Requested</p>
+                        <p className="mt-0.5 text-base font-semibold text-slate-900">{formatExportDate(viewingPendingRecord.date)}</p>
+                        <p className="text-sm text-slate-400">{formatExportTime(viewingPendingRecord.date)}</p>
+                      </div>
+                      {viewingPendingRecord.expectedReturnAt && (
+                        <div>
+                          <p className="text-xs font-medium text-slate-400">Expected Return</p>
+                          <p className="mt-0.5 text-base font-semibold text-slate-900">{formatExportDate(viewingPendingRecord.expectedReturnAt)}</p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-xs font-medium text-slate-400">Status</p>
+                        <span className="mt-1 inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                          Pending Approval
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items Detail Section */}
+                <div className="rounded-lg border border-slate-200 bg-white p-6">
+                  <div className="mb-6">
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      Items
+                    </h3>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
+                      <span>{allItems.length} {allItems.length === 1 ? "item" : "items"}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    {allItems.map((item, idx) => {
+                      const borrowedQty = getBorrowedQuantity(item);
+                      // Asset detail fields — exclude internal/DB keys, tab/section, and quantity
+                      const assetFields = (item.details || []).filter((d) => {
+                        if (d.value == null || String(d.value).trim() === "") return false;
+                        const strVal = String(d.value);
+                        if (strVal === "[object Object]" || (typeof d.value === "object" && !Array.isArray(d.value))) return false;
+                        const k = String(d.key || "").toLowerCase();
+                        const l = String(d.label || "").toLowerCase();
+                        const blocked = new Set(["quantity", "id", "section_id", "created_at", "updated_at", "sort_order", "data", "remark", "condition", "return_defective_quantity", "return_working_quantity", "tab", "section", "tab_id", "inventory_tab_id", "inventory_section_id", "inventory_item_id", "borrowing_record_id", "inventory_table_name", "computer_number", "item_number", "tab_name", "section_name", "tab_name", "section_name", "table_name", "tabid", "sectionid", "inventorytabid", "inventorysectionid", "inventoryitemid", "borrowingrecordid", "name", "item_name", "asset_name", "itemname", "assetname", "itemlabel", "returncondition", "returnremarks", "item_returned_at", "itemreturnedat", "returned_item_details", "returneditemdetails", "_returned_qty", "status"]);
+                        if (blocked.has(k) || blocked.has(l) || k.endsWith("_id") || k.startsWith("_") || /inventory|borrowing|tab|section|table_name/.test(k)) return false;
+                        const rawKey = String(d.key || "");
+                        if (rawKey === rawKey.toUpperCase() && rawKey.length > 1 && /^[A-Z][A-Z_]+$/.test(rawKey)) return false;
+                        return true;
+                      }).map((d) => ({
+                        key: d.key,
+                        label: d.label && !/^_/.test(d.label) && d.label !== d.label.toUpperCase()
+                          ? d.label
+                          : formatFieldLabel(d.key),
+                        value: typeof d.value === "object" ? JSON.stringify(d.value) : String(d.value),
+                      }));
+
+                      const tabName = item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "";
+                      const sectionName = item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "";
+
+                      return (
+                        <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                          {/* Header: item label + tab/section + quantity */}
+                          <div className="bg-slate-50/60 border-b border-slate-100 px-5 py-4 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-base font-bold text-slate-900 leading-snug truncate">
+                                {item.label || item.item_label || item.name || "Item"}
+                              </p>
+                              {(tabName || sectionName) && (
+                                <p className="mt-0.5 text-sm text-slate-400 truncate">
+                                  {tabName}{sectionName ? ` · ${sectionName}` : ""}
+                                </p>
+                              )}
+                            </div>
+                            <span className="shrink-0 rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                              {borrowedQty} x
+                            </span>
+                          </div>
+                          {/* Asset detail fields */}
+                          {assetFields.length > 0 && (
+                            <div className="px-5 py-4">
+                              <div className="flex flex-col gap-y-2">
+                                {assetFields.map((field, fi) => (
+                                  <div key={fi} className="flex items-baseline gap-2 min-w-0">
+                                    <span className="shrink-0 text-xs font-medium text-slate-400">
+                                      {formatFieldLabel(field.key || field.label)}:
+                                    </span>
+                                    <span className="truncate text-sm font-semibold text-slate-900">{field.value}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Footer ───────────────────────────────────────────────────── */}
+              <DialogFooter className="flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50/60 px-8 py-5 sm:flex-row sm:justify-end sm:px-10">
+                <Button type="button" variant="outline" size="sm-lg" onClick={() => setViewingPendingRecord(null)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          APPROVAL REVIEW MODAL
+          ═══════════════════════════════════════════════════════════════════ */}
+      {reviewingRecord && (
+        <Dialog open={!!reviewingRecord} onOpenChange={(open) => !open && closeReviewModal()}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold text-slate-800">
+                Review Borrowing Request
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-500">
+                {reviewingRecord.name} • {reviewingRecord.studentId || reviewingRecord.borrower_id_number || "—"} • {formatExportDate(reviewingRecord.date || reviewingRecord.created_at)}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-2">
+              {/* Items list — styled like the return modal's select items */}
+              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                {/* Item header — Select All / Deselect All */}
+                <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-800 truncate">
+                    Requested Items
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allIds = (reviewingRecord._approvalItems || []).map((i) => i.id);
+                      if (allIds.length > 0 && allIds.every((id) => reviewCheckedItems.has(id))) {
+                        setReviewCheckedItems(new Set());
+                      } else {
+                        setReviewCheckedItems(new Set(allIds));
+                      }
+                    }}
+                    className="shrink-0 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                  >
+                    {reviewingRecord._approvalItems?.length > 0 &&
+                    reviewingRecord._approvalItems.every((i) => reviewCheckedItems.has(i.id))
+                      ? "Deselect All"
+                      : "Select All"}
+                  </button>
+                </div>
+
+                {/* Scrollable item rows */}
+                <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+                  {(reviewingRecord._approvalItems || []).map((item) => {
+                    const label = typeof item.item_label === "object"
+                      ? (item.item_label?.label || item.item_label?.value || item.item_details || "Item")
+                      : (item.item_label || item.item_details || "Item");
+                    return (
+                      <label
+                        key={item.id}
+                        className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Checkbox
+                          checked={reviewCheckedItems.has(item.id)}
+                          onCheckedChange={() => toggleReviewItem(item.id)}
+                          className="border-slate-300 data-[state=checked]:bg-[#4a1111] data-[state=checked]:border-[#4a1111]"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-800 truncate">
+                            {label}
+                          </p>
+                          {typeof item.item_details === "string" && item.item_details && (
+                            <p className="text-xs text-slate-400 truncate">{item.item_details}</p>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                  {(!reviewingRecord._approvalItems || reviewingRecord._approvalItems.length === 0) && (
+                    <div className="px-4 py-6 text-center text-xs text-slate-400">No items in this request.</div>
+                  )}
+                </div>
+
+                {/* Footer count */}
+                <div className="bg-slate-50/60 border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
+                  {reviewCheckedItems.size} of {reviewingRecord._approvalItems?.length || 0} items selected
+                </div>
+              </div>
+
+              {/* Merge with active borrow — same pattern as private borrow wizard */}
+              {reviewActiveBorrow && (
+                <label
+                  className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-sm text-amber-900"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Checkbox
+                    checked={reviewMerge}
+                    onCheckedChange={(checked) => setReviewMerge(!!checked)}
+                    className="mt-0.5 border-amber-400 data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
+                  />
+                  <span>
+                    <span className="block font-semibold">Merge with latest active borrow</span>
+                    <span className="mt-1 block text-xs text-amber-700">
+                      Latest record borrowed on{" "}
+                      {new Date(reviewActiveBorrow.date).toLocaleString()} has not been returned yet.
+                    </span>
+                  </span>
+                </label>
+              )}
+            </div>
+
+            {/* Footer */}
+            <DialogFooter className="mt-5 flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={closeReviewModal}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={reviewCheckedItems.size === 0 || processingId === reviewingRecord.id}
+                onClick={() =>
+                  handleApproveRecord(reviewingRecord, reviewCheckedItems, reviewMerge)
+                }
+                className="rounded-lg bg-[#4a1111] text-white hover:bg-[#3a0d0d] disabled:opacity-50"
+              >
+                {processingId === reviewingRecord.id
+                  ? "Processing..."
+                  : `Approve ${reviewCheckedItems.size} Item${reviewCheckedItems.size !== 1 ? "s" : ""}`}
               </Button>
             </DialogFooter>
           </DialogContent>
