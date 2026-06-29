@@ -3669,6 +3669,7 @@ export default function Borrowing() {
                         <thead className="sticky top-0 z-10 bg-slate-50 shadow-[inset_0_-1px_0_rgb(226,232,240)]">
                           <tr>
                             {[
+                              "Borrow ID",
                               "Borrower",
                               "Borrowed At",
                               "Expected Return",
@@ -3704,6 +3705,9 @@ export default function Borrowing() {
                                 onClick={() => setSelectedRecord(record)}
                                 className={`cursor-pointer transition-colors hover:bg-slate-200/80 ${rowIndex % 2 === 0 ? "bg-white" : "bg-slate-100/90"}`}
                               >
+                                <td className="px-4 py-3">
+                                  <p className="text-sm font-semibold text-[#4a1111]">{record.borrowId || "—"}</p>
+                                </td>
                                 <td className="px-4 py-3">
                                   <p className="text-sm font-medium text-slate-900">{record.name}</p>
                                 </td>
@@ -3876,6 +3880,7 @@ export default function Borrowing() {
                       <tr>
                         {statusFilter === "pending"
                           ? [
+                              "Borrow ID",
                               "Borrower",
                               "ID Number",
                               "Requested At",
@@ -3891,6 +3896,7 @@ export default function Borrowing() {
                               </th>
                             ))
                           : [
+                              "Borrow ID",
                               "Borrower",
                               "Borrowed At",
                               "Status",
@@ -3936,6 +3942,9 @@ export default function Borrowing() {
                             onClick={() => isPending ? setViewingPendingRecord(record) : setSelectedRecord(record)}
                             className={`cursor-pointer transition-colors hover:bg-slate-200/80 ${rowIndex % 2 === 0 ? "bg-white" : "bg-slate-100/90"}`}
                           >
+                            <td className="px-4 py-3">
+                              <p className="text-sm font-semibold text-[#4a1111]">{record.borrowId || "—"}</p>
+                            </td>
                             {/* Borrower */}
                             <td className="px-4 py-3">
                               <p className="text-sm font-medium text-slate-900">{record.name}</p>
@@ -4207,6 +4216,10 @@ export default function Borrowing() {
                   {/* Left column: Borrower */}
                   <div className="space-y-3">
                     <div>
+                      <p className="text-xs font-medium text-slate-400">Borrow ID</p>
+                      <p className="mt-0.5 text-base font-semibold text-[#4a1111]">{selectedRecord.borrowId || "—"}</p>
+                    </div>
+                    <div>
                       <p className="text-xs font-medium text-slate-400">Full Name</p>
                       <p className="mt-0.5 text-base font-semibold text-slate-900">{selectedRecord.name}</p>
                     </div>
@@ -4220,6 +4233,12 @@ export default function Borrowing() {
                         <p className="mt-0.5 text-sm font-semibold text-slate-900">{selectedRecord.role || "—"}</p>
                       </div>
                     </div>
+                    {selectedRecord.email && (
+                      <div>
+                        <p className="text-xs font-medium text-slate-400">Email</p>
+                        <p className="mt-0.5 text-sm font-semibold text-slate-900">{selectedRecord.email}</p>
+                      </div>
+                    )}
                   </div>
                   {/* Right column: Dates + Status */}
                   <div className="space-y-3">
@@ -4627,6 +4646,10 @@ export default function Borrowing() {
                     {/* Left column: Borrower */}
                     <div className="space-y-3">
                       <div>
+                        <p className="text-xs font-medium text-slate-400">Borrow ID</p>
+                        <p className="mt-0.5 text-base font-semibold text-[#4a1111]">{viewingPendingRecord.borrowId || "—"}</p>
+                      </div>
+                      <div>
                         <p className="text-xs font-medium text-slate-400">Full Name</p>
                         <p className="mt-0.5 text-base font-semibold text-slate-900">{viewingPendingRecord.name}</p>
                       </div>
@@ -4640,6 +4663,12 @@ export default function Borrowing() {
                           <p className="mt-0.5 text-sm font-semibold text-slate-900">{viewingPendingRecord.role || "—"}</p>
                         </div>
                       </div>
+                      {viewingPendingRecord.email && (
+                        <div>
+                          <p className="text-xs font-medium text-slate-400">Email</p>
+                          <p className="mt-0.5 text-sm font-semibold text-slate-900">{viewingPendingRecord.email}</p>
+                        </div>
+                      )}
                     </div>
                     {/* Right column: Dates + Status */}
                     <div className="space-y-3">

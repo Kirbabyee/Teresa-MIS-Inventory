@@ -110,6 +110,8 @@ export default function PublicBorrow() {
   const [customItems, setCustomItems] = useState([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successBorrowId, setSuccessBorrowId] = useState("");
 
   // ── Custom Item Modal ────────────────────────────────────────────────────
   const [showCustomItemModal, setShowCustomItemModal] = useState(false);
@@ -321,23 +323,21 @@ export default function PublicBorrow() {
         borrowerName: form.name,
         borrowerIdNumber: form.studentId,
         borrowerRole: form.role,
+        borrowerEmail: form.email,
         items: allItems,
         expectedReturnAt: expectedReturnAt.toISOString(),
       });
 
-      if (result?.status === "pending_approval") {
-        toast.success("Borrowing request submitted. Awaiting administrator approval.");
-      } else {
-        toast.success("Borrowing submitted. Thank you.");
-      }
+      // Capture borrow_id from the created record
+      const borrowId = result?.record?.borrowId || result?.record?.borrow_id || "";
+      setSuccessBorrowId(borrowId);
+      setShowSuccessModal(true);
+
+      // Reset form state (but don't reload — user sees success modal first)
       const defaults = getDefaultDates();
       setForm({ name: "", email: "", studentId: "", role: "", borrowDate: defaults.borrowDate, expectedReturnAt: defaults.expectedReturnAt });
       setCustomItems([]);
       setBorrowCart([]);
-      setActiveStep(1);
-
-      // Reload page so inventory quantities refetch from DB (deducted stock reflects)
-      setTimeout(() => window.location.reload(), 1200);
     } catch (err) {
       console.error(err);
       setFormError(err?.message || "Failed to submit borrowing.");
@@ -1162,6 +1162,61 @@ export default function PublicBorrow() {
       {/* ═══════════════════════════════════════════════════════════════════
           FLOATING CART BUTTON (Step 2 only)
           ═══════════════════════════════════════════════════════════════════ */}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          BORROW SUCCESS MODAL — shows borrow ID, prompts to take a picture
+          ═══════════════════════════════════════════════════════════════════ */}
+      {showSuccessModal && (
+        <Dialog open={showSuccessModal} onOpenChange={(open) => { if (!open) { setShowSuccessModal(false); setActiveStep(1); setTimeout(() => window.location.reload(), 300); } }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader className="text-center sm:text-center">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+                <CheckCircle className="h-8 w-8 text-emerald-600" />
+              </div>
+              <DialogTitle className="text-xl font-semibold text-slate-900">
+                Borrowing Submitted!
+              </DialogTitle>
+              <DialogDescription className="mt-2 text-sm text-slate-500">
+                Your borrowing request has been submitted successfully.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-4 flex flex-col items-center gap-4">
+              {/* Borrow ID display */}
+              <div className="w-full rounded-xl border border-slate-200 bg-slate-50 px-6 py-5 text-center">
+                <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Your Borrow ID</p>
+                <p className="mt-2 text-3xl font-bold tracking-widest text-[#4a1111]">
+                  {successBorrowId || "—"}
+                </p>
+              </div>
+
+              {/* Take a picture reminder */}
+              <div className="w-full rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-center">
+                <p className="text-sm font-semibold text-amber-900">
+                   Please take a picture of your Borrow ID
+                </p>
+                <p className="mt-1 text-xs text-amber-700">
+                  You will need this ID for reference.
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter className="mt-6 sm:justify-center">
+              <Button
+                type="button"
+                onClick={() => {
+                  setShowSuccessModal(false);
+                  setActiveStep(1);
+                  setTimeout(() => window.location.reload(), 300);
+                }}
+                className="rounded-lg bg-[#4a1111] px-8 text-white hover:bg-[#3f0f0f]"
+              >
+                Done
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

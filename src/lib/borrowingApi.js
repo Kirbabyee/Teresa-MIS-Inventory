@@ -38,7 +38,9 @@ const mapBorrowingRecord = (record = {}) => ({
   id: record.id,
   name: record.borrower_name || "",
   studentId: record.borrower_id_number || "",
+  email: record.borrower_email || "",
   role: record.borrower_role || "",
+  borrowId: record.borrow_id || "",
   date: record.borrowed_at || record.created_at,
   returnedAt: record.returned_at || null,
   expectedReturnAt: record.expected_return_at || null,
@@ -70,7 +72,7 @@ export const fetchBorrowingRecords = async ({ status = "borrowed" } = {}) => {
   let recordsQuery = supabase
     .from("borrowing_records")
     .select(
-      "id, borrower_name, borrower_id_number, borrower_role, borrowed_at, returned_at, expected_return_at, status, created_at"
+      "id, borrower_name, borrower_id_number, borrower_role, borrower_email, borrow_id, borrowed_at, returned_at, expected_return_at, status, created_at"
     )
     .order("borrowed_at", { ascending: false });
 
@@ -257,6 +259,33 @@ export const isAdminApprovalRequired = async () => {
 };
 
 /**
+ * Generate the next borrow_id in the format S-#### (students) or T-#### (teachers).
+ * Queries both live and approval tables to find the max numeric suffix.
+ */
+const PREFIX_BY_ROLE = { student: "S", teacher: "T", staff: "T", faculty: "T", guest: "S" };
+
+export const generateBorrowId = async (role = "") => {
+  const prefix = PREFIX_BY_ROLE[String(role || "").toLowerCase()] || "S";
+
+  // Find the max number used so far across both tables
+  const [{ data: live }, { data: pending }] = await Promise.all([
+    supabase.from("borrowing_records").select("borrow_id"),
+    supabase.from("borrowing_records_approval").select("borrow_id"),
+  ]);
+
+  let maxNum = 0;
+  for (const r of [...(live || []), ...(pending || [])]) {
+    const bid = String(r.borrower_id || r.borrow_id || "");
+    if (bid.startsWith(`${prefix}-`)) {
+      const num = parseInt(bid.slice(2), 10);
+      if (Number.isFinite(num) && num > maxNum) maxNum = num;
+    }
+  }
+
+  return `${prefix}-${String(maxNum + 1).padStart(4, "0")}`;
+};
+
+/**
  * Create a borrowing record.
  * When approval is required, inserts into borrowing_records_approval (staging)
  * and returns { status: "pending_approval", record }.
@@ -267,10 +296,12 @@ export const createBorrowingRecord = async ({
   borrowerName,
   borrowerIdNumber,
   borrowerRole,
+  borrowerEmail = "",
   items = [],
   expectedReturnAt = null,
 }) => {
   const requiresApproval = await isAdminApprovalRequired();
+  const borrowId = await generateBorrowId(borrowerRole);
 
   if (requiresApproval) {
     // ── Staging path: insert into approval queue ──────────────────────
@@ -281,12 +312,14 @@ export const createBorrowingRecord = async ({
           borrower_name: borrowerName,
           borrower_id_number: borrowerIdNumber,
           borrower_role: borrowerRole,
+          borrower_email: borrowerEmail || null,
+          borrow_id: borrowId,
           status: "pending",
           expected_return_at: expectedReturnAt,
           borrowed_at: new Date().toISOString(),
         },
       ])
-      .select("id, borrower_name, borrower_id_number, borrower_role, borrowed_at, expected_return_at, status, created_at")
+      .select("id, borrower_name, borrower_id_number, borrower_role, borrower_email, borrow_id, borrowed_at, expected_return_at, status, created_at")
       .single();
 
     if (recordError) throw recordError;
@@ -315,6 +348,7 @@ export const createBorrowingRecord = async ({
         borrowerName: record.borrower_name,
         borrowerIdNumber: record.borrower_id_number,
         borrowerRole: record.borrower_role,
+        borrowId: record.borrow_id,
         borrowedAt: record.borrowed_at,
         expectedReturnAt: record.expected_return_at,
         status: record.status,
@@ -331,11 +365,13 @@ export const createBorrowingRecord = async ({
         borrower_name: borrowerName,
         borrower_id_number: borrowerIdNumber,
         borrower_role: borrowerRole,
+        borrower_email: borrowerEmail || null,
+        borrow_id: borrowId,
         status: "borrowed",
         expected_return_at: expectedReturnAt,
       },
     ])
-    .select("id, borrower_name, borrower_id_number, borrower_role, borrowed_at, returned_at, expected_return_at, status, created_at")
+    .select("id, borrower_name, borrower_id_number, borrower_role, borrower_email, borrow_id, borrowed_at, returned_at, expected_return_at, status, created_at")
     .single();
 
   if (recordError) throw recordError;
@@ -770,7 +806,7 @@ export const fetchPendingApprovals = async () => {
     supabase
       .from("borrowing_records_approval")
       .select(
-        "id, borrower_name, borrower_id_number, borrower_role, borrowed_at, expected_return_at, status, created_at"
+        "id, borrower_name, borrower_id_number, borrower_role, borrower_email, borrow_id, borrowed_at, expected_return_at, status, created_at"
       )
       .eq("status", "pending")
       .order("created_at", { ascending: true }),
@@ -817,6 +853,8 @@ export const approvePendingRecord = async (recordId) => {
         borrower_name: approvalRecord.borrower_name,
         borrower_id_number: approvalRecord.borrower_id_number,
         borrower_role: approvalRecord.borrower_role,
+        borrower_email: approvalRecord.borrower_email || null,
+        borrow_id: approvalRecord.borrow_id || null,
         status: "borrowed",
         expected_return_at: approvalRecord.expected_return_at,
         borrowed_at:
