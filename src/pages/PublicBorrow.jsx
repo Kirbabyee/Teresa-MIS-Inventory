@@ -349,407 +349,545 @@ export default function PublicBorrow() {
 
   const totalCartItems = borrowCart.length + customItems.length;
 
+  // ── Reusable cart list (single source of truth) ────────────────────────
+  // `compact` = desktop sidebar (read-only qty, trash only).
+  // `!compact` = mobile modal (inline +/- controls, trash).
+  const renderCartContent = ({ compact = false } = {}) => (
+    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+      <div className={cn(
+        "bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500",
+        compact
+          ? "grid grid-cols-[1fr_44px_28px] gap-2"
+          : "grid grid-cols-[1fr_80px_120px_32px] gap-3"
+      )}>
+        <span>Item</span>
+        {!compact && <span className="text-center">Status</span>}
+        <span className="text-center">Qty</span>
+        <span />
+      </div>
+      <div className={cn("divide-y divide-slate-100", !compact && "max-h-[300px] overflow-y-auto")}>
+        {totalCartItems === 0 ? (
+          <div className="px-3 py-8 text-center text-sm text-slate-400">Your cart is empty.</div>
+        ) : (
+          <>
+            {borrowCart.map((item) => (
+              <div
+                key={item.cartId}
+                className={cn(
+                  "items-center px-3 py-2.5",
+                  compact
+                    ? "grid grid-cols-[1fr_44px_28px] gap-2"
+                    : "grid grid-cols-[1fr_80px_120px_32px] gap-3"
+                )}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-800 truncate">{getItemLabel(item)}</p>
+                  <p className="text-xs text-slate-400 truncate">{item.tabName} / {item.sectionName}</p>
+                </div>
+                {!compact && (
+                  <div className="text-center">
+                    {getItemRemark(item) ? (
+                      <span className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600">{getItemRemark(item)}</span>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
+                  </div>
+                )}
+                <div className={cn("flex items-center gap-1.5", compact ? "justify-center" : "pl-4")}>
+                  {!compact && (
+                    <>
+                      <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                        onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)} disabled={item.quantity <= 1}>
+                        <Minus className="h-3 w-3" />
+                      </Button>
+                      <span className="w-8 text-center text-sm font-semibold text-slate-700">{item.quantity}</span>
+                      <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                        onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)} disabled={item.quantity >= (item.maxQuantity || 999)}>
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </>
+                  )}
+                  {compact && (
+                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">{item.quantity}</span>
+                  )}
+                </div>
+                <button type="button" onClick={() => removeFromCart(item.cartId)}
+                  className="shrink-0 rounded-md p-1.5 text-rose-500 transition hover:bg-rose-50" title="Remove">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+            {customItems.map((item, idx) => {
+              const qty = Number((item.details.find(d => d.key === "quantity") || {}).value) || 1;
+              return (
+                <div
+                  key={`custom-${idx}`}
+                  className={cn(
+                    "items-center px-3 py-2.5",
+                    compact
+                      ? "grid grid-cols-[1fr_44px_28px] gap-2"
+                      : "grid grid-cols-[1fr_80px_120px_32px] gap-3"
+                  )}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-800 truncate">{item.label}</p>
+                    <p className="text-xs text-slate-400">Custom Item</p>
+                  </div>
+                  {!compact && (
+                    <div className="text-center">
+                      <span className="text-xs text-slate-400">—</span>
+                    </div>
+                  )}
+                  <div className={cn("flex items-center gap-1.5", compact ? "justify-center" : "pl-4")}>
+                    {!compact && (
+                      <>
+                        <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                          onClick={() => {
+                            if (qty <= 1) return;
+                            const newDetails = item.details.map(d => d.key === "quantity" ? { ...d, value: String(qty - 1) } : d);
+                            setCustomItems((prev) => prev.map((c, i) => i === idx ? { ...c, details: newDetails } : c));
+                          }} disabled={qty <= 1}>
+                          <Minus className="h-3 w-3" />
+                        </Button>
+                        <span className="w-8 text-center text-sm font-semibold text-slate-700">{qty}</span>
+                        <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                          onClick={() => {
+                            const newDetails = item.details.map(d => d.key === "quantity" ? { ...d, value: String(qty + 1) } : d);
+                            setCustomItems((prev) => prev.map((c, i) => i === idx ? { ...c, details: newDetails } : c));
+                          }}>
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      </>
+                    )}
+                    {compact && (
+                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">{qty}</span>
+                    )}
+                  </div>
+                  <button type="button" onClick={() => removeCustomItem(idx)}
+                    className="shrink-0 rounded-md p-1.5 text-rose-500 transition hover:bg-rose-50" title="Remove">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
+    </div>
+  );
+
   // ── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#f8f8f8]">
       <Header isPublic setMobileOpen={() => {}} sectionTitleDisplay="Public Borrow" now={new Date()} initials={initials} displayName={displayName} displayRole={displayRole} />
 
+      {/*
+        Responsive shell:
+          - Mobile (< lg): single centered card (stepper + form), cart via floating button + modal.
+          - Desktop (≥ lg): two-column row — left = stepper+form (75%), right = live cart sidebar (25%).
+      */}
       <div className="flex justify-center px-4 py-10">
-        <div className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden rounded-[28px] p-0 bg-transparent w-full">
-          {/* Stepper Header */}
-          <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-6 pt-5 pb-4 sm:px-8">
-            <div className="flex items-center justify-center">
-              {["Identity", "Select Items", "Review"].map((label, idx) => {
-                const stepNum = idx + 1;
-                const isActive = activeStep === stepNum;
-                const isCompleted = activeStep > stepNum;
-                const Icon = [User, Package, CheckCircle][idx];
-                return (
-                  <div key={label} className="flex items-center">
-                    <div className="flex flex-col items-center gap-1.5">
-                      <div className={cn(
-                        "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors",
-                        isActive && "border-[#4a1111] bg-[#4a1111] text-white",
-                        isCompleted && "border-[#4a1111] bg-[#4a1111] text-white",
-                        !isActive && !isCompleted && "border-slate-200 bg-white text-slate-400"
-                      )}>
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <span className={cn("text-[11px] font-medium tracking-wide", isActive && "text-[#4a1111]", isCompleted && "text-[#4a1111]/60", !isActive && !isCompleted && "text-slate-400")}>
-                        {label}
-                      </span>
-                    </div>
-                    {idx < 2 && (
-                      <div className={cn("mx-4 mb-5 h-0.5 w-16 rounded-full transition-colors", activeStep > stepNum ? "bg-[#4a1111]" : "bg-slate-200")} />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        <div className="flex w-full max-w-7xl flex-col items-start gap-6 transition-all duration-200 lg:flex-row">
 
-          {/* Scrollable Body */}
-          <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-8 bg-white">
-
-            {/* ═══ STEP 1: Borrower Identity ═══ */}
-            {activeStep === 1 && (
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Borrower Information</h3>
-                  <p className="mt-1 text-sm">Enter the borrower's identity details to begin.</p>
-                </div>
-                <div>
-                  <Label htmlFor="borrow-name" className="mb-1 block text-sm font-medium text-slate-700">Full Name <span className="text-destructive">*</span></Label>
-                  <Input id="borrow-name" name="name" placeholder="Enter full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus className={cn("h-10", formErrors.name && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
-                  {formErrors.name && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.name}</p>}
-                </div>
-                <div>
-                  <Label htmlFor="borrow-email" className="mb-1 block text-sm font-medium text-slate-700">Email <span className="text-destructive">*</span></Label>
-                  <Input id="borrow-email" name="email" type="email" placeholder="Enter email address" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={cn("h-10", formErrors.email && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
-                  {formErrors.email && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.email}</p>}
-                </div>
-                <div>
-                  <Label htmlFor="borrow-studentId" className="mb-1 block text-sm font-medium text-slate-700">ID Number <span className="text-destructive">*</span></Label>
-                  <Input id="borrow-studentId" name="studentId" placeholder="Enter ID number" value={form.studentId} onChange={(e) => setForm({ ...form, studentId: e.target.value })} className={cn("h-10", formErrors.studentId && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
-                  {formErrors.studentId && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.studentId}</p>}
-                </div>
-                <div>
-                  <Label htmlFor="borrow-role" className="mb-1 block text-sm font-medium text-slate-700">Role <span className="text-destructive">*</span></Label>
-                  <Select value={form.role || ""} onValueChange={(val) => setForm({ ...form, role: val })}>
-                    <SelectTrigger id="borrow-role" className="h-10"><SelectValue placeholder="Select role" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Student">Student</SelectItem>
-                      <SelectItem value="Teacher">Teacher</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {formErrors.role && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.role}</p>}
-                </div>
-
-                {/* ── Time Frame ─────────────────────────────────────── */}
-                <div className="pt-2 border-t border-slate-200">
-                  <p className="text-sm font-medium text-slate-700 mb-3">Time Frame</p>
-                  <div className="grid grid-cols-2 gap-3">
-
-                    {/* ── Borrow Date & Time ── */}
-                    <div>
-                      <Label className="mb-1 block text-sm font-medium text-slate-700">Borrow Date &amp; Time</Label>
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setShowBorrowDatePicker((open) => !open)}
-                          className="flex w-full items-center gap-2.5 rounded-lg border border-input bg-white px-3 text-left text-sm shadow-sm transition hover:border-slate-300 h-9"
-                        >
-                          <CalendarIcon className="h-4 w-4 shrink-0 text-slate-400" />
-                          <span className={`flex-1 truncate ${form.borrowDate ? "text-slate-700 font-medium" : "text-slate-400"}`}>
-                            {form.borrowDate
-                              ? new Date(form.borrowDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                              : "Select date & time"}
+          {/* ═══════════════════════════════════════════════════════════════
+              LEFT COLUMN (75% on desktop) — stepper + active step + footer
+              ═══════════════════════════════════════════════════════════════ */}
+          <div className="w-full min-w-0 lg:flex-[3]">
+            <div className="flex flex-col gap-0 overflow-hidden rounded-[25px] border-2 border-slate-200 bg-white p-0 shadow-sm">
+              {/* Stepper Header */}
+              <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-6 pt-5 pb-4 sm:px-8">
+                <div className="flex items-center justify-center">
+                  {["Identity", "Select Items", "Review"].map((label, idx) => {
+                    const stepNum = idx + 1;
+                    const isActive = activeStep === stepNum;
+                    const isCompleted = activeStep > stepNum;
+                    const Icon = [User, Package, CheckCircle][idx];
+                    return (
+                      <div key={label} className="flex items-center">
+                        <div className="flex flex-col items-center gap-1.5">
+                          <div className={cn(
+                            "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors",
+                            isActive && "border-[#4a1111] bg-[#4a1111] text-white",
+                            isCompleted && "border-[#4a1111] bg-[#4a1111] text-white",
+                            !isActive && !isCompleted && "border-slate-200 bg-white text-slate-400"
+                          )}>
+                            <Icon className="h-4 w-4" />
+                          </div>
+                          <span className={cn("text-[11px] font-medium tracking-wide", isActive && "text-[#4a1111]", isCompleted && "text-[#4a1111]/60", !isActive && !isCompleted && "text-slate-400")}>
+                            {label}
                           </span>
-                        </button>
-
-                        {showBorrowDatePicker && (
-                          <>
-                            <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowBorrowDatePicker(false)} />
-                            <div className="fixed left-1/2 top-1/2 z-[201] w-[320px] -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
-                              <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
-                                <CalendarIcon className="h-4 w-4 text-slate-400" />
-                                <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Borrow Date &amp; Time</span>
-                                <button type="button" onClick={() => setShowBorrowDatePicker(false)} className="ml-auto rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                              <div className="px-3 pt-2">
-                                <DayPicker
-                                  className="rdp-sidebar-picker text-sm"
-                                  mode="single"
-                                  selected={form.borrowDate ? new Date(form.borrowDate) : undefined}
-                                  disabled={{ before: (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })() }}
-                                  fromDate={new Date()}
-                                  onSelect={(date) => {
-                                    if (date) {
-                                      const pad = (n) => String(n).padStart(2, "0");
-                                      const now = new Date(form.borrowDate ? new Date(form.borrowDate) : new Date());
-                                      const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-                                      const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${timeStr}`;
-                                      setForm({ ...form, borrowDate: dateStr });
-                                    }
-                                  }}
-                                />
-                              </div>
-                              <div className="border-t border-slate-100 px-4 py-3">
-                                <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Time</p>
-                                <div className="flex items-center gap-1.5">
-                                  <div className="relative w-16">
-                                    <select
-                                      value={form.borrowDate ? String(new Date(form.borrowDate).getHours()).padStart(2, "0") : "08"}
-                                      onChange={(e) => {
-                                        const pad = (n) => String(n).padStart(2, "0");
-                                        const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
-                                        base.setHours(parseInt(e.target.value));
-                                        const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
-                                        setForm({ ...form, borrowDate: dateStr });
-                                      }}
-                                      className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                    >
-                                      {Array.from({ length: 12 }, (_, i) => { const v = String(i + 1).padStart(2, "0"); return <option key={i} value={v}>{v}</option>; })}
-                                    </select>
-                                  </div>
-                                  <span className="text-lg font-bold text-slate-300">:</span>
-                                  <div className="relative w-16">
-                                    <select
-                                      value={form.borrowDate ? String(new Date(form.borrowDate).getMinutes()).padStart(2, "0") : "00"}
-                                      onChange={(e) => {
-                                        const pad = (n) => String(n).padStart(2, "0");
-                                        const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
-                                        base.setMinutes(parseInt(e.target.value));
-                                        const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
-                                        setForm({ ...form, borrowDate: dateStr });
-                                      }}
-                                      className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                    >
-                                      {Array.from({ length: 60 }, (_, i) => { const v = String(i).padStart(2, "0"); return <option key={i} value={v}>{v}</option>; })}
-                                    </select>
-                                  </div>
-                                  <div className="relative w-[60px]">
-                                    <select
-                                      value={form.borrowDate ? (new Date(form.borrowDate).getHours() >= 12 ? "PM" : "AM") : "AM"}
-                                      onChange={(e) => {
-                                        const pad = (n) => String(n).padStart(2, "0");
-                                        const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
-                                        const wasPM = base.getHours() >= 12;
-                                        const goingPM = e.target.value === "PM";
-                                        if (wasPM && !goingPM) base.setHours(base.getHours() - 12);
-                                        else if (!wasPM && goingPM) base.setHours(base.getHours() + 12);
-                                        const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
-                                        setForm({ ...form, borrowDate: dateStr });
-                                      }}
-                                      className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                    >
-                                      <option value="AM">AM</option>
-                                      <option value="PM">PM</option>
-                                    </select>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
-                                <button type="button" onClick={() => { setForm({ ...form, borrowDate: new Date().toISOString() }); setShowBorrowDatePicker(false); }} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100">Reset</button>
-                                <button type="button" onClick={() => setShowBorrowDatePicker(false)} className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]">Done</button>
-                              </div>
-                            </div>
-                          </>
+                        </div>
+                        {idx < 2 && (
+                          <div className={cn("mx-4 mb-5 h-0.5 w-16 rounded-full transition-colors", activeStep > stepNum ? "bg-[#4a1111]" : "bg-slate-200")} />
                         )}
                       </div>
-                    </div>
-
-                    {/* ── Expected Return Date ── */}
-                    <div>
-                      <Label className="mb-1 block text-sm font-medium text-slate-700">Expected Return Date</Label>
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setShowReturnDatePicker((open) => !open)}
-                          className="flex w-full items-center gap-2.5 rounded-lg border border-input bg-white px-3 text-left text-sm shadow-sm transition hover:border-slate-300 h-9"
-                        >
-                          <CalendarIcon className="h-4 w-4 shrink-0 text-slate-400" />
-                          <span className={`flex-1 truncate ${form.expectedReturnAt ? "text-slate-700 font-medium" : "text-slate-400"}`}>
-                            {form.expectedReturnAt
-                              ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                              : "Select return date"}
-                          </span>
-                        </button>
-
-                        {showReturnDatePicker && (
-                          <>
-                            <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowReturnDatePicker(false)} />
-                            <div className="fixed left-1/2 top-1/2 z-[201] w-[320px] -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
-                              <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
-                                <CalendarIcon className="h-4 w-4 text-slate-400" />
-                                <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Expected Return Date</span>
-                                <button type="button" onClick={() => setShowReturnDatePicker(false)} className="ml-auto rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                              <div className="px-3 pt-2">
-                                <DayPicker
-                                  className="rdp-sidebar-picker text-sm"
-                                  mode="single"
-                                  selected={form.expectedReturnAt ? new Date(form.expectedReturnAt + "T00:00:00") : undefined}
-                                  onSelect={(date) => {
-                                    if (date) {
-                                      const y = date.getFullYear();
-                                      const m = String(date.getMonth() + 1).padStart(2, "0");
-                                      const d = String(date.getDate()).padStart(2, "0");
-                                      setForm({ ...form, expectedReturnAt: `${y}-${m}-${d}` });
-                                    }
-                                    setShowReturnDatePicker(false);
-                                  }}
-                                  disabled={form.borrowDate ? { before: new Date(form.borrowDate) } : undefined}
-                                  fromDate={form.borrowDate ? new Date(form.borrowDate) : new Date()}
-                                  footer={
-                                    form.expectedReturnAt
-                                      ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                                      : ""
-                                  }
-                                />
-                              </div>
-                              <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
-                                <button type="button" onClick={() => { const ret = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000); ret.setHours(23, 59, 59, 0); setForm({ ...form, expectedReturnAt: `${ret.getFullYear()}-${String(ret.getMonth() + 1).padStart(2, "0")}-${String(ret.getDate()).padStart(2, "0")}` }); setShowReturnDatePicker(false); }} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100">Reset</button>
-                                <button type="button" onClick={() => setShowReturnDatePicker(false)} className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]">Done</button>
-                              </div>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                  </div>
+                    );
+                  })}
                 </div>
               </div>
-            )}
 
-            {/* ═══ STEP 2: Select Items ═══ */}
-            {activeStep === 2 && (
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Select Items</h3>
-                  <p className="mt-1 text-sm">Browse by location, pick items, and manage your cart.</p>
-                </div>
+              {/* Scrollable Body */}
+              <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-8 bg-white">
 
-                {/* ── Cascading Filters: Inventory → Section ──────────────── */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="mb-1 block text-sm font-medium text-slate-700">Inventory</Label>
-                    <Select value={filterTabId || "__all__"} onValueChange={(val) => { setFilterTabId(val === "__all__" ? "" : val); setFilterSectionId(""); }}>
-                      <SelectTrigger className="h-10"><SelectValue placeholder="All Inventories" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__all__">All Inventories</SelectItem>
-                        {tabs.map((tab) => (
-                          <SelectItem key={tab.id} value={String(tab.id)}>{tab.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="mb-1 block text-sm font-medium text-slate-700">Section</Label>
-                    <Select value={filterSectionId || "__all__"} onValueChange={(val) => setFilterSectionId(val === "__all__" ? "" : val)} disabled={!filterTabId}>
-                      <SelectTrigger className="h-10"><SelectValue placeholder={filterTabId ? "All Sections" : "Select inventory first"} /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__all__">All Sections</SelectItem>
-                        {filterSections.map((section) => (
-                          <SelectItem key={section.id} value={String(section.id)}>{section.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* ── Search ──────────────────────────────────────────────── */}
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <Input
-                    type="text"
-                    placeholder="Search within selection..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="h-9 pl-9 pr-9 text-sm"
-                  />
-                  {search && (
-                    <button type="button" onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-slate-400 hover:text-slate-600">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {/* ── Inventory Item List ──────────────────────────────────── */}
-                <div className="rounded-lg border border-slate-200 overflow-hidden">
-                  <div className="grid grid-cols-[1fr_80px_90px_90px] gap-2 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    <span>Item</span>
-                    <span className="text-center">Status</span>
-                    <span className="text-center">In Stock</span>
-                    <span className="text-right">Action</span>
-                  </div>
-                  {inventoryLoading ? (
-                    <div className="flex items-center justify-center py-10">
-                      <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-[#4a1111]" />
-                      <span className="ml-2 text-sm text-slate-500">Loading inventory...</span>
+                {/* ═══ STEP 1: Borrower Identity ═══ */}
+                {activeStep === 1 && (
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900">Borrower Information</h3>
+                      <p className="mt-1 text-sm">Enter the borrower's identity details to begin.</p>
                     </div>
-                  ) : filteredItems.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-slate-400">
-                      {search ? "No items match your search." : "No inventory items available."}
-                    </p>
-                  ) : (
-                    <div className="max-h-[250px] overflow-y-auto">
-                      {filteredItems.map((item) => {
-                        const cartId = `inv-${item.tabId}-${item.sectionId}-${item.id}`;
-                        const alreadyInCart = cartIdSet.has(cartId);
-                        const stock = getLiveStock(item);
-                        const itemRemark = getItemRemark(item);
+                    <div>
+                      <Label htmlFor="borrow-name" className="mb-1 block text-sm font-medium text-slate-700">Full Name <span className="text-destructive">*</span></Label>
+                      <Input id="borrow-name" name="name" placeholder="Enter full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus className={cn("h-10", formErrors.name && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
+                      {formErrors.name && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.name}</p>}
+                    </div>
+                    <div>
+                      <Label htmlFor="borrow-email" className="mb-1 block text-sm font-medium text-slate-700">Email <span className="text-destructive">*</span></Label>
+                      <Input id="borrow-email" name="email" type="email" placeholder="Enter email address" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={cn("h-10", formErrors.email && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
+                      {formErrors.email && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.email}</p>}
+                    </div>
+                    <div>
+                      <Label htmlFor="borrow-studentId" className="mb-1 block text-sm font-medium text-slate-700">ID Number <span className="text-destructive">*</span></Label>
+                      <Input id="borrow-studentId" name="studentId" placeholder="Enter ID number" value={form.studentId} onChange={(e) => setForm({ ...form, studentId: e.target.value })} className={cn("h-10", formErrors.studentId && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
+                      {formErrors.studentId && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.studentId}</p>}
+                    </div>
+                    <div>
+                      <Label htmlFor="borrow-role" className="mb-1 block text-sm font-medium text-slate-700">Role <span className="text-destructive">*</span></Label>
+                      <Select value={form.role || ""} onValueChange={(val) => setForm({ ...form, role: val })}>
+                        <SelectTrigger id="borrow-role" className="h-10"><SelectValue placeholder="Select role" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Student">Student</SelectItem>
+                          <SelectItem value="Teacher">Teacher</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {formErrors.role && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.role}</p>}
+                    </div>
 
-                        if (stock <= 0) return null;
+                    {/* ── Time Frame ─────────────────────────────────────── */}
+                    <div className="pt-2 border-t border-slate-200">
+                      <p className="text-sm font-medium text-slate-700 mb-3">Time Frame</p>
+                      <div className="grid grid-cols-2 gap-3">
 
-                        return (
-                          <div
-                            key={cartId}
-                            className={cn(
-                              "grid grid-cols-[1fr_80px_90px_80px] gap-2 items-center border-b border-slate-100 px-3 py-2.5 hover:bg-slate-50 transition-colors relative",
-                              alreadyInCart && "bg-emerald-50/40 border-l-4 border-l-emerald-500"
-                            )}
-                          >
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium text-slate-800">{getItemLabel(item)}</p>
-                              <p className="truncate text-[11px] text-slate-400">{item.tabName} • {item.sectionName}</p>
-                            </div>
-                            <div className="text-center">
-                              {itemRemark ? (
-                                <span className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600">
-                                  {itemRemark}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-slate-400">—</span>
-                              )}
-                            </div>
-                            <div className="text-center">
-                              <span className={cn(
-                                "rounded-md px-2 py-1 text-xs font-semibold",
-                                stock > 0
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : "bg-rose-50 text-rose-700 border border-rose-200"
-                              )}>
-                                {stock > 0 ? stock : "0"}
+                        {/* ── Borrow Date & Time ── */}
+                        <div>
+                          <Label className="mb-1 block text-sm font-medium text-slate-700">Borrow Date &amp; Time</Label>
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setShowBorrowDatePicker((open) => !open)}
+                              className="flex w-full items-center gap-2.5 rounded-lg border border-input bg-white px-3 text-left text-sm shadow-sm transition hover:border-slate-300 h-9"
+                            >
+                              <CalendarIcon className="h-4 w-4 shrink-0 text-slate-400" />
+                              <span className={`flex-1 truncate ${form.borrowDate ? "text-slate-700 font-medium" : "text-slate-400"}`}>
+                                {form.borrowDate
+                                  ? new Date(form.borrowDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                  : "Select date & time"}
                               </span>
-                            </div>
-                            <div className="text-right">
-                              {stock <= 0 && (
-                                <span className="block text-[9px] font-semibold text-rose-500 leading-tight">
-                                  Not available
-                                </span>
-                              )}
-                              {stock > 0 && (
-                                <Button
-                                  size="sm"
-                                  variant={alreadyInCart ? "secondary" : "default"}
-                                  onClick={() => {
-                                    if (!alreadyInCart && stock > 0) {
-                                      setQtyDialogItem(item);
-                                      setQtyDialogValue(1);
-                                    }
-                                  }}
-                                  disabled={alreadyInCart || stock <= 0}
-                                  className={cn(
-                                    "h-7 px-2.5 text-[11px] font-semibold mt-0.5",
-                                    !alreadyInCart && stock > 0 && "bg-[#4a1111] hover:bg-[#5a1717]"
-                                  )}
-                                >
-                                  {alreadyInCart ? "Added" : "+ Add"}
-                                </Button>
-                              )}
-                            </div>
+                            </button>
+
+                            {showBorrowDatePicker && (
+                              <>
+                                <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowBorrowDatePicker(false)} />
+                                <div className="fixed left-1/2 top-1/2 z-[201] w-[320px] -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
+                                  <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
+                                    <CalendarIcon className="h-4 w-4 text-slate-400" />
+                                    <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Borrow Date &amp; Time</span>
+                                    <button type="button" onClick={() => setShowBorrowDatePicker(false)} className="ml-auto rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                  <div className="px-3 pt-2">
+                                    <DayPicker
+                                      className="rdp-sidebar-picker text-sm"
+                                      mode="single"
+                                      selected={form.borrowDate ? new Date(form.borrowDate) : undefined}
+                                      disabled={{ before: (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })() }}
+                                      fromDate={new Date()}
+                                      onSelect={(date) => {
+                                        if (date) {
+                                          const pad = (n) => String(n).padStart(2, "0");
+                                          const now = new Date(form.borrowDate ? new Date(form.borrowDate) : new Date());
+                                          const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                                          const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${timeStr}`;
+                                          setForm({ ...form, borrowDate: dateStr });
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="border-t border-slate-100 px-4 py-3">
+                                    <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Time</p>
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="relative w-16">
+                                        <select
+                                          value={form.borrowDate ? String(new Date(form.borrowDate).getHours()).padStart(2, "0") : "08"}
+                                          onChange={(e) => {
+                                            const pad = (n) => String(n).padStart(2, "0");
+                                            const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
+                                            base.setHours(parseInt(e.target.value));
+                                            const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
+                                            setForm({ ...form, borrowDate: dateStr });
+                                          }}
+                                          className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        >
+                                          {Array.from({ length: 12 }, (_, i) => { const v = String(i + 1).padStart(2, "0"); return <option key={i} value={v}>{v}</option>; })}
+                                        </select>
+                                      </div>
+                                      <span className="text-lg font-bold text-slate-300">:</span>
+                                      <div className="relative w-16">
+                                        <select
+                                          value={form.borrowDate ? String(new Date(form.borrowDate).getMinutes()).padStart(2, "0") : "00"}
+                                          onChange={(e) => {
+                                            const pad = (n) => String(n).padStart(2, "0");
+                                            const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
+                                            base.setMinutes(parseInt(e.target.value));
+                                            const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
+                                            setForm({ ...form, borrowDate: dateStr });
+                                          }}
+                                          className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        >
+                                          {Array.from({ length: 60 }, (_, i) => { const v = String(i).padStart(2, "0"); return <option key={i} value={v}>{v}</option>; })}
+                                        </select>
+                                      </div>
+                                      <div className="relative w-[60px]">
+                                        <select
+                                          value={form.borrowDate ? (new Date(form.borrowDate).getHours() >= 12 ? "PM" : "AM") : "AM"}
+                                          onChange={(e) => {
+                                            const pad = (n) => String(n).padStart(2, "0");
+                                            const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
+                                            const wasPM = base.getHours() >= 12;
+                                            const goingPM = e.target.value === "PM";
+                                            if (wasPM && !goingPM) base.setHours(base.getHours() - 12);
+                                            else if (!wasPM && goingPM) base.setHours(base.getHours() + 12);
+                                            const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
+                                            setForm({ ...form, borrowDate: dateStr });
+                                          }}
+                                          className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        >
+                                          <option value="AM">AM</option>
+                                          <option value="PM">PM</option>
+                                        </select>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
+                                    <button type="button" onClick={() => { setForm({ ...form, borrowDate: new Date().toISOString() }); setShowBorrowDatePicker(false); }} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100">Reset</button>
+                                    <button type="button" onClick={() => setShowBorrowDatePicker(false)} className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]">Done</button>
+                                  </div>
+                                </div>
+                              </>
+                            )}
                           </div>
-                        );
-                      })}
+                        </div>
+
+                        {/* ── Expected Return Date ── */}
+                        <div>
+                          <Label className="mb-1 block text-sm font-medium text-slate-700">Expected Return Date</Label>
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setShowReturnDatePicker((open) => !open)}
+                              className="flex w-full items-center gap-2.5 rounded-lg border border-input bg-white px-3 text-left text-sm shadow-sm transition hover:border-slate-300 h-9"
+                            >
+                              <CalendarIcon className="h-4 w-4 shrink-0 text-slate-400" />
+                              <span className={`flex-1 truncate ${form.expectedReturnAt ? "text-slate-700 font-medium" : "text-slate-400"}`}>
+                                {form.expectedReturnAt
+                                  ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                  : "Select return date"}
+                              </span>
+                            </button>
+
+                            {showReturnDatePicker && (
+                              <>
+                                <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowReturnDatePicker(false)} />
+                                <div className="fixed left-1/2 top-1/2 z-[201] w-[320px] -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
+                                  <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
+                                    <CalendarIcon className="h-4 w-4 text-slate-400" />
+                                    <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Expected Return Date</span>
+                                    <button type="button" onClick={() => setShowReturnDatePicker(false)} className="ml-auto rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                  <div className="px-3 pt-2">
+                                    <DayPicker
+                                      className="rdp-sidebar-picker text-sm"
+                                      mode="single"
+                                      selected={form.expectedReturnAt ? new Date(form.expectedReturnAt + "T00:00:00") : undefined}
+                                      onSelect={(date) => {
+                                        if (date) {
+                                          const y = date.getFullYear();
+                                          const m = String(date.getMonth() + 1).padStart(2, "0");
+                                          const d = String(date.getDate()).padStart(2, "0");
+                                          setForm({ ...form, expectedReturnAt: `${y}-${m}-${d}` });
+                                        }
+                                        setShowReturnDatePicker(false);
+                                      }}
+                                      disabled={form.borrowDate ? { before: new Date(form.borrowDate) } : undefined}
+                                      fromDate={form.borrowDate ? new Date(form.borrowDate) : new Date()}
+                                      footer={
+                                        form.expectedReturnAt
+                                          ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                          : ""
+                                      }
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
+                                    <button type="button" onClick={() => { const ret = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000); ret.setHours(23, 59, 59, 0); setForm({ ...form, expectedReturnAt: `${ret.getFullYear()}-${String(ret.getMonth() + 1).padStart(2, "0")}-${String(ret.getDate()).padStart(2, "0")}` }); setShowReturnDatePicker(false); }} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100">Reset</button>
+                                    <button type="button" onClick={() => setShowReturnDatePicker(false)} className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]">Done</button>
+                                  </div>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                      </div>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {/* ═══ STEP 2: Select Items ═══ */}
+                {activeStep === 2 && (
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900">Select Items</h3>
+                      <p className="mt-1 text-sm">Browse by location, pick items, and manage your cart.</p>
+                    </div>
+
+                    {/* ── Cascading Filters: Inventory → Section ──────────────── */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="mb-1 block text-sm font-medium text-slate-700">Inventory</Label>
+                        <Select value={filterTabId || "__all__"} onValueChange={(val) => { setFilterTabId(val === "__all__" ? "" : val); setFilterSectionId(""); }}>
+                          <SelectTrigger className="h-10"><SelectValue placeholder="All Inventories" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__all__">All Inventories</SelectItem>
+                            {tabs.map((tab) => (
+                              <SelectItem key={tab.id} value={String(tab.id)}>{tab.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="mb-1 block text-sm font-medium text-slate-700">Section</Label>
+                        <Select value={filterSectionId || "__all__"} onValueChange={(val) => setFilterSectionId(val === "__all__" ? "" : val)} disabled={!filterTabId}>
+                          <SelectTrigger className="h-10"><SelectValue placeholder={filterTabId ? "All Sections" : "Select inventory first"} /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__all__">All Sections</SelectItem>
+                            {filterSections.map((section) => (
+                              <SelectItem key={section.id} value={String(section.id)}>{section.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* ── Search ──────────────────────────────────────────────── */}
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        type="text"
+                        placeholder="Search within selection..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="h-9 pl-9 pr-9 text-sm"
+                      />
+                      {search && (
+                        <button type="button" onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-slate-400 hover:text-slate-600">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* ── Inventory Item List ──────────────────────────────────── */}
+                    <div className="rounded-lg border border-slate-200 overflow-hidden">
+                      <div className="grid grid-cols-[1fr_80px_90px_90px] gap-2 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                        <span>Item</span>
+                        <span className="text-center">Status</span>
+                        <span className="text-center">In Stock</span>
+                        <span className="text-right">Action</span>
+                      </div>
+                      {inventoryLoading ? (
+                        <div className="flex items-center justify-center py-10">
+                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-[#4a1111]" />
+                          <span className="ml-2 text-sm text-slate-500">Loading inventory...</span>
+                        </div>
+                      ) : filteredItems.length === 0 ? (
+                        <p className="py-8 text-center text-sm text-slate-400">
+                          {search ? "No items match your search." : "No inventory items available."}
+                        </p>
+                      ) : (
+                        <div className="max-h-[250px] overflow-y-auto">
+                          {filteredItems.map((item) => {
+                            const cartId = `inv-${item.tabId}-${item.sectionId}-${item.id}`;
+                            const alreadyInCart = cartIdSet.has(cartId);
+                            const stock = getLiveStock(item);
+                            const itemRemark = getItemRemark(item);
+
+                            if (stock <= 0) return null;
+
+                            return (
+                              <div
+                                key={cartId}
+                                className={cn(
+                                  "grid grid-cols-[1fr_80px_90px_80px] gap-2 items-center border-b border-slate-100 px-3 py-2.5 hover:bg-slate-50 transition-colors relative",
+                                  alreadyInCart && "bg-emerald-50/40 border-l-4 border-l-emerald-500"
+                                )}
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium text-slate-800">{getItemLabel(item)}</p>
+                                  <p className="truncate text-[11px] text-slate-400">{item.tabName} • {item.sectionName}</p>
+                                </div>
+                                <div className="text-center">
+                                  {itemRemark ? (
+                                    <span className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600">
+                                      {itemRemark}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-slate-400">—</span>
+                                  )}
+                                </div>
+                                <div className="text-center">
+                                  <span className={cn(
+                                    "rounded-md px-2 py-1 text-xs font-semibold",
+                                    stock > 0
+                                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                      : "bg-rose-50 text-rose-700 border border-rose-200"
+                                  )}>
+                                    {stock > 0 ? stock : "0"}
+                                  </span>
+                                </div>
+                                <div className="text-right">
+                                  {stock <= 0 && (
+                                    <span className="block text-[9px] font-semibold text-rose-500 leading-tight">
+                                      Not available
+                                    </span>
+                                  )}
+                                  {stock > 0 && (
+                                    <Button
+                                      size="sm"
+                                      variant={alreadyInCart ? "secondary" : "default"}
+                                      onClick={() => {
+                                        if (!alreadyInCart && stock > 0) {
+                                          setQtyDialogItem(item);
+                                          setQtyDialogValue(1);
+                                        }
+                                      }}
+                                      disabled={alreadyInCart || stock <= 0}
+                                      className={cn(
+                                        "h-7 px-2.5 text-[11px] font-semibold mt-0.5",
+                                        !alreadyInCart && stock > 0 && "bg-[#4a1111] hover:bg-[#5a1717]"
+                                      )}
+                                    >
+                                      {alreadyInCart ? "Added" : "+ Add"}
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
 
                     {/* ── Quantity Dialog (nested) ───────────────────────────── */}
                     {qtyDialogItem && (
@@ -860,135 +998,60 @@ export default function PublicBorrow() {
                       </>
                     )}
 
-                    {/* ── Cart Modal (nested) ───────────────────────────────── */}
-                    {showCartModal && (
-                      <>
-                        <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowCartModal(false)} />
-                        <div className="fixed left-1/2 top-1/2 z-[201] w-[540px] max-h-[85vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
-                          <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-                            <ShoppingCart className="h-5 w-5 text-[#4a1111]" />
-                            Cart ({borrowCart.length + customItems.length} {(borrowCart.length + customItems.length) === 1 ? "item" : "items"})
-                          </h3>
-                          <p className="mt-1 text-sm text-slate-500">Review and adjust quantities before proceeding.</p>
-                          <div className="mt-4 rounded-xl border border-slate-200 bg-white overflow-hidden">
-                            <div className="grid grid-cols-[1fr_80px_120px_32px] gap-3 bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                              <span>Item</span>
-                              <span className="text-center">Status</span>
-                              <span className="text-center">Quantity</span>
-                              <span />
-                            </div>
-                            <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto">
-                              {(borrowCart.length + customItems.length) === 0 ? (
-                                <div className="px-3 py-8 text-center text-sm text-slate-400">Your cart is empty.</div>
-                              ) : (
-                                <>
-                                  {borrowCart.map((item) => (
-                                    <div key={item.cartId} className="grid grid-cols-[1fr_80px_120px_32px] gap-3 items-center px-3 py-2.5">
-                                      <div className="min-w-0">
-                                        <p className="text-sm font-medium text-slate-800 truncate">{getItemLabel(item)}</p>
-                                        <p className="text-xs text-slate-400">{item.tabName} / {item.sectionName}</p>
-                                      </div>
-                                      <div className="text-center">
-                                        {getItemRemark(item) ? (
-                                          <span className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600">{getItemRemark(item)}</span>
-                                        ) : (
-                                          <span className="text-xs text-slate-400">—</span>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-1.5 pl-4">
-                                        <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
-                                          onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)} disabled={item.quantity <= 1}>
-                                          <Minus className="h-3 w-3" />
-                                        </Button>
-                                        <span className="w-8 text-center text-sm font-semibold text-slate-700">{item.quantity}</span>
-                                        <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
-                                          onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)} disabled={item.quantity >= (item.maxQuantity || 999)}>
-                                          <Plus className="h-3 w-3" />
-                                        </Button>
-                                      </div>
-                                      <button type="button" onClick={() => removeFromCart(item.cartId)}
-                                        className="shrink-0 rounded-md p-1.5 text-rose-500 transition hover:bg-rose-50" title="Remove">
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
-                                    </div>
-                                  ))}
-                                  {customItems.map((item, idx) => {
-                                    const qty = Number((item.details.find(d => d.key === "quantity") || {}).value) || 1;
-                                    return (
-                                      <div key={`custom-${idx}`} className="grid grid-cols-[1fr_80px_120px_32px] gap-3 items-center px-3 py-2.5">
-                                        <div className="min-w-0">
-                                          <p className="text-sm font-medium text-slate-800 truncate">{item.label}</p>
-                                          <p className="text-xs text-slate-400">Custom Item</p>
-                                        </div>
-                                        <div className="text-center">
-                                          <span className="text-xs text-slate-400">—</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 pl-4">
-                                          <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
-                                            onClick={() => {
-                                              if (qty <= 1) return;
-                                              const newDetails = item.details.map(d => d.key === "quantity" ? { ...d, value: String(qty - 1) } : d);
-                                              setCustomItems((prev) => prev.map((c, i) => i === idx ? { ...c, details: newDetails } : c));
-                                            }} disabled={qty <= 1}>
-                                            <Minus className="h-3 w-3" />
-                                          </Button>
-                                          <span className="w-8 text-center text-sm font-semibold text-slate-700">{qty}</span>
-                                          <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
-                                            onClick={() => {
-                                              const newDetails = item.details.map(d => d.key === "quantity" ? { ...d, value: String(qty + 1) } : d);
-                                              setCustomItems((prev) => prev.map((c, i) => i === idx ? { ...c, details: newDetails } : c));
-                                            }}>
-                                            <Plus className="h-3 w-3" />
-                                          </Button>
-                                        </div>
-                                        <button type="button" onClick={() => removeCustomItem(idx)}
-                                          className="shrink-0 rounded-md p-1.5 text-rose-500 transition hover:bg-rose-50" title="Remove">
-                                          <Trash2 className="h-4 w-4" />
-                                        </button>
-                                      </div>
-                                    );
-                                  })}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setShowCartModal(false)}
-                            className="mt-4 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
-                          >
-                            <ArrowLeft className="mr-2 h-4 w-4" />
-                            Return to Item Selection
-                          </button>
-                        </div>
-                      </>
-                    )}
-
-                    {/* ── Custom Item Button (opens modal) ──────────────────── */}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => { catalogScrollRef.current = window.scrollY; setShowCustomItemModal(true); }}
-                      className="w-full h-10 border-dashed border-2 border-slate-300 text-slate-500 hover:text-[#4a1111] hover:border-[#4a1111]/40 hover:bg-[#4a1111]/5"
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add Custom Item (Outside Inventory)
-                    </Button>
-
-                    {/* ── Floating Cart Button ────────────────────────────────── */}
-                    {(borrowCart.length + customItems.length) > 0 && (
+                    {/* ── Mobile-only: Custom Item Button + Cart Button + Cart Modal ──
+                        On desktop (≥ lg) the live cart sidebar replaces all of this. */}
+                    <div className="lg:hidden">
+                      {/* ── Custom Item Button (opens modal) ──────────────────── */}
                       <Button
                         type="button"
-                        onClick={() => { catalogScrollRef.current = window.scrollY; setShowCartModal(true); }}
-                        className="fixed bottom-20 right-6 z-50 h-8 rounded-full shadow-md bg-[#4a1111] hover:bg-[#5a1717] px-3.5 text-white font-semibold text-[11px]"
+                        variant="outline"
+                        onClick={() => { catalogScrollRef.current = window.scrollY; setShowCustomItemModal(true); }}
+                        className="w-full h-10 border-dashed border-2 border-slate-300 text-slate-500 hover:text-[#4a1111] hover:border-[#4a1111]/40 hover:bg-[#4a1111]/5"
                       >
-                        <ShoppingCart className="mr-2 h-4 w-4" />
-                        View Cart
-                        <span className="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-[#4a1111]">
-                          {borrowCart.length + customItems.length}
-                        </span>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Custom Item (Outside Inventory)
                       </Button>
-                    )}
+
+                      {/* ── Cart Modal (nested) ───────────────────────────────── */}
+                      {showCartModal && (
+                        <>
+                          <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowCartModal(false)} />
+                          <div className="fixed left-1/2 top-1/2 z-[201] w-[540px] max-h-[85vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
+                            <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                              <ShoppingCart className="h-5 w-5 text-[#4a1111]" />
+                              Cart ({totalCartItems} {totalCartItems === 1 ? "item" : "items"})
+                            </h3>
+                            <p className="mt-1 text-sm text-slate-500">Review and adjust quantities before proceeding.</p>
+                            <div className="mt-4">
+                              {renderCartContent()}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowCartModal(false)}
+                              className="mt-4 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                            >
+                              <ArrowLeft className="mr-2 h-4 w-4" />
+                              Return to Item Selection
+                            </button>
+                          </div>
+                        </>
+                      )}
+
+                      {/* ── Floating Cart Button ────────────────────────────────── */}
+                      {totalCartItems > 0 && (
+                        <Button
+                          type="button"
+                          onClick={() => { catalogScrollRef.current = window.scrollY; setShowCartModal(true); }}
+                          className="fixed bottom-20 right-6 z-50 h-8 rounded-full shadow-md bg-[#4a1111] hover:bg-[#5a1717] px-3.5 text-white font-semibold text-[11px]"
+                        >
+                          <ShoppingCart className="mr-2 h-4 w-4" />
+                          View Cart
+                          <span className="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-[#4a1111]">
+                            {totalCartItems}
+                          </span>
+                        </Button>
+                      )}
+                    </div>
 
                     {formError && (
                       <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p>
@@ -996,172 +1059,210 @@ export default function PublicBorrow() {
                   </div>
                 )}
 
-            {/* ═══ STEP 3: Review & Summary ═══ */}
-            {activeStep === 3 && (
-              <div className="space-y-5">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Review & Confirm</h3>
-                  <p className="mt-1 text-sm">Verify all details before confirming the borrowing record.</p>
-                </div>
+                {/* ═══ STEP 3: Review & Summary ═══ */}
+                {activeStep === 3 && (
+                  <div className="space-y-5">
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900">Review & Confirm</h3>
+                      <p className="mt-1 text-sm">Verify all details before confirming the borrowing record.</p>
+                    </div>
 
-                <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                  <div className="border-b border-slate-100 bg-slate-50 px-5 py-3"><h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">Borrower</h3></div>
-                  <div className="px-5 py-4">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Full Name</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-800">{form.name.trim()}</p>
+                    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                      <div className="border-b border-slate-100 bg-slate-50 px-5 py-3"><h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">Borrower</h3></div>
+                      <div className="px-5 py-4">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Full Name</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-800">{form.name.trim()}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Email</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-800">{form.email.trim()}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">ID Number</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-800">{form.studentId.trim()}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Role</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-800">{form.role}</p>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Email</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-800">{form.email.trim()}</p>
+                    </div>
+
+                    {/* ── Time Frame Block ──────────────────────────────────── */}
+                    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                      <div className="border-b border-slate-100 bg-slate-50 px-5 py-3"><h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">Time Frame</h3></div>
+                      <div className="px-5 py-4">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Borrow Date &amp; Time</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-800">
+                              {form.borrowDate
+                                ? new Date(form.borrowDate).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                                : new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Expected Return</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-800">
+                              {form.expectedReturnAt
+                                ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            </p>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">ID Number</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-800">{form.studentId.trim()}</p>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                      <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
+                        <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">
+                          Items ({totalCartItems})
+                        </h3>
                       </div>
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Role</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-800">{form.role}</p>
+                      <div className="grid grid-cols-[1fr_80px_140px] gap-4 bg-slate-100 px-5 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                        <span>Item</span>
+                        <span className="text-center">Status</span>
+                        <span className="text-center">Quantity</span>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {borrowCart.map((item) => (
+                          <div key={item.cartId} className="grid grid-cols-[1fr_80px_140px] gap-4 items-center px-5 py-3.5">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-slate-800">{getItemLabel(item)}</p>
+                              <p className="mt-0.5 text-xs text-slate-400">{item.tabName} • {item.sectionName}</p>
+                            </div>
+                            <div className="text-center">
+                              {getItemRemark(item) ? (
+                                <span className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600">{getItemRemark(item)}</span>
+                              ) : (
+                                <span className="text-xs text-slate-400">—</span>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                                onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)} disabled={item.quantity <= 1}>
+                                <Minus className="h-3 w-3" />
+                              </Button>
+                              <span className="w-8 text-center text-sm font-semibold text-slate-700">{item.quantity}</span>
+                              <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                                onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)} disabled={item.quantity >= (item.maxQuantity || 999)}>
+                                <Plus className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                        {customItems.map((item, idx) => {
+                          const qty = Number((item.details.find(d => d.key === "quantity") || {}).value) || 1;
+                          return (
+                            <div key={`custom-${idx}`} className="grid grid-cols-[1fr_80px_140px] gap-4 items-center px-5 py-3.5">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-slate-800">{item.label}</p>
+                                <p className="mt-0.5 text-xs text-slate-400">Custom Item</p>
+                              </div>
+                              <div className="text-center">
+                                <span className="text-xs text-slate-400">—</span>
+                              </div>
+                              <div className="flex items-center justify-center gap-1.5">
+                                <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                                  onClick={() => {
+                                    if (qty <= 1) return;
+                                    const newDetails = item.details.map(d => d.key === "quantity" ? { ...d, value: String(qty - 1) } : d);
+                                    setCustomItems((prev) => prev.map((c, i) => i === idx ? { ...c, details: newDetails } : c));
+                                  }} disabled={qty <= 1}>
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="w-8 text-center text-sm font-semibold text-slate-700">{qty}</span>
+                                <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                                  onClick={() => {
+                                    const newDetails = item.details.map(d => d.key === "quantity" ? { ...d, value: String(qty + 1) } : d);
+                                    setCustomItems((prev) => prev.map((c, i) => i === idx ? { ...c, details: newDetails } : c));
+                                  }}>
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
+              </div>
 
-                {/* ── Time Frame Block ──────────────────────────────────── */}
-                <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                  <div className="border-b border-slate-100 bg-slate-50 px-5 py-3"><h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">Time Frame</h3></div>
-                  <div className="px-5 py-4">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Borrow Date &amp; Time</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-800">
-                          {form.borrowDate
-                            ? new Date(form.borrowDate).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })
-                            : new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Expected Return</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-800">
-                          {form.expectedReturnAt
-                            ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                            : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              {/* Footer */}
+              <div className="shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
+                <div className="flex items-center gap-2 justify-between w-full sm:w-auto">
+                  {activeStep > 1 ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setActiveStep((s) => s - 1)} className="rounded-lg">Back</Button>
+                  ) : (
+                    <Button type="button" variant="outline" size="sm" onClick={() => { setForm({ name: "", email: "", studentId: "", role: "", borrowDate: "", expectedReturnAt: "" }); setCustomItems([]); setBorrowCart([]); setActiveStep(1); }} className="rounded-lg">Cancel</Button>
+                  )}
 
-                <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                  <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
-                    <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">
-                      Items ({borrowCart.length + customItems.length})
-                    </h3>
-                  </div>
-                  <div className="grid grid-cols-[1fr_80px_140px] gap-4 bg-slate-100 px-5 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    <span>Item</span>
-                    <span className="text-center">Status</span>
-                    <span className="text-center">Quantity</span>
-                  </div>
-                  <div className="divide-y divide-slate-100">
-                    {borrowCart.map((item) => (
-                      <div key={item.cartId} className="grid grid-cols-[1fr_80px_140px] gap-4 items-center px-5 py-3.5">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-800">{getItemLabel(item)}</p>
-                          <p className="mt-0.5 text-xs text-slate-400">{item.tabName} • {item.sectionName}</p>
-                        </div>
-                        <div className="text-center">
-                          {getItemRemark(item) ? (
-                            <span className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600">{getItemRemark(item)}</span>
-                          ) : (
-                            <span className="text-xs text-slate-400">—</span>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-center gap-1.5">
-                          <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
-                            onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)} disabled={item.quantity <= 1}>
-                            <Minus className="h-3 w-3" />
-                          </Button>
-                          <span className="w-8 text-center text-sm font-semibold text-slate-700">{item.quantity}</span>
-                          <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
-                            onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)} disabled={item.quantity >= (item.maxQuantity || 999)}>
-                            <Plus className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                    {customItems.map((item, idx) => {
-                      const qty = Number((item.details.find(d => d.key === "quantity") || {}).value) || 1;
-                      return (
-                        <div key={`custom-${idx}`} className="grid grid-cols-[1fr_80px_140px] gap-4 items-center px-5 py-3.5">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-slate-800">{item.label}</p>
-                            <p className="mt-0.5 text-xs text-slate-400">Custom Item</p>
-                          </div>
-                          <div className="text-center">
-                            <span className="text-xs text-slate-400">—</span>
-                          </div>
-                          <div className="flex items-center justify-center gap-1.5">
-                            <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
-                              onClick={() => {
-                                if (qty <= 1) return;
-                                const newDetails = item.details.map(d => d.key === "quantity" ? { ...d, value: String(qty - 1) } : d);
-                                setCustomItems((prev) => prev.map((c, i) => i === idx ? { ...c, details: newDetails } : c));
-                              }} disabled={qty <= 1}>
-                              <Minus className="h-3 w-3" />
-                            </Button>
-                            <span className="w-8 text-center text-sm font-semibold text-slate-700">{qty}</span>
-                            <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
-                              onClick={() => {
-                                const newDetails = item.details.map(d => d.key === "quantity" ? { ...d, value: String(qty + 1) } : d);
-                                setCustomItems((prev) => prev.map((c, i) => i === idx ? { ...c, details: newDetails } : c));
-                              }}>
-                              <Plus className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  {activeStep === 1 && (
+                    <Button type="button" size="sm" onClick={() => { const ok = validateStep(1); if (ok) setActiveStep(2); }} disabled={!isStepValid(1)} className="rounded-lg bg-[#4a1111] px-5 text-white hover:bg-[#3f0f0f]">Continue</Button>
+                  )}
+
+                  {activeStep === 2 && (
+                    <Button type="button" size="sm" onClick={() => {
+                      const totalItems = borrowCart.length + customItems.length;
+                      if (totalItems === 0) { setFormError("Add at least one item to the cart."); return; }
+                      setActiveStep(3);
+                      setFormError("");
+                    }} disabled={totalCartItems === 0} className={cn("rounded-lg px-5", totalCartItems > 0 ? "bg-[#4a1111] text-white hover:bg-[#3f0f0f]" : "bg-slate-100 text-slate-400 cursor-not-allowed hover:bg-slate-100")}>Review</Button>
+                  )}
+
+                  {activeStep === 3 && (
+                    <Button type="button" size="sm" onClick={confirmBorrow} disabled={saving} className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f] disabled:cursor-wait disabled:opacity-60">{saving ? "Saving..." : "Confirm Borrow"}</Button>
+                  )}
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
-          {/* Footer */}
-          <div className="shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
-            <div className="flex items-center gap-2 justify-between w-full sm:w-auto">
-              {activeStep > 1 ? (
-                <Button type="button" variant="outline" size="sm" onClick={() => setActiveStep((s) => s - 1)} className="rounded-lg">Back</Button>
-              ) : (
-                <Button type="button" variant="outline" size="sm" onClick={() => { setForm({ name: "", email: "", studentId: "", role: "", borrowDate: "", expectedReturnAt: "" }); setCustomItems([]); setBorrowCart([]); setActiveStep(1); }} className="rounded-lg">Cancel</Button>
-              )}
+          {/* ═══════════════════════════════════════════════════════════════
+              RIGHT COLUMN (25% on desktop) — live cart sidebar
+              Hidden on mobile/tablet (< lg), where the floating button + modal are used.
+              ═══════════════════════════════════════════════════════════════ */}
+          <div className="hidden w-full min-w-0 lg:block lg:flex-[1]">
+            <div className="sticky top-10 flex max-h-[85vh] flex-col gap-0 overflow-hidden rounded-[25px] border-2 border-slate-200 bg-white p-0 shadow-sm">
+              {/* Sidebar header */}
+              <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-5 pt-5 pb-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <ShoppingCart className="h-5 w-5 text-[#4a1111]" />
+                  Cart
+                  {totalCartItems > 0 && (
+                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-[#4a1111] px-1.5 text-[10px] font-bold text-white">
+                      {totalCartItems}
+                    </span>
+                  )}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">Items you're about to borrow. Adjust quantities in the Review step.</p>
+              </div>
 
-              {activeStep === 1 && (
-                <Button type="button" size="sm" onClick={() => { const ok = validateStep(1); if (ok) setActiveStep(2); }} disabled={!isStepValid(1)} className="rounded-lg bg-[#4a1111] px-5 text-white hover:bg-[#3f0f0f]">Continue</Button>
-              )}
+              {/* Scrollable cart list */}
+              <div className="flex-1 overflow-y-auto px-4 py-4">
+                {renderCartContent({ compact: true })}
+              </div>
 
-              {activeStep === 2 && (
-                <Button type="button" size="sm" onClick={() => {
-                  const totalItems = borrowCart.length + customItems.length;
-                  if (totalItems === 0) { setFormError("Add at least one item to the cart."); return; }
-                  setActiveStep(3);
-                  setFormError("");
-                }} disabled={borrowCart.length + customItems.length === 0} className={cn("rounded-lg px-5", (borrowCart.length + customItems.length) > 0 ? "bg-[#4a1111] text-white hover:bg-[#3f0f0f]" : "bg-slate-100 text-slate-400 cursor-not-allowed hover:bg-slate-100")}>Review</Button>
-              )}
-
-              {activeStep === 3 && (
-                <Button type="button" size="sm" onClick={confirmBorrow} disabled={saving} className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f] disabled:cursor-wait disabled:opacity-60">{saving ? "Saving..." : "Confirm Borrow"}</Button>
-              )}
+              {/* Sidebar footer — add custom item */}
+              <div className="shrink-0 border-t border-slate-200 bg-slate-50/80 px-4 py-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => { catalogScrollRef.current = window.scrollY; setShowCustomItemModal(true); }}
+                  className="w-full h-10 border-dashed border-2 border-slate-300 text-slate-500 hover:text-[#4a1111] hover:border-[#4a1111]/40 hover:bg-[#4a1111]/5"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Custom Item
+                </Button>
+              </div>
             </div>
           </div>
         </div>
       </div>
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          FLOATING CART BUTTON (Step 2 only)
-          ═══════════════════════════════════════════════════════════════════ */}
 
       {/* ═══════════════════════════════════════════════════════════════════
           BORROW SUCCESS MODAL — shows borrow ID, prompts to take a picture
