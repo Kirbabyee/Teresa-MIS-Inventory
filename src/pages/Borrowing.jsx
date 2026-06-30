@@ -3882,7 +3882,7 @@ export default function Borrowing() {
                           ? [
                               "Borrow ID",
                               "Borrower",
-                              "ID Number",
+                              "Borrower ID",
                               "Requested At",
                               "Expected Return",
                               "Items",
