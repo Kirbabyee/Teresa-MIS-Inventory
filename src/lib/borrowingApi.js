@@ -896,9 +896,83 @@ export const approvePendingRecord = async (recordId) => {
 };
 
 /**
- * Denies a pending request: marks it as "denied" in the staging table.
+ * Denies a pending request: returns items to inventory and marks it as "denied" in the staging table.
  */
 export const denyPendingRecord = async (recordId) => {
+  // First, get the pending request and its items to know what to return to inventory
+  const { data: approvalRecord, error: fetchErr } = await supabase
+    .from("borrowing_records_approval")
+    .select("*")
+    .eq("id", recordId)
+    .single();
+
+  if (fetchErr) throw fetchErr;
+
+  // Get the items for this request from the approval table
+  const { data: approvalItems, error: itemsFetchErr } = await supabase
+    .from("borrowing_items_approval")
+    .select("*")
+    .eq("borrowing_record_id", recordId);
+
+  if (itemsFetchErr) throw itemsFetchErr;
+
+  // If there are items to return to inventory
+  if (approvalItems && approvalItems.length > 0) {
+    // Import needed functions dynamically to avoid circular dependencies
+    const { detectItemColumns } = await import("./inventoryApi");
+    const { fetchInventoryItems } = await import("./inventoryApi");
+
+    // Prepare inventory update promises for each item's quantity to return the inventory
+    const inventoryUpdates = [];
+
+    for (const item of approvalItems) {
+      // Only process items that have inventory associations
+      if (item.inventory_item_id && item.inventory_table_name) {
+        const tableName = item.inventory_table_name;
+
+        // Get current inventory row
+        const { data: inventoryRows, error: inventoryFetchErr } = await supabase
+          .from(tableName)
+          .select("*")
+          .eq("id", item.inventory_item_id);
+
+        if (inventoryFetchErr) throw inventoryFetchErr;
+
+        const inventoryRow = inventoryRows?.[0];
+        if (!inventoryRow) {
+          console.warn(`Inventory item ${item.inventory_item_id} not found in table ${tableName}`);
+          continue;
+        }
+
+        // Detect the quantity column for this inventory table
+        const { quantityKey } = detectItemColumns(inventoryRow);
+
+        // Extract quantity from item_details
+        const quantityItem = item.item_details?.find(
+          (detail) => String(detail?.key || "").toLowerCase() === "quantity"
+        );
+        const quantity = quantityItem ? Number(quantityItem.value) : 1;
+
+        // Current quantity in inventory
+        const currentQty = Number(inventoryRow[quantityKey] || 0);
+
+        // New quantity after returning the borrowed items
+        const newQty = currentQty + quantity;
+
+        // Update inventory
+        inventoryUpdates.push(
+          supabase.from(tableName).update({ [quantityKey]: newQty }).eq("id", item.inventory_item_id)
+        );
+      }
+    }
+
+    // Execute all inventory updates
+    if (inventoryUpdates.length > 0) {
+      await Promise.allSettled(inventoryUpdates);
+    }
+  }
+
+  // Finally, mark the request as denied
   const { error } = await supabase
     .from("borrowing_records_approval")
     .update({ status: "denied" })

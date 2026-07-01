@@ -73,6 +73,7 @@ import {
   updateBorrowingItemsRemarks,
 } from "@/lib/borrowingApi";
 import { cn } from "@/lib/utils";
+import { triggerBorrowStatusEmail } from "@/lib/email/borrowEmailTrigger";
 
 const initialForm = {
   name: "",
@@ -1635,6 +1636,8 @@ export default function Borrowing() {
             borrower_name: record.name,
             borrower_id_number: record.studentId || record.borrower_id_number,
             borrower_role: record.role || record.borrower_role,
+            borrower_email: record.email || record.borrower_email || null,
+            borrow_id: record.borrowId || record.borrow_id || null,
             status: "borrowed",
             expected_return_at: record.expectedReturnAt || record.expected_return_at,
             borrowed_at: record.date || record.created_at,
@@ -1667,6 +1670,21 @@ export default function Borrowing() {
         toast.success(`Approved ${approvalItems.length} item${approvalItems.length !== 1 ? "s" : ""} for ${record.name}.`);
       }
 
+      // ── Fire-and-forget email notification (non-blocking) ───────────────
+      triggerBorrowStatusEmail(
+        {
+          id: record.id,
+          borrower_name: record.name,
+          borrower_email: record.email || record.borrower_email,
+          items: approvalItems.map((it) => ({
+            label: it.item_label,
+            details: it.item_details,
+          })),
+          expected_return_at: record.expectedReturnAt || record.expected_return_at,
+        },
+        "APPROVED"
+      ).catch(() => { /* silent — never blocks approval flow */ });
+
       closeReviewModal();
       loadBorrowings();
     } catch (err) {
@@ -1680,8 +1698,31 @@ export default function Borrowing() {
   const handleDenyRecord = async (record) => {
     setProcessingId(record.id);
     try {
+      // Fetch the approval items so the rejection email can
+      // display the same item summary the borrower submitted.
+      const { data: approvalItems } = await supabase
+        .from("borrowing_items_approval")
+        .select("*")
+        .eq("borrowing_record_id", record.id);
+
       await denyPendingRecord(record.id);
       toast.success(`Denied borrowing request for ${record.name}.`);
+
+      // ── Fire-and-forget email notification (non-blocking) ───────────────
+      triggerBorrowStatusEmail(
+        {
+          id: record.id,
+          borrower_name: record.name,
+          borrower_email: record.email || record.borrower_email,
+          items: (approvalItems || []).map((it) => ({
+            label: it.item_label,
+            details: it.item_details,
+          })),
+          expected_return_at: record.expectedReturnAt || record.expected_return_at,
+        },
+        "REJECTED"
+      ).catch(() => { /* silent — never blocks denial flow */ });
+
       loadBorrowings();
     } catch (err) {
       console.error("Denial failed:", err);

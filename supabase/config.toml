@@ -1,2 +1,5 @@
 [functions.create-inventory-table]
 verify_jwt = false
+
+[functions.send-borrow-email]
+verify_jwt = false
