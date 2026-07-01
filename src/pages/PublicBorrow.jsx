@@ -28,8 +28,50 @@ import {
 } from "@/components/ui/dialog";
 
 const SESSION_KEY = "app_session";
+const BORROWER_ALLOWLIST_STORAGE_KEY = "borrower-allowlist";
+const LEGACY_BORROWER_ALLOWLIST_STORAGE_KEY = "student-directory-users";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+
+const normalizeBorrowerText = (value = "") => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+const normalizeSchoolId = (value = "") => {
+  const digitsOnly = String(value || "").replace(/\D/g, "").slice(0, 7);
+  if (digitsOnly.length <= 2) return digitsOnly;
+  return `${digitsOnly.slice(0, 2)}-${digitsOnly.slice(2)}`;
+};
+
+const readBorrowerAllowlist = () => {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const primaryRaw = window.localStorage.getItem(BORROWER_ALLOWLIST_STORAGE_KEY);
+    const fallbackRaw = primaryRaw ? null : window.localStorage.getItem(LEGACY_BORROWER_ALLOWLIST_STORAGE_KEY);
+    const raw = primaryRaw || fallbackRaw || "[]";
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((record) => ({
+        name: normalizeBorrowerText(record?.name ?? record?.full_name ?? ""),
+        schoolId: normalizeSchoolId(record?.schoolId ?? record?.school_id ?? record?.schoolid ?? ""),
+      }))
+      .filter((record) => record.name || record.schoolId);
+  } catch {
+    return [];
+  }
+};
+
+const isBorrowerAllowed = (name = "", schoolId = "") => {
+  const normalizedName = normalizeBorrowerText(name);
+  const normalizedSchoolId = normalizeSchoolId(schoolId);
+  if (!normalizedName || !normalizedSchoolId) return false;
+
+  return readBorrowerAllowlist().some((record) => {
+    const matchesName = record.name === normalizedName;
+    const matchesSchoolId = record.schoolId === normalizedSchoolId;
+    return matchesName && matchesSchoolId;
+  });
+};
 
 const getItemLabel = (item = {}) => {
   const computerNumber = item.computer_number ?? item.computerNumber;
@@ -212,7 +254,10 @@ export default function PublicBorrow() {
       if (!v) return "Email is required.";
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "Enter a valid email address.";
     }
-    if (name === "studentId") { if (!v) return "ID number is required."; }
+    if (name === "studentId") {
+      if (!v) return "School ID is required.";
+      if (!/^\d{2}-\d{5}$/.test(normalizeSchoolId(v))) return "School ID must follow the format 26-00123.";
+    }
     if (name === "role") { if (!v) return "Select borrower role."; }
     return "";
   };
@@ -224,6 +269,14 @@ export default function PublicBorrow() {
         const e = validateField(k, form[k]);
         if (e) errs[k] = e;
       });
+
+      const hasSchoolIdValue = String(form.studentId || "").trim() !== "";
+      const hasValidSchoolIdFormat = /^\d{2}-\d{5}$/.test(normalizeSchoolId(form.studentId));
+      const hasNameValue = String(form.name || "").trim() !== "";
+
+      if (hasSchoolIdValue && hasValidSchoolIdFormat && hasNameValue && !isBorrowerAllowed(form.name, form.studentId)) {
+        errs.studentId = "School ID is not registered for public borrowing.";
+      }
     }
     if (step === 2) {
       const totalItems = borrowCart.length + customItems.length;
@@ -234,7 +287,11 @@ export default function PublicBorrow() {
   };
 
   const isStepValid = (step) => {
-    if (step === 1) return ["name", "email", "studentId", "role"].every((k) => !validateField(k, form[k]));
+    if (step === 1) {
+      // Field-level validation is enough to enable Continue.
+      // Membership in the borrower allowlist is checked on click so the error message can be shown.
+      return ["name", "email", "studentId", "role"].every((k) => !validateField(k, form[k]));
+    }
     if (step === 2) return borrowCart.length + customItems.length > 0;
     return true;
   };
@@ -547,8 +604,8 @@ export default function PublicBorrow() {
                       {formErrors.email && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.email}</p>}
                     </div>
                     <div>
-                      <Label htmlFor="borrow-studentId" className="mb-1 block text-sm font-medium text-slate-700">ID Number <span className="text-destructive">*</span></Label>
-                      <Input id="borrow-studentId" name="studentId" placeholder="Enter ID number" value={form.studentId} onChange={(e) => setForm({ ...form, studentId: e.target.value })} className={cn("h-10", formErrors.studentId && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
+                      <Label htmlFor="borrow-studentId" className="mb-1 block text-sm font-medium text-slate-700">School ID <span className="text-destructive">*</span></Label>
+                      <Input id="borrow-studentId" name="studentId" placeholder="26-00123" value={form.studentId} onChange={(e) => setForm({ ...form, studentId: normalizeSchoolId(e.target.value) })} className={cn("h-10", formErrors.studentId && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
                       {formErrors.studentId && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.studentId}</p>}
                     </div>
                     <div>

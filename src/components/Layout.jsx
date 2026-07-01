@@ -441,6 +441,7 @@ export default function Layout() {
         path: "/manage/accounts",
         children: [
           { label: "User Accounts", icon: Users, path: "/manage/accounts" },
+          { label: "Borrowers", icon: Users, path: "/manage/borrowers" },
           { label: "Inventory Manager", icon: Boxes, path: "/manage/inventory_manager" },
           { label: "Security", icon: ShieldAlert, path: "/manage/security" },
           { label: "System Settings", icon: Settings, path: "/manage/system_settings" },
