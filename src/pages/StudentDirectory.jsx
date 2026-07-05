@@ -77,6 +77,49 @@ const getSheetValue = (row = {}, possibleKeys = []) => {
   return "";
 };
 
+const buildDuplicatePreview = (importedUsers = [], existingUsers = []) => {
+  const existingBySchoolId = new Map(
+    (existingUsers || [])
+      .filter((user) => user?.schoolId)
+      .map((user) => [user.schoolId, user])
+  );
+  const importCounts = (importedUsers || []).reduce((accumulator, user) => {
+    const schoolId = user?.schoolId;
+    if (schoolId) {
+      accumulator[schoolId] = (accumulator[schoolId] || 0) + 1;
+    }
+    return accumulator;
+  }, {});
+
+  const previewEntries = (importedUsers || []).flatMap((user, index) => {
+    const schoolId = user?.schoolId;
+    if (!schoolId) return [];
+
+    const duplicateInImport = (importCounts[schoolId] || 0) > 1;
+    const existingUser = existingBySchoolId.get(schoolId);
+
+    if (!duplicateInImport && !existingUser) return [];
+
+    return [
+      {
+        id: `${schoolId}-${index}`,
+        sourceIndex: index,
+        name: user?.name || `Borrower ${index + 1}`,
+        originalSchoolId: schoolId,
+        editedSchoolId: schoolId,
+        reason: existingUser
+          ? duplicateInImport
+            ? "already in allowlist and repeated in import"
+            : "already in allowlist"
+          : "repeated in import",
+        existingName: existingUser?.name || "",
+      },
+    ];
+  });
+
+  return previewEntries.sort((left, right) => left.originalSchoolId.localeCompare(right.originalSchoolId));
+};
+
 export default function StudentDirectory() {
   const [users, setUsers] = useState(readStoredBorrowerUsers);
   const [search, setSearch] = useState("");
@@ -88,7 +131,10 @@ export default function StudentDirectory() {
   const [deletingUserId, setDeletingUserId] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [importMessage, setImportMessage] = useState("");
+  const [duplicatePreview, setDuplicatePreview] = useState([]);
+  const [pendingImportedUsers, setPendingImportedUsers] = useState([]);
   const [showImporterModal, setShowImporterModal] = useState(false);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -234,7 +280,73 @@ export default function StudentDirectory() {
 
   const handleImportStart = () => {
     setImportMessage("");
+    setDuplicatePreview([]);
+    setPendingImportedUsers([]);
+    setShowDuplicateModal(false);
     setShowImporterModal(true);
+  };
+
+  const handleDuplicateSchoolIdChange = (entryId, nextValue) => {
+    setDuplicatePreview((currentPreview) =>
+      currentPreview.map((entry) => (entry.id === entryId ? { ...entry, editedSchoolId: nextValue } : entry))
+    );
+  };
+
+  const applyEditedImport = async (importedUsers = []) => {
+    const previewWithEdits = duplicatePreview.map((entry) => ({
+      ...entry,
+      editedSchoolId: entry.editedSchoolId ?? entry.schoolId,
+    }));
+
+    const importedUsersWithEdits = (importedUsers || []).map((user, index) => {
+      const duplicateEntry = previewWithEdits.find((entry) => entry.sourceIndex === index);
+      const editedSchoolId = duplicateEntry?.editedSchoolId?.trim();
+      return {
+        ...user,
+        schoolId: editedSchoolId && editedSchoolId !== user.schoolId ? editedSchoolId : user.schoolId,
+      };
+    });
+
+    const normalizedImportedUsers = importedUsersWithEdits
+      .map((user) => normalizeUserRecord(user))
+      .filter((user) => user.name && user.schoolId && SCHOOL_ID_PATTERN.test(user.schoolId));
+
+    const existingSchoolIds = new Set((users || []).map((user) => user.schoolId));
+    const schoolIdCounts = normalizedImportedUsers.reduce((accumulator, user) => {
+      const schoolId = user.schoolId;
+      if (schoolId) {
+        accumulator[schoolId] = (accumulator[schoolId] || 0) + 1;
+      }
+      return accumulator;
+    }, {});
+    const duplicateSchoolIds = new Set(
+      Object.entries(schoolIdCounts)
+        .filter(([, count]) => count > 1)
+        .map(([schoolId]) => schoolId)
+    );
+
+    const safeImportedUsers = normalizedImportedUsers.filter(
+      (user) => !duplicateSchoolIds.has(user.schoolId) && !existingSchoolIds.has(user.schoolId)
+    );
+    const nextUsers = [...safeImportedUsers, ...users];
+    const nextDuplicatePreview = buildDuplicatePreview(normalizedImportedUsers, users);
+
+    setDuplicatePreview(nextDuplicatePreview);
+    setPendingImportedUsers([]);
+    setShowDuplicateModal(false);
+    setUsers(nextUsers);
+
+    if (safeImportedUsers.length > 0) {
+      await upsertBorrowerUsersToDb(nextUsers);
+      const dbUsers = await getBorrowerAllowlistFromDb(nextUsers);
+      setUsers(dbUsers);
+    }
+
+    if (nextDuplicatePreview.length > 0) {
+      setImportMessage(`Imported ${safeImportedUsers.length} borrower${safeImportedUsers.length === 1 ? "" : "s"}. ${nextDuplicatePreview.length} duplicate school ID${nextDuplicatePreview.length === 1 ? "" : "s"} were skipped.`);
+    } else {
+      setImportMessage(`Imported ${safeImportedUsers.length} borrower${safeImportedUsers.length === 1 ? "" : "s"}.`);
+    }
   };
 
   const handleImporterSave = (activeSections = []) => {
@@ -268,19 +380,18 @@ export default function StudentDirectory() {
         throw new Error("No valid borrower rows were found in the selected file.");
       }
 
-      const dedupedUsers = importedUsers.filter((user, index, list) => {
-        const existing = list.findIndex((candidate) => candidate.schoolId && candidate.schoolId === user.schoolId);
-        return index === existing;
-      });
+      const nextDuplicatePreview = buildDuplicatePreview(importedUsers, users);
+      setPendingImportedUsers(importedUsers);
+      setDuplicatePreview(nextDuplicatePreview);
 
-      const nextUsers = [...dedupedUsers, ...users];
-      setUsers(nextUsers);
-      void upsertBorrowerUsersToDb(nextUsers).then(() => {
-        getBorrowerAllowlistFromDb(nextUsers).then((dbUsers) => {
-          setUsers(dbUsers);
-        });
-      });
-      setImportMessage(`Imported ${dedupedUsers.length} borrower${dedupedUsers.length === 1 ? "" : "s"}.`);
+      if (nextDuplicatePreview.length > 0) {
+        setImportMessage("Duplicate school IDs were detected. Review the affected rows below to continue importing the rest.");
+        setShowDuplicateModal(true);
+        setShowImporterModal(false);
+        return;
+      }
+
+      void applyEditedImport(importedUsers);
       setShowImporterModal(false);
     } catch (error) {
       setImportMessage(error?.message || "Unable to import the selected file.");
@@ -468,6 +579,62 @@ export default function StudentDirectory() {
 
           <DialogFooter className="flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
             <Button type="button" onClick={() => setShowImporterModal(false)} variant="outline" size="sm" className="rounded-lg">Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDuplicateModal} onOpenChange={(next) => {
+        if (!next) {
+          setShowDuplicateModal(false);
+          if (pendingImportedUsers.length > 0) {
+            void applyEditedImport(pendingImportedUsers);
+          }
+        }
+      }}>
+        <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden rounded-[28px] p-0" onPointerDownOutside={(e) => e.preventDefault()}>
+          <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
+            <DialogTitle className="text-lg font-semibold text-slate-900">Review duplicate school IDs</DialogTitle>
+            <DialogDescription className="mt-1 text-sm">Only the conflicting rows below need attention. The other imported borrowers will be saved automatically.</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 space-y-3 overflow-y-auto px-6 py-5 sm:px-8">
+            {duplicatePreview.length === 0 ? (
+              <p className="text-sm text-slate-500">No duplicate school IDs need review.</p>
+            ) : (
+              duplicatePreview.map((entry) => (
+                <div key={entry.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-semibold text-slate-900">{entry.name}</p>
+                      <p className="text-xs text-amber-700">
+                        Current ID: {entry.originalSchoolId}
+                        {entry.existingName ? ` · Existing borrower: ${entry.existingName}` : ""}
+                        {` · ${entry.reason}`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-medium text-amber-800">Edit ID</label>
+                      <Input
+                        value={entry.editedSchoolId ?? entry.originalSchoolId}
+                        onChange={(event) => handleDuplicateSchoolIdChange(entry.id, event.target.value)}
+                        className="h-8 w-28 border-amber-200 bg-white"
+                        placeholder="26-00123"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <DialogFooter className="flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
+            <Button type="button" onClick={() => {
+              setShowDuplicateModal(false);
+              if (pendingImportedUsers.length > 0) {
+                void applyEditedImport(pendingImportedUsers);
+              }
+            }} variant="outline" size="sm" className="rounded-lg">Import the rest</Button>
+            <Button type="button" onClick={() => void applyEditedImport(pendingImportedUsers)} size="sm" className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]">Apply fixes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
