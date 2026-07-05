@@ -72,6 +72,7 @@ import {
   updateBorrowingItemsStatus,
   updateBorrowingItemsRemarks,
 } from "@/lib/borrowingApi";
+import { getBorrowerAllowlistFromDb, normalizeBorrowerText } from "@/lib/borrowerAllowlistApi";
 import { cn } from "@/lib/utils";
 import { triggerBorrowStatusEmail } from "@/lib/email/borrowEmailTrigger";
 
@@ -651,6 +652,12 @@ const getCurrentSchoolYear = (referenceDate = new Date()) => {
   const year = referenceDate.getFullYear();
   const startYear = month >= 5 ? year : year - 1;
   return `${startYear} - ${startYear + 1}`;
+};
+
+const formatSchoolId = (value = "") => {
+  const digitsOnly = String(value).replace(/\D/g, "").slice(0, 7);
+  if (digitsOnly.length <= 2) return digitsOnly;
+  return `${digitsOnly.slice(0, 2)}-${digitsOnly.slice(2)}`;
 };
 
 const generateSchoolYearOptions = (back = 3, forward = 3, referenceDate = new Date()) => {
@@ -1291,6 +1298,8 @@ export default function Borrowing() {
   const [form, setForm] = useState(initialForm);
   const [selectedTabId, setSelectedTabId] = useState("");
   const [selectedSectionId, setSelectedSectionId] = useState("");
+  const [borrowerAllowlistBySchoolId, setBorrowerAllowlistBySchoolId] = useState({});
+  const [isRoleAutoFilled, setIsRoleAutoFilled] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState([]);
   const [selectedItemQuantities, setSelectedItemQuantities] = useState({});
   const [selectedInventoryItems, setSelectedInventoryItems] = useState([]);
@@ -1403,6 +1412,35 @@ export default function Borrowing() {
   const [statusFilter, setStatusFilter] = useState(() =>
     ["logs", "history"].includes(searchParams.get("view")) ? "all" : "borrowed"
   );
+
+  useEffect(() => {
+    let active = true;
+
+    const loadBorrowerAllowlist = async () => {
+      try {
+        const users = await getBorrowerAllowlistFromDb();
+        if (!active) return;
+
+        const bySchoolId = (users || []).reduce((acc, user) => {
+          const schoolId = formatSchoolId(user.schoolId || user.school_id || "");
+          if (schoolId) {
+            acc[schoolId] = user;
+          }
+          return acc;
+        }, {});
+
+        setBorrowerAllowlistBySchoolId(bySchoolId);
+      } catch (error) {
+        console.error("Failed to load borrower allowlist:", error);
+      }
+    };
+
+    void loadBorrowerAllowlist();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -2070,6 +2108,7 @@ export default function Borrowing() {
     setFormError("");
     setFormErrors({});
     setMergeWithLastBorrow(false);
+    setIsRoleAutoFilled(false);
     // Reset wizard
     setActiveStep(1);
     setBorrowCart([]);
@@ -2097,7 +2136,7 @@ export default function Borrowing() {
         return "";
       case "studentId":
         if (!trimmed) return "ID number is required.";
-        if (!/^[0-9]+$/.test(trimmed)) return "ID number may contain only digits.";
+        if (!/^\d{2}-\d{5}$/.test(trimmed)) return "ID number must be in format NN-NNNNN.";
         return "";
       case "role":
         if (!trimmed) return "Select borrower role.";
@@ -2108,6 +2147,21 @@ export default function Borrowing() {
       default:
         return "";
     }
+  };
+
+  const getBorrowerMatchErrors = (name, studentId) => {
+    const formattedStudentId = formatSchoolId(studentId);
+    const allowlistEntry = borrowerAllowlistBySchoolId[formattedStudentId];
+    if (!allowlistEntry) return {};
+
+    const normalizedName = normalizeBorrowerText(name);
+    const normalizedAllowName = normalizeBorrowerText(allowlistEntry.name || "");
+    if (!normalizedName || normalizedName === normalizedAllowName) return {};
+
+    return {
+      name: "Name must match the existing borrower for this ID.",
+      studentId: "School ID and borrower name must belong to the same person.",
+    };
   };
 
   const requestReturn = async (record) => {
@@ -2902,7 +2956,34 @@ export default function Borrowing() {
 
   const handleChange = (e) => {
     const { name, value: rawValue } = e.target;
-    const value = name === "studentId" ? rawValue.replace(/\D/g, "") : rawValue;
+    const value = name === "studentId" ? formatSchoolId(rawValue) : rawValue;
+
+    if (name === "studentId") {
+      const allowlistEntry = borrowerAllowlistBySchoolId[value];
+      const nextForm = { ...form, studentId: value };
+
+      if (allowlistEntry) {
+        const normalizedPosition = String(allowlistEntry.position || "").trim().toLowerCase();
+        nextForm.role = normalizedPosition === "faculty" || normalizedPosition === "staff" ? "Teacher" : "Student";
+        setIsRoleAutoFilled(true);
+        setFormErrors((current) => ({
+          ...current,
+          studentId: validateField("studentId", value),
+          role: "",
+        }));
+      } else {
+        nextForm.role = "";
+        setIsRoleAutoFilled(false);
+        setFormErrors((current) => ({
+          ...current,
+          studentId: validateField("studentId", value),
+        }));
+      }
+
+      setForm(nextForm);
+      setFormError("");
+      return;
+    }
 
     setForm({ ...form, [name]: value });
     setFormErrors((current) => ({
@@ -2969,6 +3050,17 @@ export default function Borrowing() {
       role: validateField("role", form.role),
       items: hasSelectedItems ? "" : validateField("items", []),
     };
+
+    const formattedStudentId = formatSchoolId(form.studentId);
+    const allowlistEntry = borrowerAllowlistBySchoolId[formattedStudentId];
+    if (allowlistEntry) {
+      const normalizedName = normalizeBorrowerText(form.name);
+      const normalizedAllowName = normalizeBorrowerText(allowlistEntry.name || "");
+      if (normalizedName && normalizedName !== normalizedAllowName) {
+        errors.name = "Name must match the existing borrower for this ID.";
+        errors.studentId = "School ID and borrower name must belong to the same person.";
+      }
+    }
 
     setFormErrors(errors);
     setFormError("");
@@ -5228,10 +5320,13 @@ export default function Borrowing() {
           ═══════════════════════════════════════════════════════════════════ */}
       {showModal && (() => {
         // ── Step 1 gate: all 3 borrower fields must pass validation ──────
+        const mismatchErrors = getBorrowerMatchErrors(form.name, form.studentId);
+        const step1Errors = { ...formErrors, ...mismatchErrors };
         const step1Valid =
           !validateField("name", form.name) &&
           !validateField("studentId", form.studentId) &&
-          !validateField("role", form.role);
+          !validateField("role", form.role) &&
+          Object.keys(mismatchErrors).length === 0;
 
         // ── Step 2 search term ───────────────────────────────────────────
         const searchLower = globalSearch.toLowerCase().trim();
@@ -5443,15 +5538,15 @@ export default function Borrowing() {
                         value={form.name}
                         onChange={handleChange}
                         autoFocus
-                        aria-invalid={!!formErrors.name}
-                        aria-describedby={formErrors.name ? "name-error" : undefined}
+                        aria-invalid={!!step1Errors.name}
+                        aria-describedby={step1Errors.name ? "name-error" : undefined}
                         className={cn(
                           "h-10",
-                          formErrors.name && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive"
+                          step1Errors.name && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive"
                         )}
                       />
-                      {formErrors.name && (
-                        <p id="name-error" className="mt-1 text-xs font-medium text-destructive">{formErrors.name}</p>
+                      {step1Errors.name && (
+                        <p id="name-error" className="mt-1 text-xs font-medium text-destructive">{step1Errors.name}</p>
                       )}
                     </div>
 
@@ -5465,15 +5560,15 @@ export default function Borrowing() {
                         placeholder="Enter ID number"
                         value={form.studentId}
                         onChange={handleChange}
-                        aria-invalid={!!formErrors.studentId}
-                        aria-describedby={formErrors.studentId ? "studentId-error" : undefined}
+                        aria-invalid={!!step1Errors.studentId}
+                        aria-describedby={step1Errors.studentId ? "studentId-error" : undefined}
                         className={cn(
                           "h-10",
-                          formErrors.studentId && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive"
+                          step1Errors.studentId && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive"
                         )}
                       />
-                      {formErrors.studentId && (
-                        <p id="studentId-error" className="mt-1 text-xs font-medium text-destructive">{formErrors.studentId}</p>
+                      {step1Errors.studentId && (
+                        <p id="studentId-error" className="mt-1 text-xs font-medium text-destructive">{step1Errors.studentId}</p>
                       )}
                     </div>
 
@@ -5482,18 +5577,22 @@ export default function Borrowing() {
                         Role <span className="text-destructive">*</span>
                       </Label>
                       <Select name="role" value={form.role} onValueChange={(val) => {
+                        if (isRoleAutoFilled) return;
                         setForm({ ...form, role: val });
                         setFormErrors((prev) => ({ ...prev, role: validateField("role", val) }));
                         setFormError("");
                       }}>
-                        <SelectTrigger id="borrow-role" className="h-10">
-                          <SelectValue placeholder="Select role" />
+                        <SelectTrigger id="borrow-role" className="h-10" disabled={isRoleAutoFilled}>
+                          <SelectValue placeholder={isRoleAutoFilled ? "Auto-filled from ID" : "Select role"} />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="Student">Student</SelectItem>
                           <SelectItem value="Teacher">Teacher</SelectItem>
                         </SelectContent>
                       </Select>
+                      {isRoleAutoFilled && (
+                        <p className="mt-1 text-xs text-slate-500">Role auto-filled from existing school ID. Change the ID to edit manually.</p>
+                      )}
                       {formErrors.role && (
                         <p id="role-error" className="mt-1 text-xs font-medium text-destructive">{formErrors.role}</p>
                       )}
@@ -6386,9 +6485,11 @@ export default function Borrowing() {
                         studentId: validateField("studentId", form.studentId),
                         role: validateField("role", form.role),
                       };
-                      setFormErrors(errors);
+                      const mismatchErrors = getBorrowerMatchErrors(form.name, form.studentId);
+                      const mergedErrors = { ...errors, ...mismatchErrors };
+                      setFormErrors(mergedErrors);
 
-                      if (Object.values(errors).some(Boolean)) return;
+                      if (Object.values(mergedErrors).some(Boolean)) return;
 
                       setActiveStep(2);
                       setFormError("");

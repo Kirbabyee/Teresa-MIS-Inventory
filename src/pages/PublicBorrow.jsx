@@ -44,7 +44,7 @@ const readBorrowerAllowlist = async () => {
   try {
     const { data, error } = await supabase
       .from("borrower_allowlist")
-      .select("name, school_id")
+      .select("name, school_id, position")
       .order("created_at", { ascending: false });
 
     if (error) throw error;
@@ -53,12 +53,32 @@ const readBorrowerAllowlist = async () => {
       .map((record) => ({
         name: normalizeBorrowerText(record?.name ?? record?.full_name ?? ""),
         schoolId: normalizeSchoolId(record?.school_id ?? record?.schoolId ?? ""),
+        position: String(record?.position || record?.role || "").trim(),
       }))
       .filter((record) => record.name || record.schoolId);
   } catch (err) {
     console.error("Failed to read borrower allowlist:", err);
     return [];
   }
+};
+
+const getBorrowerRoleFromAllowlist = (allowlistEntry = {}) => {
+  const normalizedPosition = String(allowlistEntry.position || allowlistEntry.role || "").trim().toLowerCase();
+  return normalizedPosition === "faculty" || normalizedPosition === "staff" ? "Teacher" : "Student";
+};
+
+const getBorrowerAccessErrors = (name, studentId, borrowerAllowlistBySchoolId, borrowerAllowlistLoaded) => {
+  const formattedSchoolId = normalizeSchoolId(studentId);
+  if (!/^[0-9]{2}-[0-9]{5}$/.test(formattedSchoolId)) return {};
+  if (!String(name || "").trim()) return {};
+  if (!borrowerAllowlistLoaded) return {};
+
+  const allowlistEntry = borrowerAllowlistBySchoolId[formattedSchoolId];
+  if (allowlistEntry) return {};
+
+  return {
+    studentId: "School ID is not registered for public borrowing.",
+  };
 };
 
 const isBorrowerAllowed = async (name = "", schoolId = "") => {
@@ -149,6 +169,73 @@ export default function PublicBorrow() {
 
   // ── Custom Item Modal ────────────────────────────────────────────────────
   const [showCustomItemModal, setShowCustomItemModal] = useState(false);
+  const [borrowerAllowlistBySchoolId, setBorrowerAllowlistBySchoolId] = useState({});
+  const [borrowerAllowlistLoaded, setBorrowerAllowlistLoaded] = useState(false);
+  const [isRoleAutoFilled, setIsRoleAutoFilled] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const loadAllowlist = async () => {
+      try {
+        const users = await readBorrowerAllowlist();
+        if (!active) return;
+
+        const bySchoolId = (users || []).reduce((acc, user) => {
+          const schoolId = normalizeSchoolId(user.schoolId || "");
+          if (schoolId) acc[schoolId] = user;
+          return acc;
+        }, {});
+
+        setBorrowerAllowlistBySchoolId(bySchoolId);
+        setBorrowerAllowlistLoaded(true);
+      } catch (error) {
+        console.error("Failed to load borrower allowlist:", error);
+        setBorrowerAllowlistLoaded(true);
+      }
+    };
+
+    void loadAllowlist();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleBorrowerFieldChange = (field, rawValue) => {
+    if (field === "studentId") {
+      const value = normalizeSchoolId(rawValue);
+      const allowlistEntry = borrowerAllowlistBySchoolId[value];
+      const nextForm = { ...form, studentId: value };
+
+      if (allowlistEntry) {
+        nextForm.role = getBorrowerRoleFromAllowlist(allowlistEntry);
+        setIsRoleAutoFilled(true);
+        setFormErrors((current) => ({
+          ...current,
+          studentId: validateField("studentId", value),
+          role: "",
+        }));
+      } else {
+        nextForm.role = "";
+        setIsRoleAutoFilled(false);
+        setFormErrors((current) => ({
+          ...current,
+          studentId: validateField("studentId", value),
+        }));
+      }
+
+      setForm(nextForm);
+      setFormError("");
+      return;
+    }
+
+    const value = field === "studentId" ? normalizeSchoolId(rawValue) : rawValue;
+    setForm((current) => ({ ...current, [field]: value }));
+    setFormErrors((current) => ({
+      ...current,
+      [field]: validateField(field, value),
+    }));
+    setFormError("");
+  };
 
   // ── Cart Modal ──────────────────────────────────────────────────────────
   const [showCartModal, setShowCartModal] = useState(false);
@@ -255,6 +342,21 @@ export default function PublicBorrow() {
     return "";
   };
 
+  const getBorrowerMatchErrors = (name, studentId) => {
+    const formattedSchoolId = normalizeSchoolId(studentId);
+    const allowlistEntry = borrowerAllowlistBySchoolId[formattedSchoolId];
+    if (!allowlistEntry) return {};
+
+    const normalizedName = normalizeBorrowerText(name);
+    const normalizedAllowName = String(allowlistEntry.name || "");
+    if (!normalizedName || normalizedName === normalizedAllowName) return {};
+
+    return {
+      name: "Name must match the existing borrower for this ID.",
+      studentId: "School ID and borrower name must belong to the same person.",
+    };
+  };
+
   const validateStep = async (step) => {
     const errs = {};
     if (step === 1) {
@@ -263,14 +365,24 @@ export default function PublicBorrow() {
         if (e) errs[k] = e;
       });
 
+      const mismatchErrors = getBorrowerMatchErrors(form.name, form.studentId);
+      const accessErrors = getBorrowerAccessErrors(form.name, form.studentId, borrowerAllowlistBySchoolId, borrowerAllowlistLoaded);
+      Object.assign(errs, mismatchErrors, accessErrors);
+
+      const shouldCheckAllowlist = !mismatchErrors.studentId && !mismatchErrors.name;
       const hasSchoolIdValue = String(form.studentId || "").trim() !== "";
       const hasValidSchoolIdFormat = /^\d{2}-\d{5}$/.test(normalizeSchoolId(form.studentId));
       const hasNameValue = String(form.name || "").trim() !== "";
 
-      if (hasSchoolIdValue && hasValidSchoolIdFormat && hasNameValue) {
-        const isAllowed = await isBorrowerAllowed(form.name, form.studentId);
-        if (!isAllowed) {
-          errs.studentId = "School ID is not registered for public borrowing.";
+      if (hasSchoolIdValue && hasValidSchoolIdFormat && hasNameValue && shouldCheckAllowlist && !accessErrors.studentId) {
+        const allowlistEntry = borrowerAllowlistBySchoolId[normalizeSchoolId(form.studentId)];
+        if (allowlistEntry) {
+          // Known ID with matching name was already allowed.
+        } else {
+          const isAllowed = await isBorrowerAllowed(form.name, form.studentId);
+          if (!isAllowed) {
+            errs.studentId = "School ID is not registered for public borrowing.";
+          }
         }
       }
     }
@@ -284,7 +396,8 @@ export default function PublicBorrow() {
 
   const isStepValid = (step) => {
     if (step === 1) {
-      return ["name", "email", "studentId", "role"].every((k) => !validateField(k, form[k]));
+      return ["name", "email", "studentId", "role"].every((k) => !validateField(k, form[k])) &&
+        Object.keys(getBorrowerMatchErrors(form.name, form.studentId)).length === 0;
     }
     if (step === 2) return borrowCart.length + customItems.length > 0;
     return true;
@@ -401,6 +514,9 @@ export default function PublicBorrow() {
   };
 
   const totalCartItems = borrowCart.length + customItems.length;
+  const mismatchErrors = getBorrowerMatchErrors(form.name, form.studentId);
+  const accessErrors = getBorrowerAccessErrors(form.name, form.studentId, borrowerAllowlistBySchoolId, borrowerAllowlistLoaded);
+  const step1Errors = { ...formErrors, ...mismatchErrors, ...accessErrors };
 
   // ── Reusable cart list (single source of truth) ────────────────────────
   const renderCartContent = () => (
@@ -557,28 +673,33 @@ export default function PublicBorrow() {
                     </div>
                     <div>
                       <Label htmlFor="borrow-name" className="mb-1 block text-sm font-medium text-slate-700">Full Name <span className="text-destructive">*</span></Label>
-                      <Input id="borrow-name" name="name" placeholder="Enter full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus className={cn("h-10", formErrors.name && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
-                      {formErrors.name && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.name}</p>}
+                      <Input id="borrow-name" name="name" placeholder="Enter full name" value={form.name} onChange={(e) => handleBorrowerFieldChange("name", e.target.value)} autoFocus className={cn("h-10", step1Errors.name && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
+                      {step1Errors.name && <p className="mt-1 text-xs font-medium text-destructive">{step1Errors.name}</p>}
                     </div>
                     <div>
                       <Label htmlFor="borrow-email" className="mb-1 block text-sm font-medium text-slate-700">Email <span className="text-destructive">*</span></Label>
-                      <Input id="borrow-email" name="email" type="email" placeholder="Enter email address" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={cn("h-10", formErrors.email && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
+                      <Input id="borrow-email" name="email" type="email" placeholder="Enter email address" value={form.email} onChange={(e) => handleBorrowerFieldChange("email", e.target.value)} className={cn("h-10", formErrors.email && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
                       {formErrors.email && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.email}</p>}
                     </div>
                     <div>
                       <Label htmlFor="borrow-studentId" className="mb-1 block text-sm font-medium text-slate-700">School ID <span className="text-destructive">*</span></Label>
-                      <Input id="borrow-studentId" name="studentId" placeholder="26-00123" value={form.studentId} onChange={(e) => setForm({ ...form, studentId: normalizeSchoolId(e.target.value) })} className={cn("h-10", formErrors.studentId && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
-                      {formErrors.studentId && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.studentId}</p>}
+                      <Input id="borrow-studentId" name="studentId" placeholder="26-00123" value={form.studentId} onChange={(e) => handleBorrowerFieldChange("studentId", e.target.value)} className={cn("h-10", step1Errors.studentId && "border-destructive bg-destructive/5 text-destructive placeholder:text-destructive/60 focus-visible:ring-destructive")} />
+                      {step1Errors.studentId && <p className="mt-1 text-xs font-medium text-destructive">{step1Errors.studentId}</p>}
                     </div>
                     <div>
                       <Label htmlFor="borrow-role" className="mb-1 block text-sm font-medium text-slate-700">Role <span className="text-destructive">*</span></Label>
-                      <Select value={form.role || ""} onValueChange={(val) => setForm({ ...form, role: val })}>
-                        <SelectTrigger id="borrow-role" className="h-10"><SelectValue placeholder="Select role" /></SelectTrigger>
+                      <Select value={form.role || ""} onValueChange={(val) => handleBorrowerFieldChange("role", val)}>
+                        <SelectTrigger id="borrow-role" className="h-10" disabled={isRoleAutoFilled}>
+                          <SelectValue placeholder={isRoleAutoFilled ? "Auto-filled from ID" : "Select role"} />
+                        </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="Student">Student</SelectItem>
                           <SelectItem value="Teacher">Teacher</SelectItem>
                         </SelectContent>
                       </Select>
+                      {isRoleAutoFilled && (
+                        <p className="mt-1 text-xs text-slate-500">Role auto-filled from existing school ID. Change the ID to edit manually.</p>
+                      )}
                       {formErrors.role && <p className="mt-1 text-xs font-medium text-destructive">{formErrors.role}</p>}
                     </div>
 
