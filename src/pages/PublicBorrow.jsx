@@ -651,17 +651,41 @@ export default function PublicBorrow() {
   return (
     <div className="flex min-h-screen w-full bg-[#411111]">
       {/* LEFT SIDEBAR (40% width) */}
-      <div className="bg-[#ffffff] w-[40%] p-8">
-        <div className="sticky top-0 flex h-screen flex-col items-center justify-center">
-        <img src="/ark-logo.png" alt="ARK Logo" className="w-50 h-50 mb-6 object-contain" />
-        <h2 className="text-[#411111] text-xl font-bold">Public Borrow Request Form</h2>
+      <div className="relative w-[40%] overflow-hidden bg-gradient-to-b from-white to-slate-100 p-8">
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <div className="absolute -top-24 -right-24 h-[400px] w-[400px] rounded-full bg-[#411111]/[0.03] blur-3xl" />
+          <div className="absolute -bottom-24 -left-24 h-[320px] w-[320px] rounded-full bg-[#411111]/[0.02] blur-3xl" />
+          <div
+            className="absolute inset-0 opacity-[0.04]"
+            style={{
+              backgroundImage:
+                "linear-gradient(#411111 1px, transparent 1px), linear-gradient(90deg, #411111 1px, transparent 1px)",
+              backgroundSize: "48px 48px",
+            }}
+          />
+        </div>
+
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <div className="absolute top-14 right-[12%] h-28 w-28 rounded-full border border-[#411111]/[0.08] rotate-12" />
+          <div className="absolute bottom-24 right-[18%] h-16 w-16 rounded-lg border border-[#411111]/[0.08] rotate-45" />
+          <div className="absolute top-[28%] left-8 h-20 w-1.5 rounded-full bg-[#411111]/[0.08]" />
+          <div className="absolute top-[28%] left-14 h-12 w-1 rounded-full bg-[#411111]/[0.05]" />
+          <div className="absolute bottom-[18%] left-[8%] h-20 w-20 rounded-full border border-[#411111]/[0.05] -rotate-12" />
+          <div className="absolute top-[15%] left-[20%] h-2 w-2 rounded-full bg-[#411111]/[0.08]" />
+          <div className="absolute top-[18%] left-[22%] h-1.5 w-1.5 rounded-full bg-[#411111]/[0.05]" />
+          <div className="absolute top-[14%] left-[23%] h-1 w-1 rounded-full bg-[#411111]/[0.06]" />
+        </div>
+
+        <div className="sticky top-0 flex min-h-screen flex-col items-center justify-center">
+          <img src="/folder/teresalogo-removebg-preview.png" alt="ARK Logo" className="mb-6 h-56 w-56 object-contain drop-shadow-sm" />
+          <h2 className="text-xl font-bold text-[#411111]">Public Borrow Request Form</h2>
         </div>
       </div>
 
       {/* RIGHT CONTENT AREA (60% on right side) */}
-      <div className="w-[60%] flex justify-center items-start px-8 py-10"> 
+        <div className="flex h-full w-[60%] items-center justify-center px-8 py-10 overflow-hidden"> 
         {/* This container is now perfectly centered in the 60% space */}
-        <div className="w-full max-w-3xl flex flex-col items-start gap-6 transition-all duration-200">  
+          <div className="flex h-full w-full max-w-3xl flex-col items-center justify-center gap-6 overflow-hidden transition-all duration-200">  
 
           {/* MAIN CARD - stepper + active step + footer */}
           <div className="w-full min-w-0">
@@ -699,7 +723,7 @@ export default function PublicBorrow() {
               </div>
 
               {/* Scrollable Body */}
-              <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-8 bg-white">
+              <div className="px-6 py-5 sm:px-8 bg-white">
 
                 {/* ═══ STEP 1: Borrower Identity ═══ */}
                 {activeStep === 1 && (
