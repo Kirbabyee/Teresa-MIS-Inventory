@@ -15,6 +15,7 @@ import { supabase } from "@/api/supabaseClient";
 import { createBorrowingRecord } from "@/lib/borrowingApi";
 import { useInventoryItems } from "@/hooks/useInventoryItems";
 import { detectItemColumns, fetchInventoryItems, getTabTableConfig } from "@/lib/inventoryApi";
+import { normalizeBorrowerText } from "@/lib/borrowerAllowlistApi";
 import { User, Package, CheckCircle, Search, X, Plus, Minus, ShoppingCart, Check, ArrowLeft, Calendar as CalendarIcon, Trash2 } from "lucide-react";
 import { DayPicker } from "react-day-picker";
 import { cn } from "@/lib/utils";
@@ -28,12 +29,8 @@ import {
 } from "@/components/ui/dialog";
 
 const SESSION_KEY = "app_session";
-const BORROWER_ALLOWLIST_STORAGE_KEY = "borrower-allowlist";
-const LEGACY_BORROWER_ALLOWLIST_STORAGE_KEY = "student-directory-users";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
-
-const normalizeBorrowerText = (value = "") => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 
 const normalizeSchoolId = (value = "") => {
   const digitsOnly = String(value || "").replace(/\D/g, "").slice(0, 7);
@@ -41,19 +38,21 @@ const normalizeSchoolId = (value = "") => {
   return `${digitsOnly.slice(0, 2)}-${digitsOnly.slice(2)}`;
 };
 
-const readBorrowerAllowlist = () => {
+const readBorrowerAllowlist = async () => {
   if (typeof window === "undefined") return [];
 
   try {
-    const primaryRaw = window.localStorage.getItem(BORROWER_ALLOWLIST_STORAGE_KEY);
-    const fallbackRaw = primaryRaw ? null : window.localStorage.getItem(LEGACY_BORROWER_ALLOWLIST_STORAGE_KEY);
-    const raw = primaryRaw || fallbackRaw || "[]";
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
+    const { data, error } = await supabase
+      .from("borrower_allowlist")
+      .select("name, school_id")
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    return (data || [])
       .map((record) => ({
         name: normalizeBorrowerText(record?.name ?? record?.full_name ?? ""),
-        schoolId: normalizeSchoolId(record?.schoolId ?? record?.school_id ?? record?.schoolid ?? ""),
+        schoolId: normalizeSchoolId(record?.school_id ?? record?.schoolId ?? ""),
       }))
       .filter((record) => record.name || record.schoolId);
   } catch {
@@ -61,12 +60,13 @@ const readBorrowerAllowlist = () => {
   }
 };
 
-const isBorrowerAllowed = (name = "", schoolId = "") => {
+const isBorrowerAllowed = async (name = "", schoolId = "") => {
   const normalizedName = normalizeBorrowerText(name);
   const normalizedSchoolId = normalizeSchoolId(schoolId);
   if (!normalizedName || !normalizedSchoolId) return false;
 
-  return readBorrowerAllowlist().some((record) => {
+  const allowlist = await readBorrowerAllowlist();
+  return allowlist.some((record) => {
     const matchesName = record.name === normalizedName;
     const matchesSchoolId = record.schoolId === normalizedSchoolId;
     return matchesName && matchesSchoolId;
@@ -244,7 +244,7 @@ export default function PublicBorrow() {
   const removeCustomItem = (idx) => setCustomItems((c) => c.filter((_, i) => i !== idx));
 
   // ── Validation ──────────────────────────────────────────────────────────
-  const validateField = (name, value) => {
+  const validateField = async (name, value) => {
     const v = String(value || "").trim();
     if (name === "name") {
       if (!v) return "Borrower name is required.";

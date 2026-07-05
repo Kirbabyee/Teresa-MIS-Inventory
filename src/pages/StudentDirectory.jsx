@@ -9,10 +9,16 @@ import {
   Upload,
   Users,
 } from "lucide-react";
+import { toast } from "sonner";
 import SmartImporter from "@/components/SmartImporter";
+import {
+  deleteBorrowerUserFromDb,
+  getBorrowerAllowlistFromDb,
+  normalizeUserRecord,
+  readStoredBorrowerUsers,
+  upsertBorrowerUsersToDb,
+} from "@/lib/borrowerAllowlistApi";
 
-const STORAGE_KEY = "borrower-allowlist";
-const LEGACY_STORAGE_KEY = "student-directory-users";
 const SCHOOL_ID_PATTERN = /^\d{2}-\d{5}$/;
 
 const emptyForm = {
@@ -29,52 +35,9 @@ const formatSchoolId = (value = "") => {
   return `${digitsOnly.slice(0, 2)}-${digitsOnly.slice(2)}`;
 };
 
-const normalizePosition = (value = "") => {
-  const normalized = String(value).trim().toLowerCase();
-  if (["faculty", "teacher", "staff"].includes(normalized)) return "faculty";
-  return "student";
-};
-
 const normalizeYear = (value = "") => String(value).trim();
 
 const normalizeSection = (value = "") => String(value).trim();
-
-const normalizeUserRecord = (record = {}) => {
-  const name = String(record?.name ?? record?.full_name ?? "").trim();
-  const schoolId = formatSchoolId(record?.schoolId ?? record?.school_id ?? record?.schoolid ?? "");
-  const position = normalizePosition(record?.position ?? record?.role ?? record?.type ?? "student");
-  const year = normalizeYear(record?.year ?? record?.year_level ?? record?.grade ?? "");
-  const section = normalizeSection(record?.section ?? record?.section_name ?? record?.class_section ?? "");
-
-  return {
-    id: String(record?.id || crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`),
-    name,
-    schoolId,
-    position,
-    year,
-    section,
-  };
-};
-
-const readStoredUsers = () => {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const primaryRaw = window.localStorage.getItem(STORAGE_KEY);
-    const fallbackRaw = primaryRaw ? null : window.localStorage.getItem(LEGACY_STORAGE_KEY);
-    const raw = primaryRaw || fallbackRaw || "[]";
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(normalizeUserRecord).filter((user) => user.name || user.schoolId);
-  } catch {
-    return [];
-  }
-};
-
-const saveUsers = (users = []) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
-};
 
 const normalizeHeaderKey = (value = "") =>
   String(value ?? "")
@@ -99,18 +62,34 @@ const getSheetValue = (row = {}, possibleKeys = []) => {
 };
 
 export default function StudentDirectory() {
-  const [users, setUsers] = useState(readStoredUsers);
+  const [users, setUsers] = useState(readStoredBorrowerUsers);
   const [search, setSearch] = useState("");
   const [positionFilter, setPositionFilter] = useState("all");
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [importMessage, setImportMessage] = useState("");
   const [showImporterModal, setShowImporterModal] = useState(false);
 
   useEffect(() => {
-    saveUsers(users);
-  }, [users]);
+    let active = true;
+
+    const loadUsers = async () => {
+      const dbUsers = await getBorrowerAllowlistFromDb(users);
+      if (active) {
+        setUsers(dbUsers);
+      }
+    };
+
+    loadUsers();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const filteredUsers = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -143,7 +122,7 @@ export default function StudentDirectory() {
     resetForm();
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     const normalizedName = form.name.trim();
     const normalizedSchoolId = formatSchoolId(form.schoolId);
@@ -187,12 +166,54 @@ export default function StudentDirectory() {
       section: normalizedSection,
     };
 
-    setUsers((current) => [nextUser, ...current]);
-    closeModal();
+    const nextUsers = [nextUser, ...users];
+    setSaving(true);
+    setFormError("");
+
+    try {
+      setUsers(nextUsers);
+      await upsertBorrowerUsersToDb(nextUsers);
+      const dbUsers = await getBorrowerAllowlistFromDb(nextUsers);
+      setUsers(dbUsers);
+      toast.success("Borrower added successfully.");
+      closeModal();
+    } catch (error) {
+      setFormError(error?.message || "Unable to save borrower. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = (userId) => {
-    setUsers((current) => current.filter((user) => user.id !== userId));
+  const promptDeleteUser = (userId) => {
+    const targetUser = users.find((user) => user.id === userId);
+    if (!targetUser) return;
+    setDeleteTarget(targetUser);
+  };
+
+  const cancelDelete = () => {
+    setDeleteTarget(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+
+    const userId = deleteTarget.id;
+    const targetUser = deleteTarget;
+    setDeletingUserId(userId);
+    const originalUsers = users;
+    const nextUsers = users.filter((user) => user.id !== userId);
+    setUsers(nextUsers);
+    setDeleteTarget(null);
+
+    try {
+      await deleteBorrowerUserFromDb(targetUser.schoolId);
+      toast.success("Borrower removed successfully.");
+    } catch (error) {
+      setUsers(originalUsers);
+      toast.error("Unable to delete borrower. Please try again.");
+    } finally {
+      setDeletingUserId("");
+    }
   };
 
   const handleImportStart = () => {
@@ -236,7 +257,13 @@ export default function StudentDirectory() {
         return index === existing;
       });
 
-      setUsers((current) => [...dedupedUsers, ...current]);
+      const nextUsers = [...dedupedUsers, ...users];
+      setUsers(nextUsers);
+      void upsertBorrowerUsersToDb(nextUsers).then(() => {
+        getBorrowerAllowlistFromDb(nextUsers).then((dbUsers) => {
+          setUsers(dbUsers);
+        });
+      });
       setImportMessage(`Imported ${dedupedUsers.length} borrower${dedupedUsers.length === 1 ? "" : "s"}.`);
       setShowImporterModal(false);
     } catch (error) {
@@ -379,11 +406,16 @@ export default function StudentDirectory() {
                     <td className="px-4 py-3 text-right">
                       <button
                         type="button"
-                        onClick={() => handleDelete(user.id)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                        onClick={() => promptDeleteUser(user.id)}
+                        disabled={deletingUserId === user.id}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
                         aria-label={`Delete ${user.name}`}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        {deletingUserId === user.id ? (
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-rose-600" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
                       </button>
                     </td>
                   </tr>
@@ -514,18 +546,68 @@ export default function StudentDirectory() {
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  disabled={saving}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#651717]"
+                  disabled={saving}
+                  className="inline-flex items-center justify-center rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#651717] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Save Borrower
+                  {saving ? "Saving..." : "Save Borrower"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Confirm deletion</h2>
+                <p className="mt-1 text-sm text-slate-600">Are you sure you want to remove this borrower from the allowlist?</p>
+              </div>
+              <button
+                type="button"
+                onClick={cancelDelete}
+                className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-500 transition hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm text-slate-700">
+                  <span className="font-semibold">Name:</span> {deleteTarget.name}
+                </p>
+                <p className="text-sm text-slate-700">
+                  <span className="font-semibold">School ID:</span> {deleteTarget.schoolId}
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={cancelDelete}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDelete}
+                  className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+                >
+                  Delete borrower
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
