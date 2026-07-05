@@ -55,11 +55,6 @@ const emptyForm = {
   year: "",
   section: "",
 };
-
-const normalizeYear = (value = "") => String(value).trim();
-
-const normalizeSection = (value = "") => String(value).trim();
-
 const normalizeHeaderKey = (value = "") =>
   String(value ?? "")
     .trim()
@@ -362,7 +357,7 @@ export default function StudentDirectory() {
             <SelectContent>
               <SelectItem value="__ALL__">All</SelectItem>
               <SelectItem value="student">Student</SelectItem>
-              <SelectItem value="faculty">Faculty</SelectItem>
+              <SelectItem value="faculty">Teacher</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -384,7 +379,6 @@ export default function StudentDirectory() {
                   "School ID",
                   "Position",
                   "Year",
-                  "Section",
                 ].map((h) => (
                   <th
                     key={h}
@@ -393,15 +387,15 @@ export default function StudentDirectory() {
                     {h}
                   </th>
                 ))}
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                <th className="pl-0 pr-0.5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   <span className="sr-only">Row actions</span>
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredUsers.length === 0 ? (
+                {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-4 py-10 text-center text-sm text-slate-500">
+                  <td colSpan="4" className="px-4 py-10 text-center text-sm text-slate-500">
                     <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
                       <FileSpreadsheet className="h-10 w-10 text-slate-300" />
                       <p>No borrowers yet. Add a borrower manually or import a spreadsheet.</p>
@@ -430,11 +424,10 @@ export default function StudentDirectory() {
                             : "border-emerald-200 bg-emerald-50 text-emerald-700"
                         }`}
                       >
-                        {user.position === "faculty" ? "Faculty" : "Student"}
+                        {user.position === "faculty" ? "Teacher" : "Student"}
                       </span>
                     </td>
-                    <td className={`px-4 py-3 text-sm text-slate-600`}>{user.section}</td>
-                    <td className="px-4 py-3">
+                    <td className="pl-0 pr-0.5 py-3">
                       <div className="flex justify-end">
                         <button
                           type="button"
@@ -526,7 +519,7 @@ export default function StudentDirectory() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="student">Student</SelectItem>
-                      <SelectItem value="faculty">Faculty</SelectItem>
+                      <SelectItem value="faculty">Teacher</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
