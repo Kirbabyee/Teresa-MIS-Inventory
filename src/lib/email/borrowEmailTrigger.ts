@@ -3,6 +3,7 @@
 
 interface BorrowEmailArgs {
   id?: string | number;
+  borrow_id?: string | number;
   borrower_name: string;
   borrower_email: string;
   items: Array<{

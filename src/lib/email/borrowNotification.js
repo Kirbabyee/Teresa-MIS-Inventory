@@ -63,7 +63,7 @@ const itemQty = (item) => {
 
 // ── Shell template (wraps every variant) ──────────────────────────────────
 
-const shell = ({ heading, bodyHtml, borrowerName, referenceId }) => `<!DOCTYPE html>
+const shell = ({ heading, bodyHtml, borrowerName, borrowId }) => `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -92,8 +92,8 @@ const shell = ({ heading, bodyHtml, borrowerName, referenceId }) => `<!DOCTYPE h
               Hi <strong style="color:#1e293b;">${escapeHtml(borrowerName)}</strong>,
             </p>
             ${
-              referenceId
-                ? `<div style="font-size:11px;font-family:monospace;color:#64748b;margin-top:4px;margin-bottom:24px;letter-spacing:0.5px;">REFERENCE ID: #${escapeHtml(referenceId)}</div>`
+              borrowId
+                ? `<div style="font-size:11px;font-family:monospace;color:#64748b;margin-top:4px;margin-bottom:24px;letter-spacing:0.5px;">Borrow ID: #${escapeHtml(String(borrowId))}</div>`
                 : ""
             }
             ${bodyHtml}
@@ -208,7 +208,12 @@ export const sendBorrowStatusEmail = async (borrowerData, decision) => {
       </p>`;
   }
 
-  const html = shell({ heading, bodyHtml, borrower_name, referenceId: borrowerData?.id });
+  const html = shell({
+    heading,
+    bodyHtml,
+    borrowerName: borrower_name,
+    borrowId: borrowerData?.borrow_id ?? borrowerData?.borrowId ?? borrowerData?.id,
+  });
 
   // ── Send ───────────────────────────────────────────────────────────────
   try {

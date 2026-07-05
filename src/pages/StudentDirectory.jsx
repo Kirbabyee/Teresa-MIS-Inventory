@@ -448,12 +448,12 @@ export default function StudentDirectory() {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative flex-1">
+        <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:flex-nowrap">
+          <div className="relative flex-1 min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
               placeholder="Search name, school ID, section..."
-              className="pl-9 bg-white"
+              className="pl-9 bg-white min-w-0"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -461,7 +461,7 @@ export default function StudentDirectory() {
 
           <Select value={roleFilter || "__ALL__"} onValueChange={(v) => setRoleFilter(v === "__ALL__" ? "" : v)}>
             <SelectTrigger
-              className={"h-9 w-full sm:w-48 rounded-md border border-input bg-white px-3 py-1 text-sm text-slate-600 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"}
+              className={"h-9 w-full sm:w-48 rounded-md border border-input bg-white px-3 py-1 text-sm text-slate-600 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring flex-shrink-0"}
             >
               <SelectValue placeholder="All Roles" />
             </SelectTrigger>

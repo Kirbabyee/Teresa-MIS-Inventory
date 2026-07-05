@@ -55,6 +55,7 @@ type RequestBody = {
   items?: ItemInput[];
   expected_return_at?: string | null;
   id?: string | number;
+  borrow_id?: string | number;
 };
 
 const itemLabel = (item: ItemInput) => {
@@ -77,12 +78,12 @@ const shell = ({
   heading,
   bodyHtml,
   borrowerName,
-  referenceId,
+  borrowId,
 }: {
   heading: string;
   bodyHtml: string;
   borrowerName: string;
-  referenceId?: string | number;
+  borrowId?: string | number;
 }) => `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -103,8 +104,8 @@ const shell = ({
             <h1 style="margin:0 0 12px;font-size:20px;font-weight:600;color:#1e293b;">${escapeHtml(heading)}</h1>
             <p style="margin:0 0 20px;font-size:14px;color:#475569;line-height:1.6;">Hi <strong style="color:#1e293b;">${escapeHtml(borrowerName)}</strong>,</p>
             ${
-              referenceId
-                ? `<div style="font-size:11px;font-family:monospace;color:#64748b;margin-top:4px;margin-bottom:24px;letter-spacing:0.5px;">REFERENCE ID: #${escapeHtml(String(referenceId))}</div>`
+              borrowId
+                ? `<div style="font-size:11px;font-family:monospace;color:#64748b;margin-top:4px;margin-bottom:24px;letter-spacing:0.5px;">Borrow ID: #${escapeHtml(String(borrowId))}</div>`
                 : ""
             }
             ${bodyHtml}
@@ -212,7 +213,7 @@ Deno.serve(async (req: Request) => {
       heading,
       bodyHtml,
       borrowerName: String(body?.borrower_name ?? ""),
-      referenceId: body?.id,
+      borrowId: body?.borrow_id ?? body?.id,
     });
 
     const info = await transporter.sendMail({

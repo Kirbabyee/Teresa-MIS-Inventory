@@ -141,17 +141,45 @@ const getLiveStock = (item = {}) => {
 export default function PublicBorrow() {
 
   const [activeStep, setActiveStep] = useState(1);
-  // ── Default dates: borrow now, return 3 days from now ──────────────────
+  // ── Default dates: borrow now, return 7 days from now ──────────────────
   const getDefaultDates = () => {
     const now = new Date();
     const borrowDate = now.toISOString();
-    const ret = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const ret = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     ret.setHours(23, 59, 59, 0);
     const y = ret.getFullYear();
     const m = String(ret.getMonth() + 1).padStart(2, "0");
     const d = String(ret.getDate()).padStart(2, "0");
     return { borrowDate, expectedReturnAt: `${y}-${m}-${d}` };
   };
+
+  const formatDateKey = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
+  const getMaxReturnDate = (borrowDate) => {
+    const max = new Date(borrowDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+    max.setHours(23, 59, 59, 0);
+    return max;
+  };
+
+  const clampExpectedReturnAt = (borrowDate, expectedReturnAt) => {
+    const max = getMaxReturnDate(borrowDate);
+    if (!expectedReturnAt) return formatDateKey(max);
+    const current = new Date(`${expectedReturnAt}T23:59:59`);
+    if (current < borrowDate) return formatDateKey(borrowDate);
+    if (current > max) return formatDateKey(max);
+    return expectedReturnAt;
+  };
+
+  const updateBorrowDate = (borrowDateValue) => {
+    const expectedReturnAt = clampExpectedReturnAt(borrowDateValue, form.expectedReturnAt);
+    setForm({ ...form, borrowDate: borrowDateValue.toISOString(), expectedReturnAt });
+  };
+
   const [form, setForm] = useState(() => {
     const { borrowDate, expectedReturnAt } = getDefaultDates();
     return { name: "", email: "", studentId: "", role: "", borrowDate, expectedReturnAt };
@@ -438,9 +466,13 @@ export default function PublicBorrow() {
       if (form.expectedReturnAt) {
         expectedReturnAt = new Date(form.expectedReturnAt + "T23:59:59");
       } else {
-        expectedReturnAt = new Date(borrowDate.getTime() + 3 * 24 * 60 * 60 * 1000);
+        expectedReturnAt = new Date(borrowDate.getTime() + 7 * 24 * 60 * 60 * 1000);
         expectedReturnAt.setHours(23, 59, 59, 0);
       }
+      // Enforce maximum 7-day borrowing period
+      const maxReturn = new Date(borrowDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+      maxReturn.setHours(23, 59, 59, 0);
+      if (expectedReturnAt > maxReturn) expectedReturnAt = maxReturn;
 
       // ── Deduct stock from inventory (same as admin borrow flow) ──
       const dbUpdates = [];
@@ -748,8 +780,8 @@ export default function PublicBorrow() {
                                           const pad = (n) => String(n).padStart(2, "0");
                                           const now = new Date(form.borrowDate ? new Date(form.borrowDate) : new Date());
                                           const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-                                          const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${timeStr}`;
-                                          setForm({ ...form, borrowDate: dateStr });
+                                          const borrowDateValue = new Date(`${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${timeStr}`);
+                                          updateBorrowDate(borrowDateValue);
                                         }
                                       }}
                                     />
@@ -765,7 +797,7 @@ export default function PublicBorrow() {
                                             const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
                                             base.setHours(parseInt(e.target.value));
                                             const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
-                                            setForm({ ...form, borrowDate: dateStr });
+                                            updateBorrowDate(new Date(dateStr));
                                           }}
                                           className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                         >
@@ -781,7 +813,7 @@ export default function PublicBorrow() {
                                             const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
                                             base.setMinutes(parseInt(e.target.value));
                                             const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
-                                            setForm({ ...form, borrowDate: dateStr });
+                                            updateBorrowDate(new Date(dateStr));
                                           }}
                                           className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                         >
@@ -799,7 +831,7 @@ export default function PublicBorrow() {
                                             if (wasPM && !goingPM) base.setHours(base.getHours() - 12);
                                             else if (!wasPM && goingPM) base.setHours(base.getHours() + 12);
                                             const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
-                                            setForm({ ...form, borrowDate: dateStr });
+                                            updateBorrowDate(new Date(dateStr));
                                           }}
                                           className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                         >
@@ -810,7 +842,11 @@ export default function PublicBorrow() {
                                     </div>
                                   </div>
                                   <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
-                                    <button type="button" onClick={() => { setForm({ ...form, borrowDate: new Date().toISOString() }); setShowBorrowDatePicker(false); }} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100">Reset</button>
+                                    <button type="button" onClick={() => {
+                                      const now = new Date();
+                                      updateBorrowDate(now);
+                                      setShowBorrowDatePicker(false);
+                                    }} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100">Reset</button>
                                     <button type="button" onClick={() => setShowBorrowDatePicker(false)} className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]">Done</button>
                                   </div>
                                 </div>
@@ -861,17 +897,23 @@ export default function PublicBorrow() {
                                         }
                                         setShowReturnDatePicker(false);
                                       }}
-                                      disabled={form.borrowDate ? { before: new Date(form.borrowDate) } : undefined}
+                                      // Disable dates before borrow date and after borrow date + 7 days
+                                      disabled={(() => {
+                                        const borrow = form.borrowDate ? new Date(form.borrowDate) : new Date();
+                                        const max = new Date(borrow.getTime() + 7 * 24 * 60 * 60 * 1000);
+                                        return { before: borrow, after: max };
+                                      })()}
                                       fromDate={form.borrowDate ? new Date(form.borrowDate) : new Date()}
+                                      toDate={(function () { const borrow = form.borrowDate ? new Date(form.borrowDate) : new Date(); return new Date(borrow.getTime() + 7 * 24 * 60 * 60 * 1000); })()}
                                       footer={
                                         form.expectedReturnAt
-                                          ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                                          : ""
+                                          ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + " (max 7 days)"
+                                          : "Max 7 days from borrow date"
                                       }
                                     />
                                   </div>
                                   <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
-                                    <button type="button" onClick={() => { const ret = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000); ret.setHours(23, 59, 59, 0); setForm({ ...form, expectedReturnAt: `${ret.getFullYear()}-${String(ret.getMonth() + 1).padStart(2, "0")}-${String(ret.getDate()).padStart(2, "0")}` }); setShowReturnDatePicker(false); }} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100">Reset</button>
+                                    <button type="button" onClick={() => { const ret = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); ret.setHours(23, 59, 59, 0); setForm({ ...form, expectedReturnAt: `${ret.getFullYear()}-${String(ret.getMonth() + 1).padStart(2, "0")}-${String(ret.getDate()).padStart(2, "0")}` }); setShowReturnDatePicker(false); }} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100">Reset</button>
                                     <button type="button" onClick={() => setShowReturnDatePicker(false)} className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]">Done</button>
                                   </div>
                                 </div>
@@ -1242,7 +1284,7 @@ export default function PublicBorrow() {
                             <p className="mt-1 text-sm font-semibold text-slate-800">
                               {form.expectedReturnAt
                                 ? new Date(form.expectedReturnAt + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                                : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                             </p>
                           </div>
                         </div>

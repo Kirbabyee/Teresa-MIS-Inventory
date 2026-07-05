@@ -1479,8 +1479,6 @@ export default function Borrowing() {
   const [page, setPage] = useState(1);
   const itemsPerPage = 10;
   const [selectedRecord, setSelectedRecord] = useState(null);
-  // Pending approval detail — separate from borrowing record modal
-  const [viewingPendingRecord, setViewingPendingRecord] = useState(null);
 
   const [data, setData] = useState([]);
   const [depletedItems, setDepletedItems] = useState(new Set());
@@ -1771,6 +1769,7 @@ export default function Borrowing() {
       triggerBorrowStatusEmail(
         {
           id: record.id,
+          borrow_id: record.borrowId || record.borrow_id || record.id,
           borrower_name: record.name,
           borrower_email: record.email || record.borrower_email,
           items: approvalItems.map((it) => ({ label: it.item_label, details: it.item_details })),
@@ -1819,6 +1818,7 @@ export default function Borrowing() {
       triggerBorrowStatusEmail(
         {
           id: record.id,
+          borrow_id: record.borrowId || record.borrow_id || record.id,
           borrower_name: record.name,
           borrower_email: record.email || record.borrower_email,
           items: (approvalItems || []).map((it) => ({
@@ -4220,7 +4220,7 @@ export default function Borrowing() {
                         return (
                           <tr
                             key={record.id}
-                            onClick={() => isPending ? setViewingPendingRecord(record) : setSelectedRecord(record)}
+                            onClick={() => isPending ? openReviewModal(record) : setSelectedRecord(record)}
                             className={`cursor-pointer transition-colors hover:bg-slate-200/80 ${rowIndex % 2 === 0 ? "bg-white" : "bg-slate-100/90"}`}
                           >
                             <td className="px-4 py-3">
@@ -4901,193 +4901,6 @@ export default function Borrowing() {
         </Dialog>
       )}
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          PENDING APPROVAL DETAIL MODAL
-          ═══════════════════════════════════════════════════════════════════ */}
-      {viewingPendingRecord && (() => {
-        const allItems = viewingPendingRecord.items || viewingPendingRecord.borrowing_items || [];
-        return (
-          <Dialog open={!!viewingPendingRecord} onOpenChange={(open) => !open && setViewingPendingRecord(null)}>
-            <DialogContent
-              className="flex max-h-[85vh] max-w-3xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
-              onPointerDownOutside={(e) => e.preventDefault()}
-            >
-              {/* ── Header ───────────────────────────────────────────────────── */}
-              <DialogHeader className="border-b border-slate-200 bg-white px-8 pt-8 pb-6 sm:px-10">
-                <DialogTitle className="text-lg font-semibold text-slate-900">
-                  Pending Approval Request
-                </DialogTitle>
-              </DialogHeader>
-
-              {/* ── Body ─────────────────────────────────────────────────────── */}
-              <div className="flex-1 space-y-8 overflow-y-auto px-8 py-8 sm:px-10">
-
-                {/* Transaction Overview — Borrower + Timeline */}
-                <div className="rounded-lg border border-slate-200 bg-white p-6">
-                  <h3 className="mb-5 text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">
-                    Transaction Details
-                  </h3>
-                  <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
-                    {/* Left column: Borrower */}
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-xs font-medium text-slate-400">Borrow ID</p>
-                        <p className="mt-0.5 text-base font-semibold text-[#4a1111]">{viewingPendingRecord.borrowId || "—"}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium text-slate-400">Full Name</p>
-                        <p className="mt-0.5 text-base font-semibold text-slate-900">{viewingPendingRecord.name}</p>
-                      </div>
-                      <div className="flex gap-6">
-                        <div>
-                          <p className="text-xs font-medium text-slate-400">ID Number</p>
-                          <p className="mt-0.5 text-sm font-semibold text-slate-900">{viewingPendingRecord.studentId || "—"}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium text-slate-400">Role</p>
-                          <p className="mt-0.5 text-sm font-semibold text-slate-900">{viewingPendingRecord.role || "—"}</p>
-                        </div>
-                      </div>
-                      {viewingPendingRecord.email && (
-                        <div>
-                          <p className="text-xs font-medium text-slate-400">Email</p>
-                          <p className="mt-0.5 text-sm font-semibold text-slate-900">{viewingPendingRecord.email}</p>
-                        </div>
-                      )}
-                    </div>
-                    {/* Right column: Dates + Status */}
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-xs font-medium text-slate-400">Date Requested</p>
-                        <p className="mt-0.5 text-base font-semibold text-slate-900">{formatExportDate(viewingPendingRecord.date)}</p>
-                        <p className="text-sm text-slate-400">{formatExportTime(viewingPendingRecord.date)}</p>
-                      </div>
-                      {viewingPendingRecord.expectedReturnAt && (
-                        <div>
-                          <p className="text-xs font-medium text-slate-400">Expected Return</p>
-                          <p className="mt-0.5 text-base font-semibold text-slate-900">{formatExportDate(viewingPendingRecord.expectedReturnAt)}</p>
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-xs font-medium text-slate-400">Status</p>
-                        <span className="mt-1 inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
-                          Pending Approval
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Items Detail Section */}
-                <div className="rounded-lg border border-slate-200 bg-white p-6">
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">
-                      Items
-                    </h3>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
-                      <span>{allItems.length} {allItems.length === 1 ? "item" : "items"}</span>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    {allItems.map((item, idx) => {
-                      const borrowedQty = getBorrowedQuantity(item);
-                      // Asset detail fields — exclude internal/DB keys, tab/section, and quantity
-                      const assetFields = (item.details || []).filter((d) => {
-                        if (d.value == null || String(d.value).trim() === "") return false;
-                        const strVal = String(d.value);
-                        if (strVal === "[object Object]" || (typeof d.value === "object" && !Array.isArray(d.value))) return false;
-                        const k = String(d.key || "").toLowerCase();
-                        const l = String(d.label || "").toLowerCase();
-                        const blocked = new Set(["quantity", "id", "section_id", "created_at", "updated_at", "sort_order", "data", "remark", "condition", "return_defective_quantity", "return_working_quantity", "tab", "section", "tab_id", "inventory_tab_id", "inventory_section_id", "inventory_item_id", "borrowing_record_id", "inventory_table_name", "computer_number", "item_number", "tab_name", "section_name", "tab_name", "section_name", "table_name", "tabid", "sectionid", "inventorytabid", "inventorysectionid", "inventoryitemid", "borrowingrecordid", "name", "item_name", "asset_name", "itemname", "assetname", "itemlabel", "returncondition", "returnremarks", "item_returned_at", "itemreturnedat", "returned_item_details", "returneditemdetails", "_returned_qty", "status"]);
-                        if (blocked.has(k) || blocked.has(l) || k.endsWith("_id") || k.startsWith("_") || /inventory|borrowing|tab|section|table_name/.test(k)) return false;
-                        const rawKey = String(d.key || "");
-                        if (rawKey === rawKey.toUpperCase() && rawKey.length > 1 && /^[A-Z][A-Z_]+$/.test(rawKey)) return false;
-                        return true;
-                      }).map((d) => ({
-                        key: d.key,
-                        label: d.label && !/^_/.test(d.label) && d.label !== d.label.toUpperCase()
-                          ? d.label
-                          : formatFieldLabel(d.key),
-                        value: typeof d.value === "object" ? JSON.stringify(d.value) : String(d.value),
-                      }));
-
-                      const tabName = item.tab || inventoryNameLookup.tabNames[item.inventoryTabId] || "";
-                      const sectionName = item.section || inventoryNameLookup.sectionNames[item.inventorySectionId] || "";
-
-                      return (
-                        <div key={item.id || idx} className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-                          {/* Header: item label + tab/section + quantity */}
-                          <div className="bg-slate-50/60 border-b border-slate-100 px-5 py-4 flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-base font-bold text-slate-900 leading-snug truncate">
-                                {item.label || item.item_label || item.name || "Item"}
-                              </p>
-                              {(tabName || sectionName) && (
-                                <p className="mt-0.5 text-sm text-slate-400 truncate">
-                                  {tabName}{sectionName ? ` · ${sectionName}` : ""}
-                                </p>
-                              )}
-                            </div>
-                            <span className="shrink-0 rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                              {borrowedQty} x
-                            </span>
-                          </div>
-                          {/* Asset detail fields */}
-                          {assetFields.length > 0 && (
-                            <div className="px-5 py-4">
-                              <div className="flex flex-col gap-y-2">
-                                {assetFields.map((field, fi) => (
-                                  <div key={fi} className="flex items-baseline gap-2 min-w-0">
-                                    <span className="shrink-0 text-xs font-medium text-slate-400">
-                                      {formatFieldLabel(field.key || field.label)}:
-                                    </span>
-                                    <span className="truncate text-sm font-semibold text-slate-900">{field.value}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {/* Condition / Remarks (if present) */}
-                          {(() => {
-                            const cond = getItemConditionRaw(item) || getOriginalConditionFromDetails(item) || item.condition || item.returnCondition || item.status || null;
-                            const remark = (item.returnRemarks || item.remarks || getItemRemark(item) || null);
-                            if (!cond && !remark) return null;
-                            return (
-                              <div className="px-5 pb-4">
-                                <div className="flex flex-col gap-y-2">
-                                  {cond && (
-                                    <div className="flex items-baseline gap-2 min-w-0">
-                                      <span className="shrink-0 text-xs font-medium text-slate-400">Condition:</span>
-                                      <span className="truncate text-sm font-semibold text-slate-900">{cond}</span>
-                                    </div>
-                                  )}
-                                  {remark && (
-                                    <div className="flex items-baseline gap-2 min-w-0">
-                                      <span className="shrink-0 text-xs font-medium text-slate-400">Remarks:</span>
-                                      <span className="truncate text-sm font-semibold text-slate-900">{remark}</span>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Footer ───────────────────────────────────────────────────── */}
-              <DialogFooter className="flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50/60 px-8 py-5 sm:flex-row sm:justify-end sm:px-10">
-                <Button type="button" variant="outline" size="sm" className="rounded-lg" onClick={() => setViewingPendingRecord(null)}>
-                  Close
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        );
-      })()}
 
       {/* ═══════════════════════════════════════════════════════════════════
           APPROVAL REVIEW MODAL
@@ -5103,6 +4916,61 @@ export default function Borrowing() {
                 {reviewingRecord.name} • {reviewingRecord.studentId || reviewingRecord.borrower_id_number || "—"} • {formatExportDate(reviewingRecord.date || reviewingRecord.created_at)}
               </DialogDescription>
             </DialogHeader>
+
+            <div className="mt-4 space-y-6 rounded-lg border border-slate-200 bg-white p-6">
+              <div>
+                <h3 className="mb-5 text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  Transaction Details
+                </h3>
+                <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs font-medium text-slate-400">Borrow ID</p>
+                      <p className="mt-0.5 text-base font-semibold text-[#4a1111]">{reviewingRecord.borrowId || reviewingRecord.borrow_id || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-slate-400">Full Name</p>
+                      <p className="mt-0.5 text-base font-semibold text-slate-900">{reviewingRecord.name}</p>
+                    </div>
+                    <div className="flex gap-6">
+                      <div>
+                        <p className="text-xs font-medium text-slate-400">ID Number</p>
+                        <p className="mt-0.5 text-sm font-semibold text-slate-900">{reviewingRecord.studentId || reviewingRecord.borrower_id_number || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-slate-400">Role</p>
+                        <p className="mt-0.5 text-sm font-semibold text-slate-900">{reviewingRecord.role || reviewingRecord.role || "—"}</p>
+                      </div>
+                    </div>
+                    {reviewingRecord.email && (
+                      <div>
+                        <p className="text-xs font-medium text-slate-400">Email</p>
+                        <p className="mt-0.5 text-sm font-semibold text-slate-900">{reviewingRecord.email}</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs font-medium text-slate-400">Date Requested</p>
+                      <p className="mt-0.5 text-base font-semibold text-slate-900">{formatExportDate(reviewingRecord.date || reviewingRecord.created_at)}</p>
+                      <p className="text-sm text-slate-400">{formatExportTime(reviewingRecord.date || reviewingRecord.created_at)}</p>
+                    </div>
+                    {reviewingRecord.expectedReturnAt || reviewingRecord.expected_return_at ? (
+                      <div>
+                        <p className="text-xs font-medium text-slate-400">Expected Return</p>
+                        <p className="mt-0.5 text-base font-semibold text-slate-900">{formatExportDate(reviewingRecord.expectedReturnAt || reviewingRecord.expected_return_at)}</p>
+                      </div>
+                    ) : null}
+                    <div>
+                      <p className="text-xs font-medium text-slate-400">Status</p>
+                      <span className="mt-1 inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                        Pending Approval
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             <div className="mt-2">
               {/* Items list — styled like the return modal's select items */}
