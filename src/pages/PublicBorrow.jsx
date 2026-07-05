@@ -30,6 +30,11 @@ import { createPortal } from 'react-dom';
 
 const SESSION_KEY = "app_session";
 
+const PortalModal = ({ children }) => {
+  if (typeof document === "undefined") return null;
+  return createPortal(children, document.body);
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 const normalizeSchoolId = (value = "") => {
@@ -758,7 +763,7 @@ export default function PublicBorrow() {
                             </button>
 
                             {showBorrowDatePicker && (
-                              <>
+                              <PortalModal>
                                 <div className="fixed inset-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowBorrowDatePicker(false)} />
                                 <div className="fixed left-1/2 top-1/2 z-[201] w-[320px] -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
                                   <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
@@ -850,7 +855,7 @@ export default function PublicBorrow() {
                                     <button type="button" onClick={() => setShowBorrowDatePicker(false)} className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]">Done</button>
                                   </div>
                                 </div>
-                              </>
+                              </PortalModal>
                             )}
                           </div>
                         </div>
@@ -873,7 +878,7 @@ export default function PublicBorrow() {
                             </button>
 
                             {showReturnDatePicker && (
-                              <>
+                              <PortalModal>
                                 <div className="fixed inset-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowReturnDatePicker(false)} />
                                 <div className="fixed left-1/2 top-1/2 z-[201] w-[320px] -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
                                   <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
@@ -917,7 +922,7 @@ export default function PublicBorrow() {
                                     <button type="button" onClick={() => setShowReturnDatePicker(false)} className="rounded-full bg-[#4a1111] px-4 py-1 text-xs font-medium text-white hover:bg-[#5a1717]">Done</button>
                                   </div>
                                 </div>
-                              </>
+                              </PortalModal>
                             )}
                           </div>
                         </div>
@@ -1073,7 +1078,7 @@ export default function PublicBorrow() {
 
                     {/* ── Quantity Dialog (nested) ───────────────────────────── */}
                     {qtyDialogItem && (
-                      <>
+                      <PortalModal>
                         <div className="fixed inset-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setQtyDialogItem(null)} />
                         <div className="fixed left-1/2 top-1/2 z-[201] w-[320px] -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
                           <div>
@@ -1127,12 +1132,12 @@ export default function PublicBorrow() {
                             </Button>
                           </div>
                         </div>
-                      </>
+                      </PortalModal>
                     )}
 
                     {/* ── Custom Item Modal (nested) ─────────────────────────── */}
                     {showCustomItemModal && (
-                      <>
+                      <PortalModal>
                         <div className="fixed inset-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowCustomItemModal(false)} />
                         <div className="fixed left-1/2 top-1/2 z-[201] w-[480px] max-h-[85vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
                           <h3 className="text-base font-semibold text-slate-900">Add Custom Item</h3>
@@ -1177,13 +1182,13 @@ export default function PublicBorrow() {
                             </Button>
                           </div>
                         </div>
-                      </>
+                      </PortalModal>
                     )}
 
                     {/* ── Cart Modal (shows in Step 2 and Step 3) ─────────────────────────── */}
                     {(activeStep === 2 || activeStep === 3) && showCartModal && (
-                      <>
-                        <div className="fixed inset-0 w-screen h-screen z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowCartModal(false)} />
+                      <PortalModal>
+                        <div className="fixed inset-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowCartModal(false)} />
                         <div className="fixed left-1/2 top-1/2 z-[201] w-[540px] max-h-[85vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] overflow-hidden rounded-[25px] border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
                           <div className="flex items-center justify-between">
                             <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
@@ -1199,7 +1204,7 @@ export default function PublicBorrow() {
                             {renderCartContent()}
                           </div>
                         </div>
-                      </>
+                      </PortalModal>
                     )}
 
                     {/* ── Floating Cart Button on LEFT side ────────────────────────── */}

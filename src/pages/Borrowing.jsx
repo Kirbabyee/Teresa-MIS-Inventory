@@ -3481,8 +3481,8 @@ export default function Borrowing() {
 
         {/* ── Filters & Actions ────────────────────────────────────────────── */}
         <div className="relative z-20 flex w-full flex-col gap-3 overflow-visible xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-            <div className="relative w-full sm:w-96">
+          <div className="flex min-w-0 flex-1 flex-wrap xl:flex-nowrap items-center gap-3">
+            <div className="relative w-full sm:w-96 min-w-0">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
@@ -4912,9 +4912,6 @@ export default function Borrowing() {
               <DialogTitle className="text-base font-bold text-slate-800">
                 Review Borrowing Request
               </DialogTitle>
-              <DialogDescription className="text-xs text-slate-500">
-                {reviewingRecord.name} • {reviewingRecord.studentId || reviewingRecord.borrower_id_number || "—"} • {formatExportDate(reviewingRecord.date || reviewingRecord.created_at)}
-              </DialogDescription>
             </DialogHeader>
 
             <div className="mt-4 space-y-6 rounded-lg border border-slate-200 bg-white p-6">
