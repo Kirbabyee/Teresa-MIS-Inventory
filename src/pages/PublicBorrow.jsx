@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import Header from "@/components/Header";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -27,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { createPortal } from 'react-dom';
 
 const SESSION_KEY = "app_session";
 
@@ -117,19 +117,6 @@ const getLiveStock = (item = {}) => {
 };
 
 export default function PublicBorrow() {
-  const [session, setSession] = useState(null);
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(SESSION_KEY);
-      setSession(raw ? JSON.parse(raw) : null);
-    } catch {
-      setSession(null);
-    }
-  }, []);
-
-  const displayName = session?.displayName || session?.email || "Guest";
-  const displayRole = session?.role || "Visitor";
-  const initials = (displayName || "").split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase();
 
   const [activeStep, setActiveStep] = useState(1);
   // ── Default dates: borrow now, return 3 days from now ──────────────────
@@ -407,22 +394,15 @@ export default function PublicBorrow() {
   const totalCartItems = borrowCart.length + customItems.length;
 
   // ── Reusable cart list (single source of truth) ────────────────────────
-  // `compact` = desktop sidebar (read-only qty, trash only).
-  // `!compact` = mobile modal (inline +/- controls, trash).
-  const renderCartContent = ({ compact = false } = {}) => (
-    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-      <div className={cn(
-        "bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500",
-        compact
-          ? "grid grid-cols-[1fr_44px_28px] gap-2"
-          : "grid grid-cols-[1fr_80px_120px_32px] gap-3"
-      )}>
+  const renderCartContent = () => (
+    <div className="overflow-hidden rounded-[25px] border-2 border-slate-200 bg-white p-0 shadow-sm">
+      <div className="bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 grid grid-cols-[1fr_80px_120px_32px] gap-3">
         <span>Item</span>
-        {!compact && <span className="text-center">Status</span>}
+        <span className="text-center">Status</span>
         <span className="text-center">Qty</span>
         <span />
       </div>
-      <div className={cn("divide-y divide-slate-100", !compact && "max-h-[300px] overflow-y-auto")}>
+      <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto">
         {totalCartItems === 0 ? (
           <div className="px-3 py-8 text-center text-sm text-slate-400">Your cart is empty.</div>
         ) : (
@@ -430,43 +410,29 @@ export default function PublicBorrow() {
             {borrowCart.map((item) => (
               <div
                 key={item.cartId}
-                className={cn(
-                  "items-center px-3 py-2.5",
-                  compact
-                    ? "grid grid-cols-[1fr_44px_28px] gap-2"
-                    : "grid grid-cols-[1fr_80px_120px_32px] gap-3"
-                )}
+                className="grid grid-cols-[1fr_80px_120px_32px] gap-3 items-center px-3 py-2.5"
               >
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-800 truncate">{getItemLabel(item)}</p>
                   <p className="text-xs text-slate-400 truncate">{item.tabName} / {item.sectionName}</p>
                 </div>
-                {!compact && (
-                  <div className="text-center">
-                    {getItemRemark(item) ? (
-                      <span className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600">{getItemRemark(item)}</span>
-                    ) : (
-                      <span className="text-xs text-slate-400">—</span>
-                    )}
-                  </div>
-                )}
-                <div className={cn("flex items-center gap-1.5", compact ? "justify-center" : "pl-4")}>
-                  {!compact && (
-                    <>
-                      <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
-                        onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)} disabled={item.quantity <= 1}>
-                        <Minus className="h-3 w-3" />
-                      </Button>
-                      <span className="w-8 text-center text-sm font-semibold text-slate-700">{item.quantity}</span>
-                      <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
-                        onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)} disabled={item.quantity >= (item.maxQuantity || 999)}>
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </>
+                <div className="text-center">
+                  {getItemRemark(item) ? (
+                    <span className="rounded-md px-2 py-1 text-xs font-semibold text-slate-600">{getItemRemark(item)}</span>
+                  ) : (
+                    <span className="text-xs text-slate-400">—</span>
                   )}
-                  {compact && (
-                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">{item.quantity}</span>
-                  )}
+                </div>
+                <div className="flex items-center gap-1.5 pl-4">
+                  <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                    onClick={() => updateCartQuantity(item.cartId, item.quantity - 1)} disabled={item.quantity <= 1}>
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                  <span className="w-8 text-center text-sm font-semibold text-slate-700">{item.quantity}</span>
+                  <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                    onClick={() => updateCartQuantity(item.cartId, item.quantity + 1)} disabled={item.quantity >= (item.maxQuantity || 999)}>
+                    <Plus className="h-3 w-3" />
+                  </Button>
                 </div>
                 <button type="button" onClick={() => removeFromCart(item.cartId)}
                   className="shrink-0 rounded-md p-1.5 text-rose-500 transition hover:bg-rose-50" title="Remove">
@@ -479,46 +445,32 @@ export default function PublicBorrow() {
               return (
                 <div
                   key={`custom-${idx}`}
-                  className={cn(
-                    "items-center px-3 py-2.5",
-                    compact
-                      ? "grid grid-cols-[1fr_44px_28px] gap-2"
-                      : "grid grid-cols-[1fr_80px_120px_32px] gap-3"
-                  )}
+                  className="grid grid-cols-[1fr_80px_120px_32px] gap-3 items-center px-3 py-2.5"
                 >
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-800 truncate">{item.label}</p>
                     <p className="text-xs text-slate-400">Custom Item</p>
                   </div>
-                  {!compact && (
-                    <div className="text-center">
-                      <span className="text-xs text-slate-400">—</span>
-                    </div>
-                  )}
-                  <div className={cn("flex items-center gap-1.5", compact ? "justify-center" : "pl-4")}>
-                    {!compact && (
-                      <>
-                        <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
-                          onClick={() => {
-                            if (qty <= 1) return;
-                            const newDetails = item.details.map(d => d.key === "quantity" ? { ...d, value: String(qty - 1) } : d);
-                            setCustomItems((prev) => prev.map((c, i) => i === idx ? { ...c, details: newDetails } : c));
-                          }} disabled={qty <= 1}>
-                          <Minus className="h-3 w-3" />
-                        </Button>
-                        <span className="w-8 text-center text-sm font-semibold text-slate-700">{qty}</span>
-                        <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
-                          onClick={() => {
-                            const newDetails = item.details.map(d => d.key === "quantity" ? { ...d, value: String(qty + 1) } : d);
-                            setCustomItems((prev) => prev.map((c, i) => i === idx ? { ...c, details: newDetails } : c));
-                          }}>
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                      </>
-                    )}
-                    {compact && (
-                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">{qty}</span>
-                    )}
+                  <div className="text-center">
+                    <span className="text-xs text-slate-400">—</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 pl-4">
+                    <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                      onClick={() => {
+                        if (qty <= 1) return;
+                        const newDetails = item.details.map(d => d.key === "quantity" ? { ...d, value: String(qty - 1) } : d);
+                        setCustomItems((prev) => prev.map((c, i) => i === idx ? { ...c, details: newDetails } : c));
+                      }} disabled={qty <= 1}>
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                    <span className="w-8 text-center text-sm font-semibold text-slate-700">{qty}</span>
+                    <Button type="button" size="icon" variant="outline" className="h-6 w-6 rounded-full border-slate-200"
+                      onClick={() => {
+                        const newDetails = item.details.map(d => d.key === "quantity" ? { ...d, value: String(qty + 1) } : d);
+                        setCustomItems((prev) => prev.map((c, i) => i === idx ? { ...c, details: newDetails } : c));
+                      }}>
+                      <Plus className="h-3 w-3" />
+                    </Button>
                   </div>
                   <button type="button" onClick={() => removeCustomItem(idx)}
                     className="shrink-0 rounded-md p-1.5 text-rose-500 transition hover:bg-rose-50" title="Remove">
@@ -535,53 +487,54 @@ export default function PublicBorrow() {
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#f8f8f8]">
-      <Header isPublic setMobileOpen={() => {}} sectionTitleDisplay="Public Borrow" now={new Date()} initials={initials} displayName={displayName} displayRole={displayRole} />
+    <div className="flex min-h-screen w-full bg-[#411111]">
+      {/* LEFT SIDEBAR (40% width) */}
+      <div className="bg-[#ffffff] w-[40%] p-8">
+        <div className="sticky top-0 flex h-screen flex-col items-center justify-center">
+        <img src="/ark-logo.png" alt="ARK Logo" className="w-50 h-50 mb-6 object-contain" />
+        <h2 className="text-[#411111] text-xl font-bold">Public Borrow Request Form</h2>
+        </div>
+      </div>
 
-      {/*
-        Responsive shell:
-          - Mobile (< lg): single centered card (stepper + form), cart via floating button + modal.
-          - Desktop (≥ lg): two-column row — left = stepper+form (75%), right = live cart sidebar (25%).
-      */}
-      <div className="flex justify-center px-4 py-10">
-        <div className="flex w-full max-w-7xl flex-col items-start gap-6 transition-all duration-200 lg:flex-row">
+      {/* RIGHT CONTENT AREA (60% on right side) */}
+      <div className="w-[60%] flex justify-center items-start px-8 py-10"> 
+        {/* This container is now perfectly centered in the 60% space */}
+        <div className="w-full max-w-3xl flex flex-col items-start gap-6 transition-all duration-200">  
 
-          {/* ═══════════════════════════════════════════════════════════════
-              LEFT COLUMN (75% on desktop) — stepper + active step + footer
-              ═══════════════════════════════════════════════════════════════ */}
-          <div className="w-full min-w-0 lg:flex-[3]">
+          {/* MAIN CARD - stepper + active step + footer */}
+          <div className="w-full min-w-0">
             <div className="flex flex-col gap-0 overflow-hidden rounded-[25px] border-2 border-slate-200 bg-white p-0 shadow-sm">
-              {/* Stepper Header */}
-              <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-6 pt-5 pb-4 sm:px-8">
-                <div className="flex items-center justify-center">
-                  {["Identity", "Select Items", "Review"].map((label, idx) => {
-                    const stepNum = idx + 1;
-                    const isActive = activeStep === stepNum;
-                    const isCompleted = activeStep > stepNum;
-                    const Icon = [User, Package, CheckCircle][idx];
-                    return (
-                      <div key={label} className="flex items-center">
-                        <div className="flex flex-col items-center gap-1.5">
-                          <div className={cn(
-                            "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors",
-                            isActive && "border-[#4a1111] bg-[#4a1111] text-white",
-                            isCompleted && "border-[#4a1111] bg-[#4a1111] text-white",
-                            !isActive && !isCompleted && "border-slate-200 bg-white text-slate-400"
-                          )}>
-                            <Icon className="h-4 w-4" />
-                          </div>
-                          <span className={cn("text-[11px] font-medium tracking-wide", isActive && "text-[#4a1111]", isCompleted && "text-[#4a1111]/60", !isActive && !isCompleted && "text-slate-400")}>
-                            {label}
-                          </span>
-                        </div>
-                        {idx < 2 && (
-                          <div className={cn("mx-4 mb-5 h-0.5 w-16 rounded-full transition-colors", activeStep > stepNum ? "bg-[#4a1111]" : "bg-slate-200")} />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              {/* Stepper Header */}
+              <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-6 pt-5 pb-4 sm:px-8">
+                <div className="flex items-center justify-center">
+                  {["Identity", "Select Items", "Review"].map((label, idx) => {
+                    const stepNum = idx + 1;
+                    const isActive = activeStep === stepNum;
+                    const isCompleted = activeStep > stepNum;
+                    const Icon = [User, Package, CheckCircle][idx];
+                    return (
+                      <div key={label} className="flex items-center">
+                        <div className="flex flex-col items-center gap-1.5">
+                          <div className={cn(
+                            "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors",
+                            isActive && "border-[#4a1111] bg-[#4a1111] text-white",
+                            isCompleted && "border-[#4a1111] bg-[#4a1111] text-white",
+                            !isActive && !isCompleted && "border-slate-200 bg-white text-slate-400"
+                          )}>
+                            <Icon className="h-4 w-4" />
+                          </div>
+                          <span className={cn("text-[11px] font-medium tracking-wide", isActive && "text-[#4a1111]", isCompleted && "text-[#4a1111]/60", !isActive && !isCompleted && "text-slate-400")}>
+                            {label}
+                          </span>
+                        </div>
+                        {idx < 2 && (
+                          <div className={cn("mx-4 mb-5 h-0.5 w-16 rounded-full transition-colors", activeStep > stepNum ? "bg-[#4a1111]" : "bg-slate-200")} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
               {/* Scrollable Body */}
               <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-8 bg-white">
@@ -644,7 +597,7 @@ export default function PublicBorrow() {
 
                             {showBorrowDatePicker && (
                               <>
-                                <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowBorrowDatePicker(false)} />
+                                <div className="fixed inset-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowBorrowDatePicker(false)} />
                                 <div className="fixed left-1/2 top-1/2 z-[201] w-[320px] -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
                                   <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
                                     <CalendarIcon className="h-4 w-4 text-slate-400" />
@@ -755,7 +708,7 @@ export default function PublicBorrow() {
 
                             {showReturnDatePicker && (
                               <>
-                                <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowReturnDatePicker(false)} />
+                                <div className="fixed inset-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowReturnDatePicker(false)} />
                                 <div className="fixed left-1/2 top-1/2 z-[201] w-[320px] -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
                                   <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
                                     <CalendarIcon className="h-4 w-4 text-slate-400" />
@@ -949,7 +902,7 @@ export default function PublicBorrow() {
                     {/* ── Quantity Dialog (nested) ───────────────────────────── */}
                     {qtyDialogItem && (
                       <>
-                        <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setQtyDialogItem(null)} />
+                        <div className="fixed inset-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setQtyDialogItem(null)} />
                         <div className="fixed left-1/2 top-1/2 z-[201] w-[320px] -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
                           <div>
                             <h3 className="text-base font-semibold text-slate-900">How many to borrow?</h3>
@@ -1008,7 +961,7 @@ export default function PublicBorrow() {
                     {/* ── Custom Item Modal (nested) ─────────────────────────── */}
                     {showCustomItemModal && (
                       <>
-                        <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowCustomItemModal(false)} />
+                        <div className="fixed inset-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowCustomItemModal(false)} />
                         <div className="fixed left-1/2 top-1/2 z-[201] w-[480px] max-h-[85vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
                           <h3 className="text-base font-semibold text-slate-900">Add Custom Item</h3>
                           <p className="mt-1 text-sm text-slate-500">Add an item that is not in the inventory catalog.</p>
@@ -1055,60 +1008,53 @@ export default function PublicBorrow() {
                       </>
                     )}
 
-                    {/* ── Mobile-only: Custom Item Button + Cart Button + Cart Modal ──
-                        On desktop (≥ lg) the live cart sidebar replaces all of this. */}
-                    <div className="lg:hidden">
-                      {/* ── Custom Item Button (opens modal) ──────────────────── */}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => { catalogScrollRef.current = window.scrollY; setShowCustomItemModal(true); }}
-                        className="w-full h-10 border-dashed border-2 border-slate-300 text-slate-500 hover:text-[#4a1111] hover:border-[#4a1111]/40 hover:bg-[#4a1111]/5"
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Custom Item (Outside Inventory)
-                      </Button>
-
-                      {/* ── Cart Modal (nested) ───────────────────────────────── */}
-                      {showCartModal && (
-                        <>
-                          <div className="fixed -top-[100vh] inset-x-0 bottom-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowCartModal(false)} />
-                          <div className="fixed left-1/2 top-1/2 z-[201] w-[540px] max-h-[85vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
+                    {/* ── Cart Modal (shows in Step 2 and Step 3) ─────────────────────────── */}
+                    {(activeStep === 2 || activeStep === 3) && showCartModal && (
+                      <>
+                        <div className="fixed inset-0 w-screen h-screen z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowCartModal(false)} />
+                        <div className="fixed left-1/2 top-1/2 z-[201] w-[540px] max-h-[85vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] overflow-hidden rounded-[25px] border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
+                          <div className="flex items-center justify-between">
                             <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
                               <ShoppingCart className="h-5 w-5 text-[#4a1111]" />
                               Cart ({totalCartItems} {totalCartItems === 1 ? "item" : "items"})
                             </h3>
-                            <p className="mt-1 text-sm text-slate-500">Review and adjust quantities before proceeding.</p>
-                            <div className="mt-4">
-                              {renderCartContent()}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setShowCartModal(false)}
-                              className="mt-4 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
-                            >
-                              <ArrowLeft className="mr-2 h-4 w-4" />
-                              Return to Item Selection
+                            <button type="button" onClick={() => setShowCartModal(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                              <X className="h-4 w-4" />
                             </button>
                           </div>
-                        </>
-                      )}
+                          <p className="mt-2 text-sm text-slate-500">Review and adjust quantities before proceeding.</p>
+                          <div className="mt-4">
+                            {renderCartContent()}
+                          </div>
+                        </div>
+                      </>
+                    )}
 
-                      {/* ── Floating Cart Button ────────────────────────────────── */}
-                      {totalCartItems > 0 && (
-                        <Button
-                          type="button"
-                          onClick={() => { catalogScrollRef.current = window.scrollY; setShowCartModal(true); }}
-                          className="fixed bottom-20 right-6 z-50 h-8 rounded-full shadow-md bg-[#4a1111] hover:bg-[#5a1717] px-3.5 text-white font-semibold text-[11px]"
-                        >
-                          <ShoppingCart className="mr-2 h-4 w-4" />
-                          View Cart
-                          <span className="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-[#4a1111]">
-                            {totalCartItems}
-                          </span>
-                        </Button>
-                      )}
-                    </div>
+                    {/* ── Floating Cart Button on LEFT side ────────────────────────── */}
+                    {(activeStep === 2 || activeStep === 3) && totalCartItems > 0 && (
+                      <Button
+                        type="button"
+                        onClick={() => setShowCartModal(true)}
+                        className="fixed bottom-5 left-[2%] z-50 h-8 rounded-full shadow-md bg-[#4a1111] hover:bg-[#5a1717] px-3.5 text-white font-semibold text-[11px]"
+                      >
+                        <ShoppingCart className="mr-2 h-4 w-4" />
+                        View Cart
+                        <span className="ml-2 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-[#4a1111]">
+                          {totalCartItems}
+                        </span>
+                      </Button>
+                    )}
+
+                    {/* ── Custom Item Button (opens modal) ──────────────────────────── */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => { catalogScrollRef.current = window.scrollY; setShowCustomItemModal(true); }}
+                      className="w-full h-10 border-dashed border-2 border-slate-300 text-slate-500 hover:text-[#4a1111] hover:border-[#4a1111]/40 hover:bg-[#4a1111]/5"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Custom Item (Outside Inventory)
+                    </Button>
 
                     {formError && (
                       <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p>
@@ -1275,46 +1221,6 @@ export default function PublicBorrow() {
                     <Button type="button" size="sm" onClick={confirmBorrow} disabled={saving} className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f] disabled:cursor-wait disabled:opacity-60">{saving ? "Saving..." : "Confirm Borrow"}</Button>
                   )}
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ═══════════════════════════════════════════════════════════════
-              RIGHT COLUMN (25% on desktop) — live cart sidebar
-              Hidden on mobile/tablet (< lg), where the floating button + modal are used.
-              ═══════════════════════════════════════════════════════════════ */}
-          <div className="hidden w-full min-w-0 lg:block lg:flex-[1]">
-            <div className="sticky top-10 flex max-h-[85vh] flex-col gap-0 overflow-hidden rounded-[25px] border-2 border-slate-200 bg-white p-0 shadow-sm">
-              {/* Sidebar header */}
-              <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-5 pt-5 pb-4">
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  <ShoppingCart className="h-5 w-5 text-[#4a1111]" />
-                  Cart
-                  {totalCartItems > 0 && (
-                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-[#4a1111] px-1.5 text-[10px] font-bold text-white">
-                      {totalCartItems}
-                    </span>
-                  )}
-                </h3>
-                <p className="mt-1 text-xs text-slate-500">Items you're about to borrow. Adjust quantities in the Review step.</p>
-              </div>
-
-              {/* Scrollable cart list */}
-              <div className="flex-1 overflow-y-auto px-4 py-4">
-                {renderCartContent({ compact: true })}
-              </div>
-
-              {/* Sidebar footer — add custom item */}
-              <div className="shrink-0 border-t border-slate-200 bg-slate-50/80 px-4 py-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => { catalogScrollRef.current = window.scrollY; setShowCustomItemModal(true); }}
-                  className="w-full h-10 border-dashed border-2 border-slate-300 text-slate-500 hover:text-[#4a1111] hover:border-[#4a1111]/40 hover:bg-[#4a1111]/5"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Custom Item
-                </Button>
               </div>
             </div>
           </div>
