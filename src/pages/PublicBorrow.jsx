@@ -55,7 +55,8 @@ const readBorrowerAllowlist = async () => {
         schoolId: normalizeSchoolId(record?.school_id ?? record?.schoolId ?? ""),
       }))
       .filter((record) => record.name || record.schoolId);
-  } catch {
+  } catch (err) {
+    console.error("Failed to read borrower allowlist:", err);
     return [];
   }
 };
@@ -69,7 +70,8 @@ const isBorrowerAllowed = async (name = "", schoolId = "") => {
   return allowlist.some((record) => {
     const matchesName = record.name === normalizedName;
     const matchesSchoolId = record.schoolId === normalizedSchoolId;
-    return matchesName && matchesSchoolId;
+    // Accept if the school ID matches (primary key), or both name and ID match.
+    return matchesSchoolId || (matchesName && matchesSchoolId);
   });
 };
 
@@ -141,6 +143,9 @@ export default function PublicBorrow() {
   const [formError, setFormError] = useState("");
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successBorrowId, setSuccessBorrowId] = useState("");
+  const [inventoryItems, setInventoryItems] = useState([]);
+  const [allItems, setAllItems] = useState([]);
+  const [depletedItems, setDepletedItems] = useState(new Set());
 
   // ── Custom Item Modal ────────────────────────────────────────────────────
   const [showCustomItemModal, setShowCustomItemModal] = useState(false);
@@ -231,7 +236,7 @@ export default function PublicBorrow() {
   const removeCustomItem = (idx) => setCustomItems((c) => c.filter((_, i) => i !== idx));
 
   // ── Validation ──────────────────────────────────────────────────────────
-  const validateField = async (name, value) => {
+  const validateField = (name, value) => {
     const v = String(value || "").trim();
     if (name === "name") {
       if (!v) return "Borrower name is required.";
@@ -242,14 +247,15 @@ export default function PublicBorrow() {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "Enter a valid email address.";
     }
     if (name === "studentId") {
-      if (!v) return "School ID is required.";
-      if (!/^\d{2}-\d{5}$/.test(normalizeSchoolId(v))) return "School ID must follow the format 26-00123.";
+      const normalizedSchoolId = normalizeSchoolId(v);
+      if (!normalizedSchoolId) return "School ID is required.";
+      if (!/^\d{2}-\d{5}$/.test(normalizedSchoolId)) return "School ID must follow the format 26-00123.";
     }
     if (name === "role") { if (!v) return "Select borrower role."; }
     return "";
   };
 
-  const validateStep = (step) => {
+  const validateStep = async (step) => {
     const errs = {};
     if (step === 1) {
       ["name", "email", "studentId", "role"].forEach((k) => {
@@ -261,8 +267,11 @@ export default function PublicBorrow() {
       const hasValidSchoolIdFormat = /^\d{2}-\d{5}$/.test(normalizeSchoolId(form.studentId));
       const hasNameValue = String(form.name || "").trim() !== "";
 
-      if (hasSchoolIdValue && hasValidSchoolIdFormat && hasNameValue && !isBorrowerAllowed(form.name, form.studentId)) {
-        errs.studentId = "School ID is not registered for public borrowing.";
+      if (hasSchoolIdValue && hasValidSchoolIdFormat && hasNameValue) {
+        const isAllowed = await isBorrowerAllowed(form.name, form.studentId);
+        if (!isAllowed) {
+          errs.studentId = "School ID is not registered for public borrowing.";
+        }
       }
     }
     if (step === 2) {
@@ -275,8 +284,6 @@ export default function PublicBorrow() {
 
   const isStepValid = (step) => {
     if (step === 1) {
-      // Field-level validation is enough to enable Continue.
-      // Membership in the borrower allowlist is checked on click so the error message can be shown.
       return ["name", "email", "studentId", "role"].every((k) => !validateField(k, form[k]));
     }
     if (step === 2) return borrowCart.length + customItems.length > 0;
@@ -286,7 +293,9 @@ export default function PublicBorrow() {
   // ── Submit ──────────────────────────────────────────────────────────────
   const confirmBorrow = async () => {
     if (saving) return;
-    if (!validateStep(1) || !validateStep(2)) return;
+    const isIdentityValid = await validateStep(1);
+    const isItemsValid = await validateStep(2);
+    if (!isIdentityValid || !isItemsValid) return;
     setSaving(true);
     setFormError("");
     try {
@@ -1205,7 +1214,18 @@ export default function PublicBorrow() {
                   )}
 
                   {activeStep === 1 && (
-                    <Button type="button" size="sm" onClick={() => { const ok = validateStep(1); if (ok) setActiveStep(2); }} disabled={!isStepValid(1)} className="rounded-lg bg-[#4a1111] px-5 text-white hover:bg-[#3f0f0f]">Continue</Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={async () => {
+                        const ok = await validateStep(1);
+                        if (ok) setActiveStep(2);
+                      }}
+                      disabled={!isStepValid(1)}
+                      className="rounded-lg bg-[#4a1111] px-5 text-white hover:bg-[#3f0f0f]"
+                    >
+                      Continue
+                    </Button>
                   )}
 
                   {activeStep === 2 && (

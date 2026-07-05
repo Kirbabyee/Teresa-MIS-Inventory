@@ -53,10 +53,11 @@ export default function InsightCard({ insight, onDismiss }) {
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onDismiss(); }}
-          className="mt-1 shrink-0 h-4 w-4 flex items-center justify-center rounded-full text-slate-300 opacity-0 group-hover:opacity-100 hover:bg-slate-200 hover:text-slate-600 transition-all"
-          title="Dismiss"
+          className="mt-1 shrink-0 h-7 w-7 flex items-center justify-center rounded-full text-slate-500 bg-slate-100 hover:bg-slate-200 hover:text-slate-700 transition-all"
+          title="Dismiss advisory"
+          aria-label="Dismiss advisory"
         >
-          <X className="h-3 w-3" />
+          <X className="h-4 w-4" />
         </button>
       )}
     </div>

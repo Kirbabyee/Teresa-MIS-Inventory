@@ -93,6 +93,70 @@ function aggregateChartData(records, mode = "all") {
   return { chartData, variants: hasOthers ? [...variants, "Others"] : variants };
 }
 
+function wrapLabel(value, maxChars = 12) {
+  if (!value) return [""];
+  const words = String(value).split(" ");
+  const lines = [];
+  let current = "";
+
+  const flushCurrent = () => {
+    if (current) {
+      lines.push(current);
+      current = "";
+    }
+  };
+
+  for (const word of words) {
+    if (!current) {
+      current = word;
+      continue;
+    }
+
+    const candidate = `${current} ${word}`;
+    if (candidate.length <= maxChars) {
+      current = candidate;
+      continue;
+    }
+
+    flushCurrent();
+    if (word.length <= maxChars) {
+      current = word;
+      continue;
+    }
+
+    let fragment = word;
+    while (fragment.length > maxChars) {
+      lines.push(fragment.slice(0, maxChars));
+      fragment = fragment.slice(maxChars);
+    }
+    current = fragment;
+  }
+
+  flushCurrent();
+  return lines;
+}
+
+function WrappedXAxisTick({ x, y, payload, width }) {
+  const lines = wrapLabel(payload.value, 12);
+  return (
+    <g transform={`translate(${x},${y + 10})`}>
+      <text
+        x={0}
+        y={0}
+        textAnchor="middle"
+        fill="#64748b"
+        fontSize={10}
+      >
+        {lines.map((line, index) => (
+          <tspan key={index} x={0} dy={index === 0 ? 0 : 1.2}>
+            {line}
+          </tspan>
+        ))}
+      </text>
+    </g>
+  );
+}
+
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   const total = payload.reduce((s, p) => s + (p.value || 0), 0);
@@ -191,13 +255,11 @@ export default function ItemBorrowingAnalysisChart({ borrowingItems = [], loadin
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
               <XAxis
                 dataKey="sectionName"
-                tick={{ fontSize: 10, fill: "#64748b", fontWeight: 500 }}
+                tick={<WrappedXAxisTick />}
                 axisLine={{ stroke: "#e2e8f0" }}
                 tickLine={false}
                 interval={0}
-                angle={chartData.length > 6 ? -25 : 0}
-                textAnchor={chartData.length > 6 ? "end" : "middle"}
-                height={chartData.length > 6 ? 50 : 20}
+                height={chartData.length > 6 ? 60 : 40}
               />
               <YAxis
                 tick={{ fontSize: 10, fill: "#64748b", fontWeight: 500 }}

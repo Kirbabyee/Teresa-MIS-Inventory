@@ -410,15 +410,7 @@ export default function AnalyticsDashboard() {
     <div className="space-y-6">
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <BarChart3 className="h-5 w-5 text-[#4a1111]" />
-            Analytics & Insights
-          </h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Comprehensive overview of your inventory, borrowing, and security data
-          </p>
-        </div>
+        <div />
 
         <div className="flex items-center gap-3">
           {lastUpdated && (

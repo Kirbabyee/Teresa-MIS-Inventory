@@ -39,7 +39,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,6 +52,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import UserAccountModal from "@/components/UserAccountModal";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 const accountTypeColors = {
   staff: "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -116,6 +119,14 @@ export default function UserAccounts() {
   const [deleting, setDeleting] = useState(false);
   const [page, setPage] = useState(1);
   const itemsPerPage = 7;
+
+  // State for managing access modal
+  const [manageAccessUserId, setManageAccessUserId] = useState(null);
+  const [manageAccessOpen, setManageAccessOpen] = useState(false);
+  const [accessFormData, setAccessFormData] = useState({
+    viewAccess: false,
+    approveAccess: false,
+  });
 
   const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
 
@@ -303,10 +314,19 @@ export default function UserAccounts() {
         const emails = (data || []).map((a) => a.email).filter(Boolean);
         const inviteQueries = [];
         if (accountIds.length > 0) {
+          // Query by employee_id since that's what's used when creating invites
+          // Also include user_id for backward compatibility with migrated data
           inviteQueries.push(
             supabase
               .from("user_auth_invites")
-              .select("user_id, email, used_at")
+              .select("user_id, employee_id, email, used_at")
+              .in("employee_id", accountIds)
+          );
+          // Also query by user_id to catch any migrated records
+          inviteQueries.push(
+            supabase
+              .from("user_auth_invites")
+              .select("user_id, employee_id, email, used_at")
               .in("user_id", accountIds)
           );
         }
@@ -314,7 +334,7 @@ export default function UserAccounts() {
           inviteQueries.push(
             supabase
               .from("user_auth_invites")
-              .select("user_id, email, used_at")
+              .select("user_id, employee_id, email, used_at")
               .in("email", emails)
           );
         }
@@ -324,7 +344,9 @@ export default function UserAccounts() {
           const usedById = {};
           const usedByEmail = {};
           allInvites.forEach((row) => {
-            if (row.user_id) usedById[String(row.user_id)] = usedById[String(row.user_id)] || Boolean(row.used_at);
+            // Use user_id if available, otherwise fall back to employee_id
+            const rowUserId = row.user_id || row.employee_id;
+            if (rowUserId) usedById[String(rowUserId)] = usedById[String(rowUserId)] || Boolean(row.used_at);
             if (row.email) usedByEmail[String(row.email).toLowerCase()] = usedByEmail[String(row.email).toLowerCase()] || Boolean(row.used_at);
           });
           setInviteUsedByAccountId(usedById);
@@ -381,6 +403,92 @@ export default function UserAccounts() {
     }
   };
 
+  const handleManageAccess = async (userId) => {
+    setManageAccessUserId(userId);
+
+    try {
+      const { data: userAccount, error } = await supabase
+        .from("user_accounts")
+        .select("account_type, permissions")
+        .eq("id", userId)
+        .single();
+
+      if (!error && userAccount) {
+        const permissions = userAccount.permissions || {};
+        // We don't need accountType for the form, but we still need to get it from the user account?
+        // We are not using it in the form, but we are still fetching it. We can remove the accountType extraction if we don't use it.
+        // We are not using it, so we can remove the line that gets accountType.
+        const viewAccess = !!permissions.viewAccess;
+        const approveAccess = !!permissions.approveAccess;
+
+        setAccessFormData({
+          viewAccess,
+          approveAccess,
+        });
+      } else {
+        // Fallback defaults
+        setAccessFormData({
+          viewAccess: false,
+          approveAccess: false,
+        });
+      }
+    } catch (err) {
+      console.error("Error fetching user permissions:", err);
+      // Fallback defaults
+      setAccessFormData({
+        viewAccess: false,
+        approveAccess: false,
+      });
+    }
+
+    setManageAccessOpen(true);
+  };
+
+  const handleSaveAccess = async () => {
+    if (!manageAccessUserId) return;
+
+    try {
+      // Fetch the account to check its type
+      const { data: accountData, error: fetchError } = await supabase
+        .from("user_accounts")
+        .select("account_type")
+        .eq("id", manageAccessUserId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const accountType = accountData?.account_type || "staff";
+
+      // For super admin or admin, grant all access automatically
+      const isPrivileged = accountType === "superadmin" || accountType === "admin";
+
+      // Prepare the permissions object based on account type
+      const permissions = {
+        viewAccess: isPrivileged ? true : accessFormData.viewAccess,
+        approveAccess: isPrivileged ? true : accessFormData.approveAccess,
+        // For backward compatibility, set allowPendingApprovals to true if either is true
+        allowPendingApprovals: isPrivileged ? true : (accessFormData.viewAccess || accessFormData.approveAccess),
+        // Add other permissions as needed
+      };
+
+      const { error } = await supabase
+        .from("user_accounts")
+        .update({
+          permissions,
+        })
+        .eq("id", manageAccessUserId);
+
+      if (error) throw error;
+
+      toast.success("Access permissions updated");
+      setManageAccessOpen(false);
+      setManageAccessUserId(null);
+    } catch (err) {
+      console.error("Error saving access permissions:", err);
+      toast.error("Failed to save access permissions");
+    }
+  };
+
   const filtered = accounts.filter((acc) => {
     const name = `${acc.first_name || ""} ${acc.last_name || ""}`.toLowerCase();
     const searchTerm = search.trim().toLowerCase();
@@ -408,17 +516,6 @@ export default function UserAccounts() {
     const startPage = offset + 1;
     return Array.from({ length: maxVisible }, (_, index) => startPage + index);
   })();
-
-  useEffect(() => {
-    if (page > totalPages && totalPages > 0) {
-      setPage(totalPages);
-      return;
-    }
-
-    if (totalPages === 0 && page !== 1) {
-      setPage(1);
-    }
-  }, [page, totalPages]);
 
   useEffect(() => {
     setPage(1);
@@ -602,6 +699,14 @@ export default function UserAccounts() {
                               {acc.is_active === false ? "Reactivate account" : "Deactivate account"}
                             </DropdownMenuItem>
 
+                            {/* NEW: Manage Access Menu Item */}
+                            <DropdownMenuItem
+                              onSelect={() => handleManageAccess(acc.id)}
+                            >
+                              <UserCheck className="h-4 w-4" />
+                              Manage Access
+                            </DropdownMenuItem>
+
                             {acc.is_active === false && (
                               <DropdownMenuItem
                                 onSelect={() => setDeleteCandidate(acc)}
@@ -718,6 +823,7 @@ export default function UserAccounts() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Invitation Actions Dialog */}
       <Dialog
         open={Boolean(inviteActionCandidate)}
         onOpenChange={(open) => {
@@ -800,7 +906,7 @@ export default function UserAccounts() {
               variant="outline"
               onClick={() => setInviteActionCandidate(null)}
               disabled={inviteActionLoading === "resend" || inviteActionLoading === "cancel"}
-              className="rounded-lg"
+              className="rounded-lg bg-[#411111] text-white hover:bg-[#311111]"
             >
               Close
             </Button>
@@ -808,7 +914,7 @@ export default function UserAccounts() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Delete account confirmation ─────────────────────────────── */}
+      {/* Delete account confirmation */}
       <AlertDialog
         open={Boolean(deleteCandidate)}
         onOpenChange={(open) => {
@@ -836,6 +942,73 @@ export default function UserAccounts() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Manage Access Modal */}
+      <Dialog
+        open={manageAccessOpen}
+        onOpenChange={(open) => {
+          if (!open) setManageAccessUserId(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md w-full space-y-4">
+          <DialogHeader>
+            <DialogTitle>Manage Account Permissions</DialogTitle>
+            <DialogDescription>
+              Configure workspace visibility and action parameters for this operator account.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); handleSaveAccess(); }}>
+            <div className="space-y-4">
+              <div className="mt-4 p-4 rounded-lg border border-slate-100 bg-slate-50/50 space-y-3">
+                <div className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+                  Borrowing System Access
+                </div>
+                <p className="text-xs text-slate-500">
+                  Configure the account's access to pending borrowing requests.
+                </p>
+                <div className="space-y-2">
+                  <label htmlFor="view-access-toggle" className="block flex items-center space-x-2 text-sm text-slate-500">
+                    <Switch
+                      id="view-access-toggle"
+                      checked={accessFormData.viewAccess}
+                      onCheckedChange={(checked) =>
+                        setAccessFormData(prev => ({
+                          ...prev,
+                          viewAccess: checked
+                        }))
+                      }
+                      className="bg-[#411111] border-[#d1d5db] data-[state=checked]:border-[#411111]"
+                    />
+                    <span>View Access (Can see pending requests)</span>
+                  </label>
+                  <label htmlFor="approve-access-toggle" className="block flex items-center space-x-2 text-sm text-slate-500">
+                    <Switch
+                      id="approve-access-toggle"
+                      checked={accessFormData.approveAccess}
+                      onCheckedChange={(checked) =>
+                        setAccessFormData(prev => ({
+                          ...prev,
+                          approveAccess: checked
+                        }))
+                      }
+                      className="bg-[#411111] border-[#d1d5db] data-[state=checked]:border-[#411111]"
+                    />
+                    <span>Approve Access (Can approve/deny requests)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" type="button" onClick={() => setManageAccessOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-[#411111] text-white hover:bg-[#311111]">
+                Save Access
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

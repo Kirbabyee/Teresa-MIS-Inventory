@@ -1313,6 +1313,11 @@ export default function Borrowing() {
   const [reviewCheckedItems, setReviewCheckedItems] = useState(new Set());
   const [reviewMerge, setReviewMerge] = useState(false);
   const [reviewActiveBorrow, setReviewActiveBorrow] = useState(null);
+  // Confirmation modal states
+  const [approveConfirmationOpen, setApproveConfirmationOpen] = useState(false);
+  const [denyConfirmationOpen, setDenyConfirmationOpen] = useState(false);
+  const [confirmingRecord, setConfirmingRecord] = useState(null);
+  const [confirmActionType, setConfirmActionType] = useState(null); // 'approve' or 'deny'
 
   const openReviewModal = async (record) => {
     // Fetch the items for this pending request
@@ -1573,7 +1578,14 @@ export default function Borrowing() {
   // ── Approve / Deny pending requests ───────────────────────────────────
   const [processingId, setProcessingId] = useState(null);
 
-  const handleApproveRecord = async (record, selectedItemIds, merge) => {
+  const handleApproveRecord = (record, selectedItemIds, merge) => {
+    // Set confirmation state and open modal
+    setConfirmingRecord(record);
+    setConfirmActionType('approve');
+    setApproveConfirmationOpen(true);
+  };
+
+  const handleApproveRecordConfirmed = async (record, selectedItemIds, merge) => {
     setProcessingId(record.id);
     try {
       // Fetch all approval items
@@ -1692,10 +1704,21 @@ export default function Borrowing() {
       toast.error(`Failed to approve: ${err?.message || "Unknown error"}`);
     } finally {
       setProcessingId(null);
+      // Reset confirmation state after completion
+      setApproveConfirmationOpen(false);
+      setConfirmingRecord(null);
+      setConfirmActionType(null);
     }
   };
 
-  const handleDenyRecord = async (record) => {
+  const handleDenyRecord = (record) => {
+    // Set confirmation state and open modal
+    setConfirmingRecord(record);
+    setConfirmActionType('deny');
+    setDenyConfirmationOpen(true);
+  };
+
+  const handleDenyRecordConfirmed = async (record) => {
     setProcessingId(record.id);
     try {
       // Fetch the approval items so the rejection email can
@@ -1729,12 +1752,23 @@ export default function Borrowing() {
       toast.error(`Failed to deny: ${err?.message || "Unknown error"}`);
     } finally {
       setProcessingId(null);
+      // Reset confirmation state after completion
+      setDenyConfirmationOpen(false);
+      setConfirmingRecord(null);
+      setConfirmActionType(null);
     }
   };
 
   const loadBorrowings = async (cancelToken = { current: false }) => {
     setBorrowingsLoading(true);
     setBorrowingsError("");
+
+    // ── Permission check: users without allowPendingApprovals cannot view pending ──
+    const hasPendingAccess = user?.permissions?.allowPendingApprovals === true;
+    if (statusFilter === "pending" && !hasPendingAccess) {
+      setStatusFilter("borrowed");
+      return;
+    }
 
     try {
       let records;
@@ -3332,14 +3366,16 @@ export default function Borrowing() {
               )}
             </div>
 
-            {statusFilter !== "all" && (
+            {statusFilter !== "all" && (user?.permissions?.viewAccess || user?.permissions?.approveAccess) && (
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="h-9 w-44 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm hover:border-slate-300 focus:border-[#4a1111] focus:outline-none focus:ring-2 focus:ring-[#4a1111]/20 !text-slate-700 ![&>span]:text-slate-700 data-[placeholder]:!text-slate-700">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent className="rounded-lg border border-slate-200 bg-white shadow-md">
                   <SelectItem value="borrowed" className="text-sm text-slate-700">Borrowed</SelectItem>
-                  <SelectItem value="pending" className="text-sm text-slate-700">Pending Approval</SelectItem>
+                  {(user?.permissions?.viewAccess || user?.permissions?.allowPendingApprovals) && (
+                    <SelectItem value="pending" className="text-sm text-slate-700">Pending Approval</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             )}
@@ -4037,27 +4073,31 @@ export default function Borrowing() {
                                 {/* Actions */}
                                 <td className="px-4 py-3">
                                   <div className="flex items-center justify-end gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        openReviewModal(record);
-                                      }}
-                                      className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
-                                    >
-                                      Review Request
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDenyRecord(record);
-                                      }}
-                                      disabled={processingId === record.id}
-                                      className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
-                                    >
-                                      Deny
-                                    </button>
+                                    {user?.permissions?.approveAccess === true && (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            openReviewModal(record);
+                                          }}
+                                          className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+                                        >
+                                          Review Request
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDenyRecord(record);
+                                          }}
+                                          disabled={processingId === record.id}
+                                          className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                                        >
+                                          Deny
+                                        </button>
+                                      </>
+                                    )}
                                   </div>
                                 </td>
                               </>
@@ -4934,6 +4974,7 @@ export default function Borrowing() {
               >
                 Cancel
               </Button>
+              {user?.permissions?.approveAccess === true && (
               <Button
                 type="button"
                 size="sm"
@@ -4947,6 +4988,7 @@ export default function Borrowing() {
                   ? "Processing..."
                   : `Approve ${reviewCheckedItems.size} Item${reviewCheckedItems.size !== 1 ? "s" : ""}`}
               </Button>
+            )}
             </DialogFooter>
           </DialogContent>
         </Dialog>

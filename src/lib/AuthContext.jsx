@@ -92,7 +92,7 @@ export const AuthProvider = ({ children }) => {
 
   const buildAuthUser = (sessionUser, accountRow) => {
     const role = (accountRow?.account_type || sessionUser.user_metadata?.role || "staff").toLowerCase();
-    const displayName = accountRow 
+    const displayName = accountRow
       ? `${accountRow.first_name} ${accountRow.last_name}`.trim()
       : (sessionUser.user_metadata?.full_name || sessionUser.email || "User");
 
@@ -105,6 +105,7 @@ export const AuthProvider = ({ children }) => {
       role,
       displayName,
       page_access: accountRow?.page_access || [],
+      permissions: accountRow?.permissions || {},
     };
   };
 

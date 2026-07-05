@@ -11,6 +11,33 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import SmartImporter from "@/components/SmartImporter";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   deleteBorrowerUserFromDb,
   getBorrowerAllowlistFromDb,
@@ -27,12 +54,6 @@ const emptyForm = {
   position: "student",
   year: "",
   section: "",
-};
-
-const formatSchoolId = (value = "") => {
-  const digitsOnly = String(value).replace(/\D/g, "").slice(0, 7);
-  if (digitsOnly.length <= 2) return digitsOnly;
-  return `${digitsOnly.slice(0, 2)}-${digitsOnly.slice(2)}`;
 };
 
 const normalizeYear = (value = "") => String(value).trim();
@@ -64,7 +85,7 @@ const getSheetValue = (row = {}, possibleKeys = []) => {
 export default function StudentDirectory() {
   const [users, setUsers] = useState(readStoredBorrowerUsers);
   const [search, setSearch] = useState("");
-  const [positionFilter, setPositionFilter] = useState("all");
+  const [roleFilter, setRoleFilter] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState("");
@@ -102,10 +123,10 @@ export default function StudentDirectory() {
           .toLowerCase()
           .includes(query);
 
-      const matchesPosition = positionFilter === "all" || user.position === positionFilter;
+      const matchesPosition = !roleFilter || user.position === roleFilter;
       return matchesSearch && matchesPosition;
     });
-  }, [positionFilter, search, users]);
+  }, [roleFilter, search, users]);
 
   const resetForm = () => {
     setForm(emptyForm);
@@ -289,18 +310,9 @@ export default function StudentDirectory() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-3xl border border-slate-200/80 bg-white/90 p-6 shadow-sm backdrop-blur">
+      <>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-[#4a1111]/10 px-3 py-1 text-sm font-medium text-[#4a1111]">
-              <Users className="h-4 w-4" />
-              Borrower Allowlist
-            </div>
-            <h1 className="text-2xl font-semibold text-slate-900">Manage approved borrowers</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              Add the students and faculty members who are allowed to borrow through the public borrowing form.
-            </p>
-          </div>
+          <div />
 
           <div className="flex flex-wrap gap-2">
             <button
@@ -331,28 +343,28 @@ export default function StudentDirectory() {
         </div>
 
         <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative w-full lg:max-w-sm">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
               placeholder="Search name, school ID, section..."
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-700 outline-none transition focus:border-[#4a1111] focus:bg-white"
+              className="pl-9 bg-white"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
             />
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <span className="font-medium">Position</span>
-            <select
-              value={positionFilter}
-              onChange={(event) => setPositionFilter(event.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-[#4a1111]"
+          <Select value={roleFilter || "__ALL__"} onValueChange={(v) => setRoleFilter(v === "__ALL__" ? "" : v)}>
+            <SelectTrigger
+              className={"h-9 w-full sm:w-48 rounded-md border border-input bg-white px-3 py-1 text-sm text-slate-600 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"}
             >
-              <option value="all">All</option>
-              <option value="student">Student</option>
-              <option value="faculty">Faculty</option>
-            </select>
-          </label>
+              <SelectValue placeholder="All Roles" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__ALL__">All</SelectItem>
+              <SelectItem value="student">Student</SelectItem>
+              <SelectItem value="faculty">Faculty</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {importMessage ? (
@@ -360,25 +372,36 @@ export default function StudentDirectory() {
             {importMessage}
           </div>
         ) : null}
-      </div>
+      </>
 
-      <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-sm">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-opacity duration-300">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
+          <table className="w-full transition-opacity duration-300">
+            <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Name</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">School ID</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Position</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Year</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Section</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Actions</th>
+                {[
+                  "Name",
+                  "School ID",
+                  "Position",
+                  "Year",
+                  "Section",
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className={`px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide${h === "Position" ? " w-[120px]" : ""}`}
+                  >
+                    {h}
+                  </th>
+                ))}
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  <span className="sr-only">Row actions</span>
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
+            <tbody className="divide-y divide-slate-100">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-4 py-10 text-center text-sm text-slate-500">
+                  <td colSpan="5" className="px-4 py-10 text-center text-sm text-slate-500">
                     <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
                       <FileSpreadsheet className="h-10 w-10 text-slate-300" />
                       <p>No borrowers yet. Add a borrower manually or import a spreadsheet.</p>
@@ -387,12 +410,21 @@ export default function StudentDirectory() {
                 </tr>
               ) : (
                 filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-slate-50/70">
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900">{user.name}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700">{user.schoolId}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700">
+                  <tr key={user.id} className={`transition-colors hover:bg-slate-50`}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs shrink-0 bg-slate-300 text-slate-700`}>
+                          {user.name?.[0]}
+                        </div>
+                        <div>
+                          <p className={`text-sm font-medium text-slate-900`}>{user.name}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className={`px-4 py-3 text-sm text-slate-600`}>{user.schoolId}</td>
+                    <td className="px-4 py-3 w-[120px]">
                       <span
-                        className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${
+                        className={`inline-flex w-[100px] justify-center text-xs font-semibold px-2 py-1 rounded-md border ${
                           user.position === "faculty"
                             ? "border-blue-200 bg-blue-50 text-blue-700"
                             : "border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -401,22 +433,23 @@ export default function StudentDirectory() {
                         {user.position === "faculty" ? "Faculty" : "Student"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-700">{user.year}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700">{user.section}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => promptDeleteUser(user.id)}
-                        disabled={deletingUserId === user.id}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
-                        aria-label={`Delete ${user.name}`}
-                      >
-                        {deletingUserId === user.id ? (
-                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-rose-600" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </button>
+                    <td className={`px-4 py-3 text-sm text-slate-600`}>{user.section}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => promptDeleteUser(user.id)}
+                          disabled={deletingUserId === user.id}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                          aria-label={`Delete ${user.name}`}
+                        >
+                          {deletingUserId === user.id ? (
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-rose-600" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -426,191 +459,137 @@ export default function StudentDirectory() {
         </div>
       </div>
 
-      {showImporterModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4 py-6 backdrop-blur-sm">
-          <div className="w-full max-w-6xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">Import borrower allowlist</h2>
-                <p className="mt-1 text-sm text-slate-600">Upload a CSV or Excel file and review the rows before saving them to the allowlist.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowImporterModal(false)}
-                className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-500 transition hover:bg-slate-50"
-              >
-                Close
-              </button>
-            </div>
-            <div className="mt-6">
-              <SmartImporter onSave={handleImporterSave} onCancel={() => setShowImporterModal(false)} />
-            </div>
+      <Dialog open={showImporterModal} onOpenChange={(next) => !next && setShowImporterModal(false)}>
+        <DialogContent
+          className="flex max-h-[85vh] max-w-6xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
+          onPointerDownOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
+            <DialogTitle className="text-lg font-semibold text-slate-900">Import borrower allowlist</DialogTitle>
+            <DialogDescription className="mt-1 text-sm">Upload a CSV or Excel file and review the rows before saving them to the allowlist.</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-8">
+            <SmartImporter onSave={handleImporterSave} onCancel={() => setShowImporterModal(false)} />
           </div>
-        </div>
-      ) : null}
 
-      {showModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4 py-6 backdrop-blur-sm">
-          <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">Add new borrower</h2>
-                <p className="mt-1 text-sm text-slate-600">Fill in the details for the student or faculty member who may borrow publicly.</p>
-              </div>
-              <button
-                type="button"
-                onClick={closeModal}
-                className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-500 transition hover:bg-slate-50"
-              >
-                Close
-              </button>
-            </div>
+          <DialogFooter className="flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
+            <Button type="button" onClick={() => setShowImporterModal(false)} variant="outline" size="sm" className="rounded-lg">Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-              {formError ? (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                  {formError}
-                </div>
-              ) : null}
+      <Dialog open={showModal} onOpenChange={(next) => !next && closeModal()}>
+        <DialogContent
+          className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
+          onPointerDownOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
+            <DialogTitle className="text-lg font-semibold text-slate-900">Add new borrower</DialogTitle>
+            <DialogDescription className="mt-1 text-sm">Fill in the details for the student or faculty member who may borrow publicly.</DialogDescription>
+          </DialogHeader>
 
+          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5 sm:px-8">
+            {formError ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{formError}</div>
+            ) : null}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-1 text-sm text-slate-700">
-                  <span className="font-medium">Name</span>
-                  <input
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Name</label>
+                  <Input
                     value={form.name}
                     onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#4a1111]"
                     placeholder="Juan Dela Cruz"
                     required
                   />
-                </label>
+                </div>
 
-                <label className="space-y-1 text-sm text-slate-700">
-                  <span className="font-medium">School ID</span>
-                  <input
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">School ID</label>
+                  <Input
                     value={form.schoolId}
                     onChange={(event) => setForm((current) => ({ ...current, schoolId: formatSchoolId(event.target.value) }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#4a1111]"
                     placeholder="26-00123"
                     maxLength={8}
                     required
                   />
-                  <p className="text-xs text-slate-500">Format must be 26-00123.</p>
-                </label>
+                  <p className="mt-1 text-xs text-slate-500">Format must be 26-00123.</p>
+                </div>
 
-                <label className="space-y-1 text-sm text-slate-700">
-                  <span className="font-medium">Position</span>
-                  <select
-                    value={form.position}
-                    onChange={(event) => setForm((current) => ({ ...current, position: event.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#4a1111]"
-                  >
-                    <option value="student">Student</option>
-                    <option value="faculty">Faculty</option>
-                  </select>
-                </label>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Position</label>
+                  <Select value={form.position} onValueChange={(v) => setForm((c) => ({ ...c, position: v }))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="student">Student</SelectItem>
+                      <SelectItem value="faculty">Faculty</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 {form.position === "student" ? (
-                  <label className="space-y-1 text-sm text-slate-700">
-                    <span className="font-medium">Year</span>
-                    <select
-                      value={form.year}
-                      onChange={(event) => setForm((current) => ({ ...current, year: event.target.value }))}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#4a1111]"
-                      required={form.position === "student"}
-                    >
-                      <option value="">Select year</option>
-                      <option value="1st">1st</option>
-                      <option value="2nd">2nd</option>
-                      <option value="3rd">3rd</option>
-                      <option value="4th">4th</option>
-                    </select>
-                  </label>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Year</label>
+                    <Select value={form.year || "__NONE__"} onValueChange={(v) => setForm((c) => ({ ...c, year: v === "__NONE__" ? "" : v }))}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__NONE__">Select year</SelectItem>
+                        <SelectItem value="1st">1st</SelectItem>
+                        <SelectItem value="2nd">2nd</SelectItem>
+                        <SelectItem value="3rd">3rd</SelectItem>
+                        <SelectItem value="4th">4th</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 ) : null}
               </div>
 
               {form.position === "student" ? (
-                <label className="block space-y-1 text-sm text-slate-700">
-                  <span className="font-medium">Section</span>
-                  <input
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Section</label>
+                  <Input
                     value={form.section}
                     onChange={(event) => setForm((current) => ({ ...current, section: event.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-[#4a1111]"
                     placeholder="STEM 11-A"
                     required={form.position === "student"}
                   />
-                </label>
+                </div>
               ) : null}
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  disabled={saving}
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex items-center justify-center rounded-lg bg-[#4a1111] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#651717] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {saving ? "Saving..." : "Save Borrower"}
-                </button>
-              </div>
+              <div className="mt-2" />
             </form>
           </div>
-        </div>
-      ) : null}
 
-      {deleteTarget ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4 py-6 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">Confirm deletion</h2>
-                <p className="mt-1 text-sm text-slate-600">Are you sure you want to remove this borrower from the allowlist?</p>
-              </div>
-              <button
-                type="button"
-                onClick={cancelDelete}
-                className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-500 transition hover:bg-slate-50"
-              >
-                Close
-              </button>
-            </div>
+          <DialogFooter className="flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
+            <Button type="button" onClick={closeModal} variant="outline" size="sm" className="rounded-lg">Cancel</Button>
+            <Button type="button" onClick={() => document.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }))} size="sm" className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]">{saving ? "Saving..." : "Save Borrower"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-            <div className="mt-6 space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm text-slate-700">
-                  <span className="font-semibold">Name:</span> {deleteTarget.name}
-                </p>
-                <p className="text-sm text-slate-700">
-                  <span className="font-semibold">School ID:</span> {deleteTarget.schoolId}
-                </p>
-              </div>
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent className="rounded-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete borrower</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this borrower from the allowlist?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
 
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={cancelDelete}
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmDelete}
-                  className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
-                >
-                  Delete borrower
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+          
+
+          <AlertDialogFooter className="gap-3 sm:gap-4 px-4 py-4">
+            <AlertDialogCancel className="rounded-lg">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700">Delete borrower</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

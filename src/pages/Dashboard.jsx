@@ -887,7 +887,7 @@ export default function Dashboard() {
           {/* ── Card Header with Filter Dropdown ────────────────────────── */}
           <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50/50">
             <h2 className="text-xs font-bold tracking-wider text-slate-800 uppercase font-sans">
-              Asset Distributionz
+              Asset Distribution
             </h2>
             <Select value={allocationFilter} onValueChange={setAllocationFilter}>
               <SelectTrigger className="h-8 w-auto gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm focus:ring-2 focus:ring-[#4a1111]">
