@@ -378,7 +378,6 @@ export default function StudentDirectory() {
                   "Name",
                   "School ID",
                   "Position",
-                  "Year",
                 ].map((h) => (
                   <th
                     key={h}
@@ -387,13 +386,13 @@ export default function StudentDirectory() {
                     {h}
                   </th>
                 ))}
-                <th className="pl-0 pr-0.5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   <span className="sr-only">Row actions</span>
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-                {filteredUsers.length === 0 ? (
+              {filteredUsers.length === 0 ? (
                 <tr>
                   <td colSpan="4" className="px-4 py-10 text-center text-sm text-slate-500">
                     <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
@@ -424,24 +423,25 @@ export default function StudentDirectory() {
                             : "border-emerald-200 bg-emerald-50 text-emerald-700"
                         }`}
                       >
-                        {user.position === "faculty" ? "Teacher" : "Student"}
+                        {user.position === "faculty" ? "Faculty" : "Student"}
                       </span>
                     </td>
-                    <td className="pl-0 pr-0.5 py-3">
+                    <td className="px-4 py-3">
                       <div className="flex justify-end">
-                        <button
-                          type="button"
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 rounded-md text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                          aria-label={`Delete ${user.name}`}
                           onClick={() => promptDeleteUser(user.id)}
                           disabled={deletingUserId === user.id}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-                          aria-label={`Delete ${user.name}`}
                         >
                           {deletingUserId === user.id ? (
                             <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-rose-600" />
                           ) : (
                             <Trash2 className="h-4 w-4" />
                           )}
-                        </button>
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -519,7 +519,7 @@ export default function StudentDirectory() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="student">Student</SelectItem>
-                      <SelectItem value="faculty">Teacher</SelectItem>
+                      <SelectItem value="faculty">Faculty</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
