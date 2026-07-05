@@ -1311,6 +1311,7 @@ export default function Borrowing() {
   const [pendingMergeIds, setPendingMergeIds] = useState(new Set());
   const [reviewingRecord, setReviewingRecord] = useState(null);
   const [reviewCheckedItems, setReviewCheckedItems] = useState(new Set());
+  const [reviewCheckedUnits, setReviewCheckedUnits] = useState(new Set());
   const [reviewMerge, setReviewMerge] = useState(false);
   const [reviewActiveBorrow, setReviewActiveBorrow] = useState(null);
   // Confirmation modal states
@@ -1318,23 +1319,60 @@ export default function Borrowing() {
   const [denyConfirmationOpen, setDenyConfirmationOpen] = useState(false);
   const [confirmingRecord, setConfirmingRecord] = useState(null);
   const [confirmActionType, setConfirmActionType] = useState(null); // 'approve' or 'deny'
+  const [pendingApproveSelectedIds, setPendingApproveSelectedIds] = useState(new Set());
+  const [pendingApproveMerge, setPendingApproveMerge] = useState(false);
+  const [pendingApproveCounts, setPendingApproveCounts] = useState({});
+  const [reviewApproveCounts, setReviewApproveCounts] = useState({});
 
   const openReviewModal = async (record) => {
-    // Fetch the items for this pending request
-    const { data: items } = await supabase
-      .from("borrowing_items_approval")
-      .select("*")
-      .eq("borrowing_record_id", record.id);
-    const allItemIds = (items || []).map((item) => item.id);
-    setReviewingRecord({ ...record, _approvalItems: items || [] });
-    setReviewCheckedItems(new Set(allItemIds));
-    setReviewMerge(false);
-    // Check if borrower has an active borrow (query DB directly since data may only hold pending)
-    const activeBorrow = await findLatestActiveBorrowFromDb(
-      record.name,
-      record.studentId || record.borrower_id_number
-    );
-    setReviewActiveBorrow(activeBorrow);
+    try {
+      const { data: items } = await supabase
+        .from("borrowing_items_approval")
+        .select("*")
+        .eq("borrowing_record_id", record.id);
+
+      const approvalItems = items || [];
+      // Build per-unit list for UI selection
+      const units = [];
+      for (const it of approvalItems) {
+        const qty = (() => {
+          if (it.quantity) return Number(it.quantity) || 1;
+          const det = Array.isArray(it.item_details) ? it.item_details : (Array.isArray(it.details) ? it.details : []);
+          const q = det.find((d) => String(d?.key || "").toLowerCase() === "quantity" || String(d?.label || "").toLowerCase() === "quantity");
+          return q ? Number(q.value) || 1 : 1;
+        })();
+        for (let i = 0; i < qty; i += 1) {
+          units.push({ unitKey: `${it.id}::${i}`, item: it, unitIndex: i });
+        }
+      }
+
+      const allUnitKeys = units.map((u) => u.unitKey);
+      setReviewingRecord({ ...record, _approvalItems: approvalItems, _approvalUnits: units });
+      setReviewCheckedUnits(new Set(allUnitKeys));
+      setReviewCheckedItems(new Set((approvalItems || []).map((it) => it.id)));
+      // Initialize per-item approve counts to the requested qty
+      const counts = {};
+      for (const it of approvalItems) {
+        const q = (() => {
+          if (it.quantity) return Number(it.quantity) || 1;
+          const det = Array.isArray(it.item_details) ? it.item_details : (Array.isArray(it.details) ? it.details : []);
+          const qEntry = det.find((d) => String(d?.key || "").toLowerCase() === "quantity" || String(d?.label || "").toLowerCase() === "quantity");
+          return qEntry ? Number(qEntry.value) || 1 : 1;
+        })();
+        counts[String(it.id)] = q;
+      }
+      setReviewApproveCounts(counts);
+      setReviewMerge(false);
+      // Check if borrower has an active borrow (query DB directly since data may only hold pending)
+      const activeBorrow = await findLatestActiveBorrowFromDb(
+        record.name,
+        record.studentId || record.borrower_id_number
+      );
+      setReviewActiveBorrow(activeBorrow);
+    } catch (err) {
+      console.error("Failed to load approval items:", err);
+      toast.error("Unable to load approval items.");
+    }
   };
 
   const closeReviewModal = () => {
@@ -1582,24 +1620,32 @@ export default function Borrowing() {
     // Set confirmation state and open modal
     setConfirmingRecord(record);
     setConfirmActionType('approve');
+    // selectedItemIds here is a map of itemId -> approvedCount
+    setPendingApproveCounts(selectedItemIds || {});
+    setPendingApproveMerge(Boolean(merge));
     setApproveConfirmationOpen(true);
   };
 
-  const handleApproveRecordConfirmed = async (record, selectedItemIds, merge) => {
+  const handleApproveRecordConfirmed = async (record, approveCounts = {}, merge) => {
     setProcessingId(record.id);
     try {
-      // Fetch all approval items
       const { data: allApprovalItems } = await supabase
         .from("borrowing_items_approval")
         .select("*")
         .eq("borrowing_record_id", record.id);
 
-      const approvalItems = (allApprovalItems || []).filter((item) =>
-        selectedItemIds.has(item.id)
-      );
+      const approvalItems = allApprovalItems || [];
 
-      if (approvalItems.length === 0) {
-        toast.error("Select at least one item to approve.");
+      // Build approvedCounts map and total
+      const approvedCounts = {};
+      for (const it of approvalItems) {
+        const id = String(it.id);
+        const approved = Number(approveCounts?.[id] || 0);
+        if (approved > 0) approvedCounts[id] = approved;
+      }
+      const totalApproved = Object.values(approvedCounts).reduce((s, v) => s + (Number(v) || 0), 0);
+      if (totalApproved === 0) {
+        toast.error("Select at least one unit to approve.");
         setProcessingId(null);
         return;
       }
@@ -1608,40 +1654,11 @@ export default function Borrowing() {
         ? await findLatestActiveBorrowFromDb(record.name, record.studentId || record.borrower_id_number)
         : null;
 
-      if (merge && existingRecord) {
-        // Merge: append selected items into the existing live record
-        const liveItems = approvalItems.map((item) => ({
-          borrowing_record_id: existingRecord.id,
-          inventory_item_id: item.inventory_item_id,
-          inventory_tab_id: item.inventory_tab_id,
-          inventory_section_id: item.inventory_section_id,
-          inventory_table_name: item.inventory_table_name,
-          item_label: item.item_label,
-          item_details: item.item_details,
-        }));
-        const { error: itemsErr } = await supabase
-          .from("borrowing_items")
-          .insert(liveItems);
-        if (itemsErr) throw itemsErr;
-
-        // Mark approval as approved
-        const { error: updateErr } = await supabase
-          .from("borrowing_records_approval")
-          .update({ status: "approved" })
-          .eq("id", record.id);
-        if (updateErr) throw updateErr;
-
-        // Update local state
-        setData((prev) =>
-          prev.map((r) =>
-            String(r.id) === String(existingRecord.id)
-              ? { ...r, items: [...(r.items || []), ...approvalItems.map((ai) => ({ ...ai, id: ai.inventory_item_id }))] }
-              : r
-          )
-        );
-        toast.success(`Approved ${approvalItems.length} item${approvalItems.length !== 1 ? "s" : ""} and merged with existing active borrow for ${record.name}.`);
+      // Create or choose target record
+      let targetRecordId = null;
+      if (existingRecord && merge) {
+        targetRecordId = existingRecord.id;
       } else {
-        // Standard approve — create a new live record with selected items
         const { data: inserted, error: insertErr } = await supabase
           .from("borrowing_records")
           .insert([{
@@ -1657,45 +1674,72 @@ export default function Borrowing() {
           .select("id")
           .single();
         if (insertErr) throw insertErr;
-
-        const liveItems = approvalItems.map((item) => ({
-          borrowing_record_id: inserted.id,
-          inventory_item_id: item.inventory_item_id,
-          inventory_tab_id: item.inventory_tab_id,
-          inventory_section_id: item.inventory_section_id,
-          inventory_table_name: item.inventory_table_name,
-          item_label: item.item_label,
-          item_details: item.item_details,
-        }));
-        const { error: itemsErr } = await supabase
-          .from("borrowing_items")
-          .insert(liveItems);
-        if (itemsErr) throw itemsErr;
-
-        // Mark approval as approved
-        const { error: updateErr } = await supabase
-          .from("borrowing_records_approval")
-          .update({ status: "approved" })
-          .eq("id", record.id);
-        if (updateErr) throw updateErr;
-
-        toast.success(`Approved ${approvalItems.length} item${approvalItems.length !== 1 ? "s" : ""} for ${record.name}.`);
+        targetRecordId = inserted.id;
       }
 
-      // ── Fire-and-forget email notification (non-blocking) ───────────────
+      // Insert approved units as borrowing_items (collapse per-item approved counts into single rows)
+      const itemsToInsert = [];
+      for (const it of approvalItems) {
+        const id = String(it.id);
+        const approved = Number(approvedCounts[id] || 0);
+        const requested = getBorrowedQuantity(it);
+        if (approved > 0) {
+          const details = Array.isArray(it.item_details) ? [...it.item_details] : [];
+          const qtyIdx = details.findIndex((d) => String(d.key || "").toLowerCase() === "quantity" || String(d.label || "").toLowerCase() === "quantity");
+          if (qtyIdx >= 0) details[qtyIdx] = { ...details[qtyIdx], value: String(approved) };
+          else details.push({ key: "quantity", label: "Quantity", value: String(approved) });
+
+          itemsToInsert.push({
+            borrowing_record_id: targetRecordId,
+            inventory_item_id: it.inventory_item_id,
+            inventory_tab_id: it.inventory_tab_id,
+            inventory_section_id: it.inventory_section_id,
+            inventory_table_name: it.inventory_table_name,
+            item_label: it.item_label,
+            item_details: details,
+          });
+        }
+
+        const remaining = Math.max(0, requested - approved);
+        if (remaining > 0 && it.inventory_item_id && it.inventory_section_id && it.inventory_table_name) {
+          try {
+            await adjustInventoryItemQuantity({
+              id: it.inventory_item_id,
+              sectionId: it.inventory_section_id,
+              tableName: it.inventory_table_name,
+              delta: remaining,
+            });
+          } catch (invErr) {
+            console.warn("Failed to return units to inventory:", invErr);
+          }
+        }
+      }
+
+      if (itemsToInsert.length > 0) {
+        const { error: itemsErr } = await supabase.from("borrowing_items").insert(itemsToInsert);
+        if (itemsErr) throw itemsErr;
+      }
+
+      // Mark approval as approved
+      const { error: updateErr } = await supabase
+        .from("borrowing_records_approval")
+        .update({ status: "approved" })
+        .eq("id", record.id);
+      if (updateErr) throw updateErr;
+
+      toast.success(`Approved ${totalApproved} unit${totalApproved !== 1 ? "s" : ""} for ${record.name}.`);
+
+      // Fire-and-forget email
       triggerBorrowStatusEmail(
         {
           id: record.id,
           borrower_name: record.name,
           borrower_email: record.email || record.borrower_email,
-          items: approvalItems.map((it) => ({
-            label: it.item_label,
-            details: it.item_details,
-          })),
+          items: approvalItems.map((it) => ({ label: it.item_label, details: it.item_details })),
           expected_return_at: record.expectedReturnAt || record.expected_return_at,
         },
         "APPROVED"
-      ).catch(() => { /* silent — never blocks approval flow */ });
+      ).catch(() => {});
 
       closeReviewModal();
       loadBorrowings();
@@ -1708,6 +1752,8 @@ export default function Borrowing() {
       setApproveConfirmationOpen(false);
       setConfirmingRecord(null);
       setConfirmActionType(null);
+      setPendingApproveCounts({});
+      setPendingApproveMerge(false);
     }
   };
 
@@ -3700,6 +3746,72 @@ export default function Borrowing() {
             </Dialog>
           )}
 
+        {/* Approve confirmation dialog */}
+        <AlertDialog
+          open={approveConfirmationOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setApproveConfirmationOpen(false);
+              setPendingApproveCounts({});
+              setPendingApproveMerge(false);
+              setConfirmingRecord(null);
+              setConfirmActionType(null);
+            }
+          }}
+        >
+          <AlertDialogContent className="rounded-xl">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Approve Borrowing Request</AlertDialogTitle>
+              <AlertDialogDescription>
+                {`Approve ${Object.values(pendingApproveCounts || {}).reduce((s,v)=>s+(Number(v)||0),0)} unit${Object.values(pendingApproveCounts || {}).reduce((s,v)=>s+(Number(v)||0),0)!==1?"s":""} for ${confirmingRecord?.name || "this borrower"}?`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            <AlertDialogFooter className="gap-3 sm:gap-4">
+              <AlertDialogCancel className="rounded-lg">Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => handleApproveRecordConfirmed(confirmingRecord, pendingApproveCounts, pendingApproveMerge)}
+                disabled={processingId === confirmingRecord?.id}
+                className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
+              >
+                {processingId === confirmingRecord?.id ? "Processing..." : "Approve"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Deny confirmation dialog */}
+        <AlertDialog
+          open={denyConfirmationOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setDenyConfirmationOpen(false);
+              setConfirmingRecord(null);
+              setConfirmActionType(null);
+            }
+          }}
+        >
+          <AlertDialogContent className="rounded-xl">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Deny Borrowing Request</AlertDialogTitle>
+              <AlertDialogDescription>
+                {`Are you sure you want to deny the borrowing request for ${confirmingRecord?.name || "this borrower"}?`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            <AlertDialogFooter className="gap-3 sm:gap-4">
+              <AlertDialogCancel className="rounded-lg">Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => handleDenyRecordConfirmed(confirmingRecord)}
+                disabled={processingId === confirmingRecord?.id}
+                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+              >
+                {processingId === confirmingRecord?.id ? "Processing..." : "Deny"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         <AlertDialog open={showExportConfirm} onOpenChange={setShowExportConfirm}>
           <AlertDialogContent className="rounded-xl">
             <AlertDialogHeader>
@@ -4843,6 +4955,30 @@ export default function Borrowing() {
                               </div>
                             </div>
                           )}
+                          {/* Condition / Remarks (if present) */}
+                          {(() => {
+                            const cond = getItemConditionRaw(item) || getOriginalConditionFromDetails(item) || item.condition || item.returnCondition || item.status || null;
+                            const remark = (item.returnRemarks || item.remarks || getItemRemark(item) || null);
+                            if (!cond && !remark) return null;
+                            return (
+                              <div className="px-5 pb-4">
+                                <div className="flex flex-col gap-y-2">
+                                  {cond && (
+                                    <div className="flex items-baseline gap-2 min-w-0">
+                                      <span className="shrink-0 text-xs font-medium text-slate-400">Condition:</span>
+                                      <span className="truncate text-sm font-semibold text-slate-900">{cond}</span>
+                                    </div>
+                                  )}
+                                  {remark && (
+                                    <div className="flex items-baseline gap-2 min-w-0">
+                                      <span className="shrink-0 text-xs font-medium text-slate-400">Remarks:</span>
+                                      <span className="truncate text-sm font-semibold text-slate-900">{remark}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       );
                     })}
@@ -4852,7 +4988,7 @@ export default function Borrowing() {
 
               {/* ── Footer ───────────────────────────────────────────────────── */}
               <DialogFooter className="flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50/60 px-8 py-5 sm:flex-row sm:justify-end sm:px-10">
-                <Button type="button" variant="outline" size="sm-lg" onClick={() => setViewingPendingRecord(null)}>
+                <Button type="button" variant="outline" size="sm" className="rounded-lg" onClick={() => setViewingPendingRecord(null)}>
                   Close
                 </Button>
               </DialogFooter>
@@ -4909,6 +5045,19 @@ export default function Borrowing() {
                     const label = typeof item.item_label === "object"
                       ? (item.item_label?.label || item.item_label?.value || item.item_details || "Item")
                       : (item.item_label || item.item_details || "Item");
+                    const qty = (() => {
+                      if (item.quantity) return Number(item.quantity) || 1;
+                      // approval rows store details in item.item_details
+                      const detailsArr = Array.isArray(item.item_details)
+                        ? item.item_details
+                        : Array.isArray(item.details)
+                        ? item.details
+                        : [];
+                      const qEntry = detailsArr.find(
+                        (d) => String(d?.key || "").toLowerCase() === "quantity" || String(d?.label || "").toLowerCase() === "quantity"
+                      );
+                      return qEntry ? Number(qEntry.value) || 1 : 1;
+                    })();
                     return (
                       <label
                         key={item.id}
@@ -4927,7 +5076,87 @@ export default function Borrowing() {
                           {typeof item.item_details === "string" && item.item_details && (
                             <p className="text-xs text-slate-400 truncate">{item.item_details}</p>
                           )}
+                          {/* Show condition / remarks for approval items when available */}
+                          {(() => {
+                            let cond = getItemConditionRaw(item) || getOriginalConditionFromDetails(item) || item.returnCondition || item.condition || null;
+                            let remark = item.returnRemarks || item.remarks || getItemRemark(item) || null;
+
+                            // If item_details contains structured data, extract from it as a fallback
+                            if ((!cond || !remark) && item.item_details) {
+                              try {
+                                const details = typeof item.item_details === "string" ? JSON.parse(item.item_details) : item.item_details;
+                                if (Array.isArray(details)) {
+                                  for (const d of details) {
+                                    const k = String(d.key || d.label || "").toLowerCase();
+                                    if (!cond && /condition|status/.test(k) && d.value) cond = d.value;
+                                    if (!remark && /remark|note|notes/.test(k) && d.value) remark = d.value;
+                                  }
+                                } else if (details && typeof details === "object") {
+                                  if (!cond) cond = details.condition || details.status || details.returnCondition || details.return_condition || cond;
+                                  if (!remark) remark = details.remarks || details.returnRemarks || details.return_remarks || details.note || details.notes || remark;
+                                }
+                              } catch (e) {
+                                // ignore parse errors
+                              }
+                            }
+
+                            if (!cond && !remark) return null;
+                            return (
+                              <div className="mt-1 text-xs">
+                                {cond && (
+                                  <div className="flex items-baseline gap-2">
+                                    <span className="shrink-0 text-xs font-medium text-slate-400">Condition:</span>
+                                    <span className="truncate text-xs font-semibold text-slate-900">{cond}</span>
+                                  </div>
+                                )}
+                                {remark && (
+                                  <div className="flex items-baseline gap-2 mt-0.5">
+                                    <span className="shrink-0 text-xs font-medium text-slate-400">Remarks:</span>
+                                    <span className="truncate text-xs font-semibold text-slate-900">{remark}</span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
+                        <div className="shrink-0 flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-6 w-6 rounded-full"
+                            onClick={() => {
+                              setReviewApproveCounts((prev) => {
+                                const next = { ...(prev || {}) };
+                                const key = String(item.id);
+                                const cur = Number(next[key] || 0);
+                                next[key] = Math.max(0, cur - 1);
+                                return next;
+                              });
+                            }}
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <span className="w-8 text-center text-sm font-semibold text-slate-700">{String(reviewApproveCounts[String(item.id)] ?? qty)}</span>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-6 w-6 rounded-full"
+                            onClick={() => {
+                              setReviewApproveCounts((prev) => {
+                                const next = { ...(prev || {}) };
+                                const key = String(item.id);
+                                const cur = Number(next[key] ?? 0);
+                                next[key] = Math.min(qty, cur + 1);
+                                return next;
+                              });
+                            }}
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <div className="text-xs text-slate-400 ml-2">Not approving: {qty - (Number(reviewApproveCounts[String(item.id)] ?? qty))}</div>
                       </label>
                     );
                   })}
@@ -4978,15 +5207,15 @@ export default function Borrowing() {
               <Button
                 type="button"
                 size="sm"
-                disabled={reviewCheckedItems.size === 0 || processingId === reviewingRecord.id}
+                disabled={(Object.values(reviewApproveCounts || {}).reduce((s, v) => s + (Number(v) || 0), 0) === 0) || processingId === reviewingRecord.id}
                 onClick={() =>
-                  handleApproveRecord(reviewingRecord, reviewCheckedItems, reviewMerge)
+                  handleApproveRecord(reviewingRecord, reviewApproveCounts, reviewMerge)
                 }
                 className="rounded-lg bg-[#4a1111] text-white hover:bg-[#3a0d0d] disabled:opacity-50"
               >
                 {processingId === reviewingRecord.id
                   ? "Processing..."
-                  : `Approve ${reviewCheckedItems.size} Item${reviewCheckedItems.size !== 1 ? "s" : ""}`}
+                  : `Approve ${Object.values(reviewApproveCounts || {}).reduce((s, v) => s + (Number(v) || 0), 0)} Unit${Object.values(reviewApproveCounts || {}).reduce((s, v) => s + (Number(v) || 0), 0) !== 1 ? "s" : ""}`}
               </Button>
             )}
             </DialogFooter>

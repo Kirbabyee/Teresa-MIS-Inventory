@@ -148,12 +148,37 @@ function WrappedXAxisTick({ x, y, payload, width }) {
         fontSize={10}
       >
         {lines.map((line, index) => (
-          <tspan key={index} x={0} dy={index === 0 ? 0 : 1.2}>
+          <tspan key={index} x={0} dy={index === 0 ? 0 : 12}>
             {line}
           </tspan>
         ))}
       </text>
     </g>
+  );
+}
+
+function CustomLegend({ payload = [] }) {
+  if (!payload || !payload.length) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingTop: 8 }}>
+      {payload.map((p) => (
+        <div
+          key={p.value}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            maxWidth: 140,
+            whiteSpace: "normal",
+            fontSize: 11,
+            color: "#475569",
+          }}
+        >
+          <span style={{ width: 10, height: 10, background: p.color, display: "inline-block", borderRadius: 2 }} />
+          <span style={{ overflowWrap: "break-word" }}>{p.value}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -272,11 +297,7 @@ export default function ItemBorrowingAnalysisChart({ borrowingItems = [], loadin
                   Each bar represents a section; each stacked row within a column is the top most borrowed item.
                 </p>
               ) : (
-                <Legend
-                  iconType="square"
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: 10, paddingTop: 8, fontWeight: 500 }}
-                />
+                <Legend content={CustomLegend} />
               )}
               {variants.map((variant, index) => (
                 <Bar
