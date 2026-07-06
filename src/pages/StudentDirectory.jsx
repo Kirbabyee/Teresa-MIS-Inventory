@@ -835,7 +835,7 @@ export default function StudentDirectory() {
 
       <Dialog open={showModal} onOpenChange={(next) => !next && closeModal()}>
         <DialogContent
-          className="flex max-h-[85vh] max-w-xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
+          className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
           onPointerDownOutside={(e) => e.preventDefault()}
         >
           <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
@@ -939,7 +939,7 @@ export default function StudentDirectory() {
           if (!open && !statusChanging) cancelStatusChange();
         }}
       >
-        <AlertDialogContent className="rounded-xl">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {statusTarget?.isActive === false ? "Reactivate Borrower" : "Deactivate Borrower"}
@@ -951,12 +951,12 @@ export default function StudentDirectory() {
             </AlertDialogDescription>
           </AlertDialogHeader>
 
-          <AlertDialogFooter className="gap-3 sm:gap-4 px-4 py-4">
-            <AlertDialogCancel className="rounded-lg" disabled={statusChanging}>Cancel</AlertDialogCancel>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={statusChanging}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmStatusChange}
               disabled={statusChanging}
-              className={statusTarget?.isActive === false ? "rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700" : "rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"}
+              className={statusTarget?.isActive === false ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700"}
             >
               {statusChanging
                 ? statusTarget?.isActive === false
@@ -976,7 +976,7 @@ export default function StudentDirectory() {
           if (!open && !deletingUserId) setDeleteTarget(null);
         }}
       >
-        <AlertDialogContent className="rounded-xl">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Borrower</AlertDialogTitle>
             <AlertDialogDescription>
@@ -986,11 +986,9 @@ export default function StudentDirectory() {
             </AlertDialogDescription>
           </AlertDialogHeader>
 
-          
-
-          <AlertDialogFooter className="gap-3 sm:gap-4 px-4 py-4">
-            <AlertDialogCancel className="rounded-lg" disabled={Boolean(deletingUserId)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} disabled={Boolean(deletingUserId)} className="rounded-lg bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90">
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(deletingUserId)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} disabled={Boolean(deletingUserId)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               {deletingUserId ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
