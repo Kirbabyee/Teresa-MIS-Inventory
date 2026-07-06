@@ -31,6 +31,7 @@ export const normalizeUserRecord = (record = {}) => {
   const position = normalizePosition(record?.position ?? record?.role ?? record?.type ?? "student");
   const year = normalizeYear(record?.year ?? record?.year_level ?? record?.grade ?? "");
   const section = normalizeSection(record?.section ?? record?.section_name ?? record?.class_section ?? "");
+  const isActive = record?.isActive ?? record?.is_active;
 
   return {
     id: String(record?.id || crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`),
@@ -39,6 +40,7 @@ export const normalizeUserRecord = (record = {}) => {
     position,
     year,
     section,
+    isActive: isActive === undefined || isActive === null ? true : Boolean(isActive),
   };
 };
 
@@ -62,12 +64,20 @@ export const saveBorrowerUsersToStorage = (users = []) => {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
 };
 
-export const getBorrowerAllowlistFromDb = async (fallbackUsers = []) => {
+export const getBorrowerAllowlistFromDb = async (fallbackUsers = [], options = {}) => {
+  const includeInactive = Boolean(options?.includeInactive);
+
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from(BORROWER_ALLOWLIST_TABLE)
-      .select("id, name, school_id, position, year, section")
+      .select("id, name, school_id, position, year, section, is_active")
       .order("created_at", { ascending: false });
+
+    if (!includeInactive) {
+      query = query.eq("is_active", true);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
@@ -95,6 +105,7 @@ export const upsertBorrowerUsersToDb = async (users = []) => {
         position: user.position,
         year: user.year,
         section: user.section,
+        is_active: user.isActive ?? user.is_active ?? true,
       };
 
       if (isValidUuid(user.id)) {
@@ -116,7 +127,7 @@ export const upsertBorrowerUsersToDb = async (users = []) => {
     return rows;
   } catch (error) {
     console.error("Failed to sync borrower allowlist to Supabase", error);
-    return [];
+    throw error;
   }
 };
 
@@ -128,6 +139,48 @@ export const deleteBorrowerUserFromDb = async (schoolId = "") => {
     if (error) throw error;
   } catch (error) {
     console.error("Failed to delete borrower from Supabase", error);
+    throw error;
+  }
+};
+
+export const updateBorrowerUserInDb = async (user = {}) => {
+  if (!user?.id) return;
+
+  const row = {
+    name: user.name,
+    school_id: user.schoolId,
+    position: user.position,
+    year: user.year,
+    section: user.section,
+    is_active: user.isActive ?? user.is_active ?? true,
+  };
+
+  try {
+    const { error } = await supabase
+      .from(BORROWER_ALLOWLIST_TABLE)
+      .update(row)
+      .eq("id", user.id);
+
+    if (error) throw error;
+  } catch (error) {
+    console.error("Failed to update borrower in Supabase", error);
+    throw error;
+  }
+};
+
+export const setBorrowerUserActiveInDb = async (schoolId = "", isActive = true) => {
+  if (!schoolId) return;
+
+  try {
+    const { error } = await supabase
+      .from(BORROWER_ALLOWLIST_TABLE)
+      .update({ is_active: Boolean(isActive) })
+      .eq("school_id", schoolId);
+
+    if (error) throw error;
+  } catch (error) {
+    console.error("Failed to update borrower active state in Supabase", error);
+    throw error;
   }
 };
 

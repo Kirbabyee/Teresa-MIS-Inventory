@@ -50,6 +50,7 @@ const readBorrowerAllowlist = async () => {
     const { data, error } = await supabase
       .from("borrower_allowlist")
       .select("name, school_id, position")
+      .eq("is_active", true)
       .order("created_at", { ascending: false });
 
     if (error) throw error;

@@ -3,9 +3,15 @@ import * as XLSX from "xlsx";
 import {
   Download,
   FileSpreadsheet,
+  Edit,
   Plus,
   Search,
+  ChevronLeft,
+  ChevronRight,
+  MoreVertical,
   Trash2,
+  UserCheck,
+  UserX,
   Upload,
   Users,
 } from "lucide-react";
@@ -39,10 +45,19 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   deleteBorrowerUserFromDb,
   getBorrowerAllowlistFromDb,
   normalizeUserRecord,
   readStoredBorrowerUsers,
+  setBorrowerUserActiveInDb,
+  updateBorrowerUserInDb,
   upsertBorrowerUsersToDb,
 } from "@/lib/borrowerAllowlistApi";
 
@@ -55,6 +70,8 @@ const emptyForm = {
   year: "",
   section: "",
 };
+
+const defaultBorrowerStatus = true;
 const normalizeHeaderKey = (value = "") =>
   String(value ?? "")
     .trim()
@@ -120,16 +137,29 @@ const buildDuplicatePreview = (importedUsers = [], existingUsers = []) => {
   return previewEntries.sort((left, right) => left.originalSchoolId.localeCompare(right.originalSchoolId));
 };
 
+const sortBorrowersByStatus = (items = []) => {
+  return [...items].sort((left, right) => {
+    const leftInactive = left?.isActive === false ? 1 : 0;
+    const rightInactive = right?.isActive === false ? 1 : 0;
+    return leftInactive - rightInactive;
+  });
+};
+
 export default function StudentDirectory() {
   const [users, setUsers] = useState(readStoredBorrowerUsers);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 7;
   const [showModal, setShowModal] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [statusTarget, setStatusTarget] = useState(null);
+  const [statusChanging, setStatusChanging] = useState(false);
   const [importMessage, setImportMessage] = useState("");
   const [duplicatePreview, setDuplicatePreview] = useState([]);
   const [pendingImportedUsers, setPendingImportedUsers] = useState([]);
@@ -140,7 +170,7 @@ export default function StudentDirectory() {
     let active = true;
 
     const loadUsers = async () => {
-      const dbUsers = await getBorrowerAllowlistFromDb(users);
+      const dbUsers = await getBorrowerAllowlistFromDb(users, { includeInactive: true });
       if (active) {
         setUsers(dbUsers);
       }
@@ -156,7 +186,7 @@ export default function StudentDirectory() {
   const filteredUsers = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return users.filter((user) => {
+    return sortBorrowersByStatus(users).filter((user) => {
       const matchesSearch =
         !query ||
         [user.name, user.schoolId, user.position, user.year, user.section]
@@ -169,13 +199,52 @@ export default function StudentDirectory() {
     });
   }, [roleFilter, search, users]);
 
+  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+  const pageStartIndex = (page - 1) * itemsPerPage;
+  const pageEndIndex = pageStartIndex + itemsPerPage;
+  const paginatedUsers = filteredUsers.slice(pageStartIndex, pageEndIndex);
+
+  const visiblePageNumbers = (() => {
+    const maxVisible = 3;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const offset = Math.min(Math.max(page - 2, 0), totalPages - maxVisible);
+    const startPage = offset + 1;
+    return Array.from({ length: maxVisible }, (_, index) => startPage + index);
+  })();
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, roleFilter]);
+
+  useEffect(() => {
+    if (page > totalPages && totalPages > 0) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
   const resetForm = () => {
     setForm(emptyForm);
     setFormError("");
+    setEditingUser(null);
   };
 
-  const openModal = () => {
-    resetForm();
+  const openModal = (user = null) => {
+    if (user) {
+      setEditingUser(user);
+      setForm({
+        name: user.name || "",
+        schoolId: user.schoolId || "",
+        position: user.position || "student",
+        year: user.year || "",
+        section: user.section || "",
+      });
+      setFormError("");
+    } else {
+      resetForm();
+    }
     setShowModal(true);
   };
 
@@ -190,6 +259,7 @@ export default function StudentDirectory() {
     const normalizedSchoolId = formatSchoolId(form.schoolId);
     const normalizedYear = normalizeYear(form.year);
     const normalizedSection = normalizeSection(form.section);
+    const currentEditingId = editingUser?.id || "";
 
     if (!normalizedName) {
       setFormError("Name is required.");
@@ -201,7 +271,7 @@ export default function StudentDirectory() {
       return;
     }
 
-    const existingBorrower = users.some((user) => user.schoolId === normalizedSchoolId);
+    const existingBorrower = users.some((user) => user.schoolId === normalizedSchoolId && user.id !== currentEditingId);
     if (existingBorrower) {
       setFormError("This school ID is already registered.");
       return;
@@ -220,24 +290,31 @@ export default function StudentDirectory() {
     }
 
     const nextUser = {
-      id: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+      id: editingUser?.id || crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`,
       name: normalizedName,
       schoolId: normalizedSchoolId,
       position: form.position,
       year: normalizedYear,
       section: normalizedSection,
+      isActive: editingUser?.isActive ?? defaultBorrowerStatus,
     };
 
-    const nextUsers = [nextUser, ...users];
+    const nextUsers = editingUser
+      ? users.map((user) => (user.id === editingUser.id ? nextUser : user))
+      : [nextUser, ...users];
     setSaving(true);
     setFormError("");
 
     try {
       setUsers(nextUsers);
-      await upsertBorrowerUsersToDb(nextUsers);
-      const dbUsers = await getBorrowerAllowlistFromDb(nextUsers);
+      if (editingUser) {
+        await updateBorrowerUserInDb(nextUser);
+      } else {
+        await upsertBorrowerUsersToDb(nextUsers);
+      }
+      const dbUsers = await getBorrowerAllowlistFromDb(nextUsers, { includeInactive: true });
       setUsers(dbUsers);
-      toast.success("Borrower added successfully.");
+      toast.success(editingUser ? "Borrower updated successfully." : "Borrower added successfully.");
       closeModal();
     } catch (error) {
       setFormError(error?.message || "Unable to save borrower. Please try again.");
@@ -252,8 +329,50 @@ export default function StudentDirectory() {
     setDeleteTarget(targetUser);
   };
 
+  const promptStatusChange = (userId) => {
+    const targetUser = users.find((user) => user.id === userId);
+    if (!targetUser) return;
+    setStatusTarget(targetUser);
+  };
+
   const cancelDelete = () => {
     setDeleteTarget(null);
+  };
+
+  const cancelStatusChange = () => {
+    setStatusTarget(null);
+  };
+
+  const confirmStatusChange = async () => {
+    if (!statusTarget) return;
+
+    const userId = statusTarget.id;
+    const targetUser = statusTarget;
+    const wasActive = targetUser.isActive !== false;
+    const nextIsActive = !wasActive;
+    setStatusChanging(true);
+    const originalUsers = users;
+    const nextUsers = users.map((user) =>
+      user.id === userId ? { ...user, isActive: nextIsActive } : user
+    );
+    setUsers(nextUsers);
+    setStatusTarget(null);
+
+    try {
+      await setBorrowerUserActiveInDb(targetUser.schoolId, nextIsActive);
+      const dbUsers = await getBorrowerAllowlistFromDb(nextUsers, { includeInactive: true });
+      setUsers(dbUsers);
+      toast.success(
+        nextIsActive
+          ? "Borrower reactivated successfully."
+          : "Borrower deactivated successfully."
+      );
+    } catch (error) {
+      setUsers(originalUsers);
+      toast.error(`Unable to ${nextIsActive ? "reactivate" : "deactivate"} borrower. Please try again.`);
+    } finally {
+      setStatusChanging(false);
+    }
   };
 
   const confirmDelete = async () => {
@@ -338,7 +457,7 @@ export default function StudentDirectory() {
 
     if (safeImportedUsers.length > 0) {
       await upsertBorrowerUsersToDb(nextUsers);
-      const dbUsers = await getBorrowerAllowlistFromDb(nextUsers);
+      const dbUsers = await getBorrowerAllowlistFromDb(nextUsers, { includeInactive: true });
       setUsers(dbUsers);
     }
 
@@ -406,6 +525,7 @@ export default function StudentDirectory() {
       position: user.position,
       year: user.year,
       section: user.section,
+      is_active: user.isActive !== false,
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportRows);
@@ -513,19 +633,22 @@ export default function StudentDirectory() {
                   </td>
                 </tr>
               ) : (
-                filteredUsers.map((user) => (
-                  <tr key={user.id} className={`transition-colors hover:bg-slate-50`}>
+                paginatedUsers.map((user) => (
+                  <tr
+                    key={user.id}
+                    className={`transition-colors ${user.isActive === false ? "bg-slate-100 text-slate-400 opacity-75 grayscale" : "hover:bg-slate-50"}`}
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs shrink-0 bg-slate-300 text-slate-700`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-xs shrink-0 ${user.isActive === false ? "bg-slate-200 text-slate-400" : "bg-slate-300 text-slate-700"}`}>
                           {user.name?.[0]}
                         </div>
                         <div>
-                          <p className={`text-sm font-medium text-slate-900`}>{user.name}</p>
+                          <p className={`text-sm font-medium ${user.isActive === false ? "text-slate-500" : "text-slate-900"}`}>{user.name}</p>
                         </div>
                       </div>
                     </td>
-                    <td className={`px-4 py-3 text-sm text-slate-600`}>{user.schoolId}</td>
+                    <td className={`px-4 py-3 text-sm ${user.isActive === false ? "text-slate-400" : "text-slate-600"}`}>{user.schoolId}</td>
                     <td className="px-4 py-3 w-[120px]">
                       <span
                         className={`inline-flex w-[100px] justify-center text-xs font-semibold px-2 py-1 rounded-md border ${
@@ -539,20 +662,47 @@ export default function StudentDirectory() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 rounded-md text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-                          aria-label={`Delete ${user.name}`}
-                          onClick={() => promptDeleteUser(user.id)}
-                          disabled={deletingUserId === user.id}
-                        >
-                          {deletingUserId === user.id ? (
-                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-rose-600" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 rounded-md text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                              aria-label={`Open actions for ${user.name}`}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem onSelect={() => openModal(user)}>
+                              <Edit className="h-4 w-4" />
+                              Edit borrower
+                            </DropdownMenuItem>
+
+                            <DropdownMenuItem onSelect={() => promptStatusChange(user.id)}>
+                              {user.isActive === false ? (
+                                <UserCheck className="h-4 w-4" />
+                              ) : (
+                                <UserX className="h-4 w-4" />
+                              )}
+                              {user.isActive === false ? "Reactivate borrower" : "Deactivate borrower"}
+                            </DropdownMenuItem>
+
+                            {user.isActive === false ? (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onSelect={() => promptDeleteUser(user.id)}
+                                  className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                  disabled={deletingUserId === user.id}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  {deletingUserId === user.id ? "Deleting..." : "Delete borrower"}
+                                </DropdownMenuItem>
+                              </>
+                            ) : null}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </td>
                   </tr>
@@ -561,6 +711,50 @@ export default function StudentDirectory() {
             </tbody>
           </table>
         </div>
+
+        {filteredUsers.length > 0 ? (
+          <div className="flex items-center justify-between gap-4 border-t border-border bg-card px-5 py-4 text-card-foreground">
+            <div className="text-sm text-slate-500">
+              Showing {Math.min(pageStartIndex + 1, filteredUsers.length)}–{Math.min(pageEndIndex, filteredUsers.length)} of {filteredUsers.length}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page === 1}
+                className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+
+              {visiblePageNumbers.map((pageNumber) => {
+                const isActive = page === pageNumber;
+                return (
+                  <button
+                    key={pageNumber}
+                    type="button"
+                    onClick={() => setPage(pageNumber)}
+                    className={isActive ? "rounded-md px-3 py-1 text-sm transition bg-[#4a1111] text-primary-foreground" : "rounded-md px-3 py-1 text-sm transition text-foreground hover:bg-accent hover:text-accent-foreground"}
+                  >
+                    {pageNumber}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                disabled={page === totalPages || totalPages === 0}
+                className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Next page"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <Dialog open={showImporterModal} onOpenChange={(next) => !next && setShowImporterModal(false)}>
@@ -641,12 +835,18 @@ export default function StudentDirectory() {
 
       <Dialog open={showModal} onOpenChange={(next) => !next && closeModal()}>
         <DialogContent
-          className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
+          className="flex max-h-[85vh] max-w-xl flex-col gap-0 overflow-hidden rounded-[28px] p-0"
           onPointerDownOutside={(e) => e.preventDefault()}
         >
           <DialogHeader className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
-            <DialogTitle className="text-lg font-semibold text-slate-900">Add new borrower</DialogTitle>
-            <DialogDescription className="mt-1 text-sm">Fill in the details for the student or faculty member who may borrow publicly.</DialogDescription>
+            <DialogTitle className="text-lg font-semibold text-slate-900">
+              {editingUser ? "Edit borrower" : "Add new borrower"}
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-sm">
+              {editingUser
+                ? "Update the details for this borrower."
+                : "Fill in the details for the student or faculty member who may borrow publicly."}
+            </DialogDescription>
           </DialogHeader>
 
           <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5 sm:px-8">
@@ -728,25 +928,71 @@ export default function StudentDirectory() {
 
           <DialogFooter className="flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-2 sm:px-8">
             <Button type="button" onClick={closeModal} variant="outline" size="sm" className="rounded-lg">Cancel</Button>
-            <Button type="button" onClick={() => document.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }))} size="sm" className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]">{saving ? "Saving..." : "Save Borrower"}</Button>
+            <Button type="button" onClick={() => document.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }))} size="sm" className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]">{saving ? "Saving..." : editingUser ? "Update Borrower" : "Save Borrower"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+      <AlertDialog
+        open={Boolean(statusTarget)}
+        onOpenChange={(open) => {
+          if (!open && !statusChanging) cancelStatusChange();
+        }}
+      >
         <AlertDialogContent className="rounded-xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete borrower</AlertDialogTitle>
+            <AlertDialogTitle>
+              {statusTarget?.isActive === false ? "Reactivate Borrower" : "Deactivate Borrower"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove this borrower from the allowlist?
+              {statusTarget?.isActive === false
+                ? `Reactivate ${statusTarget?.name || "this borrower"}'s account so they can borrow again.`
+                : `Deactivate ${statusTarget?.name || "this borrower"}'s account? They will no longer be able to borrow until reactivated.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter className="gap-3 sm:gap-4 px-4 py-4">
+            <AlertDialogCancel className="rounded-lg" disabled={statusChanging}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmStatusChange}
+              disabled={statusChanging}
+              className={statusTarget?.isActive === false ? "rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700" : "rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"}
+            >
+              {statusChanging
+                ? statusTarget?.isActive === false
+                  ? "Reactivating..."
+                  : "Deactivating..."
+                : statusTarget?.isActive === false
+                  ? "Reactivate"
+                  : "Deactivate"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deletingUserId) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent className="rounded-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Borrower</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget
+                ? `Permanently delete the borrower record for ${deleteTarget.name || "this borrower"}? This action cannot be undone.`
+                : "Delete this borrower?"}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
           
 
           <AlertDialogFooter className="gap-3 sm:gap-4 px-4 py-4">
-            <AlertDialogCancel className="rounded-lg">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700">Delete borrower</AlertDialogAction>
+            <AlertDialogCancel className="rounded-lg" disabled={Boolean(deletingUserId)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} disabled={Boolean(deletingUserId)} className="rounded-lg bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90">
+              {deletingUserId ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
