@@ -361,7 +361,7 @@ export default function PublicBorrow() {
     const v = String(value || "").trim();
     if (name === "name") {
       if (!v) return "Borrower name is required.";
-      if (!/^[A-Za-z\s]+$/.test(v)) return "Name may contain only letters and spaces.";
+      if (!/^[\p{L}\p{M}\s.'’\-]+$/u.test(v)) return "Name may contain letters, spaces, and common punctuation.";
     }
     if (name === "email") {
       if (!v) return "Email is required.";
@@ -558,7 +558,7 @@ export default function PublicBorrow() {
 
   // ── Reusable cart list (single source of truth) ────────────────────────
   const renderCartContent = () => (
-    <div className="overflow-hidden rounded-[25px] border-2 border-slate-200 bg-white p-0 shadow-sm">
+    <div className="overflow-hidden rounded-lg border-2 border-slate-200 bg-white p-0 shadow-sm">
       <div className="bg-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 grid grid-cols-[1fr_80px_120px_32px] gap-3">
         <span>Item</span>
         <span className="text-center">Status</span>
@@ -650,9 +650,131 @@ export default function PublicBorrow() {
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
-    <div className="flex min-h-screen w-full bg-[#411111]">
+    <div className="flex min-h-screen w-full flex-col bg-[#411111] lg:flex-row">
+      <style>{`
+        .rdp-sidebar-picker {
+          --rdp-accent-color: #411111;
+          --rdp-background-color: transparent;
+          --rdp-outline: 2px solid rgba(65, 17, 17, 0.28);
+          --rdp-outline-selected: 2px solid rgba(65, 17, 17, 0.28);
+          color: hsl(var(--foreground));
+          margin: 0;
+        }
+
+        .rdp-sidebar-picker .rdp-months {
+          gap: 0.75rem;
+        }
+
+        .rdp-sidebar-picker .rdp-month_caption,
+        .rdp-sidebar-picker .rdp-caption_label {
+          color: hsl(var(--foreground));
+          font-size: 0.95rem;
+          font-weight: 700;
+          letter-spacing: -0.01em;
+        }
+
+        .rdp-sidebar-picker .rdp-nav {
+          top: 0.1rem;
+        }
+
+        .rdp-sidebar-picker .rdp-nav_button_previous {
+          margin-right: 0.4rem;
+        }
+
+        .rdp-sidebar-picker .rdp-nav_button {
+          width: 2rem;
+          height: 2rem;
+          border-radius: 9999px;
+          border: 1px solid hsl(var(--border));
+          background: hsl(var(--background));
+          color: #411111;
+          box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+          transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+        }
+
+        .rdp-sidebar-picker .rdp-nav_button:hover {
+          border-color: rgba(65, 17, 17, 0.18);
+          background: rgba(65, 17, 17, 0.06);
+          transform: translateY(-1px);
+        }
+
+        .rdp-sidebar-picker .rdp-nav_button:disabled {
+          opacity: 0.45;
+          transform: none;
+        }
+
+        .rdp-sidebar-picker .rdp-chevron {
+          fill: none;
+          stroke: currentColor;
+        }
+
+        .rdp-sidebar-picker .rdp-table {
+          border-collapse: separate;
+          border-spacing: 0 0.3rem;
+        }
+
+        .rdp-sidebar-picker .rdp-head_cell {
+          color: hsl(var(--muted-foreground));
+          font-size: 0.68rem;
+          font-weight: 700;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+        }
+
+        .rdp-sidebar-picker .rdp-day {
+          width: 2.35rem;
+          height: 2.35rem;
+        }
+
+        .rdp-sidebar-picker .rdp-day .rdp-button {
+          width: 2.35rem;
+          height: 2.35rem;
+          border-radius: 9999px;
+          font-size: 0.85rem;
+          font-weight: 500;
+          color: hsl(var(--foreground));
+          transition: background-color 150ms ease, color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+        }
+
+        .rdp-sidebar-picker .rdp-day .rdp-button:hover {
+          background: hsl(var(--secondary));
+          transform: translateY(-1px);
+        }
+
+        .rdp-sidebar-picker .rdp-day_selected .rdp-button,
+        .rdp-sidebar-picker .rdp-day_range_start .rdp-button,
+        .rdp-sidebar-picker .rdp-day_range_end .rdp-button {
+          background-color: #411111 !important;
+          color: #ffffff !important;
+          box-shadow: 0 10px 22px rgba(65, 17, 17, 0.22);
+        }
+
+        .rdp-sidebar-picker .rdp-day_range_middle .rdp-button {
+          background-color: rgba(65, 17, 17, 0.1) !important;
+          color: #411111 !important;
+        }
+
+        .rdp-sidebar-picker .rdp-day_today .rdp-button {
+          box-shadow: inset 0 0 0 1px rgba(65, 17, 17, 0.35);
+        }
+
+        .rdp-sidebar-picker .rdp-day_outside .rdp-button,
+        .rdp-sidebar-picker .rdp-day_disabled .rdp-button {
+          color: hsl(var(--muted-foreground));
+          opacity: 0.45;
+        }
+
+        .rdp-sidebar-picker .rdp-footer {
+          margin-top: 0.75rem;
+          padding-top: 0.75rem;
+          border-top: 1px solid hsl(var(--border));
+          color: hsl(var(--muted-foreground));
+          font-size: 0.75rem;
+        }
+      `}</style>
+
       {/* LEFT SIDEBAR (40% width) */}
-      <div className="relative w-[40%] overflow-hidden bg-gradient-to-b from-white to-slate-100 p-8">
+      <div className="relative hidden overflow-hidden bg-gradient-to-b from-white to-slate-100 p-8 lg:block lg:w-[40%]">
         <div className="pointer-events-none absolute inset-0" aria-hidden="true">
           <div className="absolute -top-24 -right-24 h-[400px] w-[400px] rounded-full bg-[#411111]/[0.03] blur-3xl" />
           <div className="absolute -bottom-24 -left-24 h-[320px] w-[320px] rounded-full bg-[#411111]/[0.02] blur-3xl" />
@@ -684,13 +806,18 @@ export default function PublicBorrow() {
       </div>
 
       {/* RIGHT CONTENT AREA (60% on right side) */}
-        <div className="flex h-full w-[60%] items-center justify-center px-8 py-10 overflow-hidden"> 
-        {/* This container is now perfectly centered in the 60% space */}
+        <div className="flex h-full w-full items-center justify-center overflow-hidden px-4 py-6 sm:px-6 sm:py-8 lg:w-[60%] lg:px-8 lg:py-10"> 
+        {/* This container is now perfectly centered in the available space */}
           <div className="flex h-full w-full max-w-3xl flex-col items-center justify-center gap-6 overflow-hidden transition-all duration-200">  
+
+            <div className="mb-1 flex w-full flex-col items-center justify-center gap-2 lg:hidden">
+              <img src="/folder/teresalogo-removebg-preview.png" alt="ARK Logo" className="h-24 w-24 object-contain brightness-0 invert drop-shadow-sm" />
+              <h2 className="text-lg font-bold text-white">Public Borrow Request Form</h2>
+            </div>
 
           {/* MAIN CARD - stepper + active step + footer */}
           <div className="w-full min-w-0">
-            <div className="flex flex-col gap-0 overflow-hidden rounded-[25px] border-2 border-slate-200 bg-white p-0 shadow-sm">
+            <div className="flex flex-col gap-0 overflow-hidden rounded-lg border-2 border-slate-200 bg-white p-0 shadow-sm">
               {/* Stepper Header */}
               <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-6 pt-5 pb-4 sm:px-8">
                 <div className="flex items-center justify-center">
@@ -768,7 +895,7 @@ export default function PublicBorrow() {
                     {/* ── Time Frame ─────────────────────────────────────── */}
                     <div className="pt-2 border-t border-slate-200">
                       <p className="text-sm font-medium text-slate-700 mb-3">Time Frame</p>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 
                         {/* ── Borrow Date & Time ── */}
                         <div>
@@ -966,7 +1093,7 @@ export default function PublicBorrow() {
                     </div>
 
                     {/* ── Cascading Filters: Inventory → Section ──────────────── */}
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <Label className="mb-1 block text-sm font-medium text-slate-700">Inventory</Label>
                         <Select value={filterTabId || "__all__"} onValueChange={(val) => { setFilterTabId(val === "__all__" ? "" : val); setFilterSectionId(""); }}>
@@ -1172,7 +1299,7 @@ export default function PublicBorrow() {
                               <Label className="mb-1 block text-sm font-medium text-slate-700">Item Name</Label>
                               <Input type="text" placeholder="e.g. External Hard Drive" value={customItemForm.name} onChange={(e) => setCustomItemForm({ ...customItemForm, name: e.target.value })} className="h-10" />
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                               <div>
                                 <Label className="mb-1 block text-sm font-medium text-slate-700">Brand <span className="text-slate-400 font-normal">(optional)</span></Label>
                                 <Input type="text" placeholder="e.g. Samsung" value={customItemForm.brand} onChange={(e) => setCustomItemForm({ ...customItemForm, brand: e.target.value })} className="h-10" />
@@ -1182,7 +1309,7 @@ export default function PublicBorrow() {
                                 <Input type="number" min="1" placeholder="e.g. 1" value={customItemForm.quantity} onChange={(e) => setCustomItemForm({ ...customItemForm, quantity: e.target.value })} className="no-number-spinner h-10" />
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                               <div>
                                 <Label className="mb-1 block text-sm font-medium text-slate-700">Condition</Label>
                                 <Select value={customItemForm.condition} onValueChange={(val) => setCustomItemForm({ ...customItemForm, condition: val })}>
@@ -1214,7 +1341,7 @@ export default function PublicBorrow() {
                     {(activeStep === 2 || activeStep === 3) && showCartModal && (
                       <PortalModal>
                         <div className="fixed inset-0 z-[200] bg-black/20 backdrop-blur-[2px]" onClick={() => setShowCartModal(false)} />
-                        <div className="fixed left-1/2 top-1/2 z-[201] w-[540px] max-h-[85vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] overflow-hidden rounded-[25px] border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
+                        <div className="fixed left-1/2 top-1/2 z-[201] w-[540px] max-h-[85vh] overflow-y-auto -translate-x-1/2 -translate-y-1/2 animate-[calPopIn_200ms_ease-out] overflow-hidden rounded-lg border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-white/60">
                           <div className="flex items-center justify-between">
                             <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
                               <ShoppingCart className="h-5 w-5 text-[#4a1111]" />

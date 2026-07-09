@@ -593,6 +593,19 @@ const unrollBorrowedUnits = (items = []) => {
   return units;
 };
 
+const isBorrowedAsDefective = (remark = "", quarantineLabel = "Defective") => {
+  const normalizedRemark = String(remark || "").trim().toLowerCase();
+  const normalizedQuarantine = String(quarantineLabel || "Defective").trim().toLowerCase();
+
+  if (!normalizedRemark) return false;
+  return (
+    normalizedRemark === normalizedQuarantine ||
+    normalizedRemark.includes("defect") ||
+    normalizedRemark.includes("repair") ||
+    normalizedRemark.includes("quarantine")
+  );
+};
+
 const formatBorrowingStatus = (status = "borrowed") => {
   const normalizedStatus = String(status || "borrowed").toLowerCase();
   if (normalizedStatus === "returned") return "Returned";
@@ -1299,6 +1312,7 @@ export default function Borrowing() {
   const [selectedTabId, setSelectedTabId] = useState("");
   const [selectedSectionId, setSelectedSectionId] = useState("");
   const [borrowerAllowlistBySchoolId, setBorrowerAllowlistBySchoolId] = useState({});
+  const [borrowerAllowlistLoaded, setBorrowerAllowlistLoaded] = useState(false);
   const [isRoleAutoFilled, setIsRoleAutoFilled] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState([]);
   const [selectedItemQuantities, setSelectedItemQuantities] = useState({});
@@ -1430,8 +1444,10 @@ export default function Borrowing() {
         }, {});
 
         setBorrowerAllowlistBySchoolId(bySchoolId);
+        setBorrowerAllowlistLoaded(true);
       } catch (error) {
         console.error("Failed to load borrower allowlist:", error);
+        if (active) setBorrowerAllowlistLoaded(true);
       }
     };
 
@@ -1553,8 +1569,9 @@ export default function Borrowing() {
   const filteredData = data
     .filter((d) => {
       const searchLower = search.toLowerCase();
+      const recordName = String(d.name || "").toLowerCase();
       const matchesSearch =
-        d.name.toLowerCase().includes(searchLower) ||
+        recordName.includes(searchLower) ||
         (d.items || []).some((item) => String(item.label || "").toLowerCase().includes(searchLower));
       const recordDate = new Date(d.date);
       const recordDay = new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate());
@@ -2132,7 +2149,7 @@ export default function Borrowing() {
     switch (fieldName) {
       case "name":
         if (!trimmed) return "Borrower name is required.";
-        if (!/^[A-Za-z\s]+$/.test(trimmed)) return "Borrower name may contain only letters and spaces.";
+        if (!/^[\p{L}\p{M}\s.'’\-]+$/u.test(trimmed)) return "Borrower name may contain letters, spaces, and common punctuation.";
         return "";
       case "studentId":
         if (!trimmed) return "ID number is required.";
@@ -2147,6 +2164,71 @@ export default function Borrowing() {
       default:
         return "";
     }
+  };
+
+  const getBorrowerAccessErrors = (name, studentId, borrowerAllowlistBySchoolId, borrowerAllowlistLoaded) => {
+    const formattedSchoolId = formatSchoolId(studentId);
+    if (!/^[0-9]{2}-[0-9]{5}$/.test(formattedSchoolId)) return {};
+    if (!String(name || "").trim()) return {};
+    if (!borrowerAllowlistLoaded) return {};
+
+    const allowlistEntry = borrowerAllowlistBySchoolId[formattedSchoolId];
+    if (allowlistEntry) return {};
+
+    return {
+      studentId: "School ID is not registered for public borrowing.",
+    };
+  };
+
+  const isBorrowerAllowed = async (name = "", schoolId = "") => {
+    const normalizedName = normalizeBorrowerText(name);
+    const normalizedSchoolId = formatSchoolId(schoolId);
+    if (!normalizedName || !normalizedSchoolId) return false;
+
+    const allowlist = await readBorrowerAllowlist();
+    return allowlist.some((record) => {
+      const matchesName = record.name === normalizedName;
+      const matchesSchoolId = record.schoolId === normalizedSchoolId;
+      return matchesSchoolId || (matchesName && matchesSchoolId);
+    });
+  };
+
+  const getDefaultDates = () => {
+    const now = new Date();
+    const borrowDate = now.toISOString();
+    const ret = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    ret.setHours(23, 59, 59, 0);
+    const y = ret.getFullYear();
+    const m = String(ret.getMonth() + 1).padStart(2, "0");
+    const d = String(ret.getDate()).padStart(2, "0");
+    return { borrowDate, expectedReturnAt: `${y}-${m}-${d}` };
+  };
+
+  const formatDateKey = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
+  const getMaxReturnDate = (borrowDate) => {
+    const max = new Date(borrowDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+    max.setHours(23, 59, 59, 0);
+    return max;
+  };
+
+  const clampExpectedReturnAt = (borrowDate, expectedReturnAt) => {
+    const max = getMaxReturnDate(borrowDate);
+    if (!expectedReturnAt) return formatDateKey(max);
+    const current = new Date(`${expectedReturnAt}T23:59:59`);
+    if (current < borrowDate) return formatDateKey(borrowDate);
+    if (current > max) return formatDateKey(max);
+    return expectedReturnAt;
+  };
+
+  const updateBorrowDate = (borrowDateValue) => {
+    const expectedReturnAt = clampExpectedReturnAt(borrowDateValue, form.expectedReturnAt);
+    setForm({ ...form, borrowDate: borrowDateValue.toISOString(), expectedReturnAt });
   };
 
   const getBorrowerMatchErrors = (name, studentId) => {
@@ -2190,6 +2272,7 @@ export default function Borrowing() {
       const tabMeta = metaByTab[unit.item.inventoryTabId] || {};
       const allOptions = tabMeta.allOptions || ["Working", "Defective"];
       const opLabel = tabMeta.operational || "Working";
+      const qLabel = tabMeta.quarantine || "Defective";
       // Default to the item's current remark if it's in the available options,
       // otherwise fall back to the operational label
       const currentRemark = unit.originalRemark || null;
@@ -2198,9 +2281,10 @@ export default function Borrowing() {
       )
         ? allOptions.find((opt) => String(opt).toLowerCase() === String(currentRemark).toLowerCase())
         : opLabel;
+      const forcedDefectiveRemark = isBorrowedAsDefective(currentRemark, qLabel) ? qLabel : null;
       initialSelections[unit.unitKey] = {
         checked: false,
-        returnRemark: defaultRemark,
+        returnRemark: forcedDefectiveRemark || defaultRemark,
         remarks: "",
       };
     }
@@ -2562,8 +2646,12 @@ export default function Borrowing() {
           const borrowedItem = itemUnits[0].item;
           const sourceItemId = borrowedItem.inventoryItemId;
           const byRemark = new Map();
+          const tabMeta = conditionMetaByTab[borrowedItem.inventoryTabId] || {};
+          const opLabel = tabMeta.operational || "Working";
+          const qLabel = tabMeta.quarantine || "Defective";
           for (const unit of itemUnits) {
-            const remark = returnSelections[unit.unitKey]?.returnRemark || "Working";
+            const selectedRemark = returnSelections[unit.unitKey]?.returnRemark || opLabel;
+            const remark = isBorrowedAsDefective(unit.originalRemark, qLabel) ? qLabel : selectedRemark;
             byRemark.set(remark, (byRemark.get(remark) || 0) + 1);
           }
 
@@ -2577,8 +2665,8 @@ export default function Borrowing() {
 
             if (totalReturnQty > 0 && tableName) {
               // Get the operational (non-quarantine) remark label dynamically
-              const tabMeta = conditionMetaByTab[borrowedItem.inventoryTabId] || {};
-              const operationalLabel = tabMeta.operational || "Working";
+              const operationalLabel = opLabel;
+              const quarantineLabel = qLabel;
 
               // Separate units by whether they go back to the source (operational)
               // or need a sibling row (non-operational remark)
@@ -2602,6 +2690,9 @@ export default function Borrowing() {
               // (no existing sibling to merge into in the legacy path)
               for (const [remark, qty] of byRemark) {
                 if (remark === operationalLabel) continue;
+                if (isBorrowedAsDefective(remark, quarantineLabel)) {
+                  continue;
+                }
                 if (qty <= 0) continue;
 
                 // Create a new inventory row for this non-operational remark
@@ -2657,12 +2748,16 @@ export default function Borrowing() {
         // Process each borrowed item in this section
         for (const itemUnits of sectionItemGroups) {
           const byRemark = new Map();
+          const borrowedItem = itemUnits[0].item;
+          const tabMeta = conditionMetaByTab[borrowedItem.inventoryTabId] || {};
+          const opLabel = tabMeta.operational || "Working";
+          const qLabel = tabMeta.quarantine || "Defective";
           for (const unit of itemUnits) {
-            const remark = returnSelections[unit.unitKey]?.returnRemark || "Working";
+            const selectedRemark = returnSelections[unit.unitKey]?.returnRemark || opLabel;
+            const remark = isBorrowedAsDefective(unit.originalRemark, qLabel) ? qLabel : selectedRemark;
             byRemark.set(remark, (byRemark.get(remark) || 0) + 1);
           }
 
-          const borrowedItem = itemUnits[0].item;
           const sourceItemId = borrowedItem.inventoryItemId;
           allSourceItemIds.add(String(sourceItemId));
           const sourceRowData = rows.find((r) => String(r.id) === String(sourceItemId));
@@ -3123,20 +3218,60 @@ export default function Borrowing() {
   const confirmBorrow = async () => {
     if (savingBorrow) return;
 
+    const mismatchErrors = getBorrowerMatchErrors(form.name, form.studentId);
+    const accessErrors = getBorrowerAccessErrors(
+      form.name,
+      form.studentId,
+      borrowerAllowlistBySchoolId,
+      borrowerAllowlistLoaded
+    );
+    const step1Errors = {
+      name: validateField("name", form.name),
+      studentId: validateField("studentId", form.studentId),
+      role: validateField("role", form.role),
+      ...mismatchErrors,
+      ...accessErrors,
+    };
+
+    const shouldCheckAllowlist = !mismatchErrors.studentId && !mismatchErrors.name;
+    const hasSchoolIdValue = String(form.studentId || "").trim() !== "";
+    const hasValidSchoolIdFormat = /^\d{2}-\d{5}$/.test(formatSchoolId(form.studentId));
+    const hasNameValue = String(form.name || "").trim() !== "";
+
+    if (hasSchoolIdValue && hasValidSchoolIdFormat && hasNameValue && shouldCheckAllowlist && !accessErrors.studentId) {
+      const allowlistEntry = borrowerAllowlistBySchoolId[formatSchoolId(form.studentId)];
+      if (!allowlistEntry) {
+        const isAllowed = await isBorrowerAllowed(form.name, form.studentId);
+        if (!isAllowed) {
+          step1Errors.studentId = "School ID is not registered for public borrowing.";
+        }
+      }
+    }
+
+    setFormErrors(step1Errors);
+
+    if (Object.values(step1Errors).some(Boolean)) {
+      return;
+    }
+
     // ── Compute timestamps ────────────────────────────────────
+    const defaults = getDefaultDates();
     const borrowDate = form.borrowDate
       ? new Date(form.borrowDate)
-      : new Date();
+      : new Date(defaults.borrowDate);
 
     let expectedReturnAt = null;
     if (form.expectedReturnAt) {
       // User provided a return date — set to end of that day
       expectedReturnAt = new Date(form.expectedReturnAt + "T23:59:59");
     } else {
-      // Default: 3 days from borrow date
-      expectedReturnAt = new Date(borrowDate.getTime() + 3 * 24 * 60 * 60 * 1000);
+      // Default: 7 days from borrow date
+      expectedReturnAt = new Date((form.borrowDate ? borrowDate : new Date(defaults.borrowDate)).getTime() + 7 * 24 * 60 * 60 * 1000);
       expectedReturnAt.setHours(23, 59, 59, 0);
     }
+
+    const maxReturn = getMaxReturnDate(borrowDate);
+    if (expectedReturnAt > maxReturn) expectedReturnAt = maxReturn;
 
     setSavingBorrow(true);
     showGlobalLoader("Processing borrow...");
@@ -5186,12 +5321,19 @@ export default function Borrowing() {
       {showModal && (() => {
         // ── Step 1 gate: all 3 borrower fields must pass validation ──────
         const mismatchErrors = getBorrowerMatchErrors(form.name, form.studentId);
-        const step1Errors = { ...formErrors, ...mismatchErrors };
+        const accessErrors = getBorrowerAccessErrors(
+          form.name,
+          form.studentId,
+          borrowerAllowlistBySchoolId,
+          borrowerAllowlistLoaded
+        );
+        const step1Errors = { ...formErrors, ...mismatchErrors, ...accessErrors };
         const step1Valid =
           !validateField("name", form.name) &&
           !validateField("studentId", form.studentId) &&
           !validateField("role", form.role) &&
-          Object.keys(mismatchErrors).length === 0;
+          Object.keys(mismatchErrors).length === 0 &&
+          Object.keys(accessErrors).length === 0;
 
         // ── Step 2 search term ───────────────────────────────────────────
         const searchLower = globalSearch.toLowerCase().trim();
@@ -5511,13 +5653,7 @@ export default function Borrowing() {
                                       disabled={{ before: (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })() }}
                                       fromDate={new Date()}
                                       onSelect={(date) => {
-                                        if (date) {
-                                          const pad = (n) => String(n).padStart(2, "0");
-                                          const now = new Date(form.borrowDate ? new Date(form.borrowDate) : new Date());
-                                          const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-                                          const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${timeStr}`;
-                                          setForm({ ...form, borrowDate: dateStr });
-                                        }
+                                        if (date) updateBorrowDate(new Date(date));
                                       }}
                                     />
                                   </div>
@@ -5535,7 +5671,7 @@ export default function Borrowing() {
                                             const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
                                             base.setHours(parseInt(e.target.value));
                                             const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
-                                            setForm({ ...form, borrowDate: dateStr });
+                                            updateBorrowDate(new Date(dateStr));
                                           }}
                                           className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                         >
@@ -5557,7 +5693,7 @@ export default function Borrowing() {
                                             const base = form.borrowDate ? new Date(form.borrowDate) : new Date();
                                             base.setMinutes(parseInt(e.target.value));
                                             const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
-                                            setForm({ ...form, borrowDate: dateStr });
+                                            updateBorrowDate(new Date(dateStr));
                                           }}
                                           className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                         >
@@ -5580,7 +5716,7 @@ export default function Borrowing() {
                                             if (wasPM && !goingPM) base.setHours(base.getHours() - 12);
                                             else if (!wasPM && goingPM) base.setHours(base.getHours() + 12);
                                             const dateStr = `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}T${pad(base.getHours())}:${pad(base.getMinutes())}`;
-                                            setForm({ ...form, borrowDate: dateStr });
+                                            updateBorrowDate(new Date(dateStr));
                                           }}
                                           className="w-full appearance-none rounded-md border border-input bg-white px-2 py-1.5 text-center text-sm font-semibold text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                         >
@@ -5595,7 +5731,7 @@ export default function Borrowing() {
                                   <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
                                     <button
                                       type="button"
-                                      onClick={() => setForm({ ...form, borrowDate: "" })}
+                                      onClick={() => setForm({ ...form, borrowDate: "", expectedReturnAt: "" })}
                                       className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
                                     >
                                       Clear
@@ -5659,7 +5795,12 @@ export default function Borrowing() {
                                           const y = date.getFullYear();
                                           const m = String(date.getMonth() + 1).padStart(2, "0");
                                           const d = String(date.getDate()).padStart(2, "0");
-                                          setForm({ ...form, expectedReturnAt: `${y}-${m}-${d}` });
+                                          setForm({
+                                            ...form,
+                                            expectedReturnAt: form.borrowDate
+                                              ? clampExpectedReturnAt(new Date(form.borrowDate), `${y}-${m}-${d}`)
+                                              : `${y}-${m}-${d}`,
+                                          });
                                         }
                                         setShowReturnDatePicker(false);
                                       }}
@@ -6351,7 +6492,13 @@ export default function Borrowing() {
                         role: validateField("role", form.role),
                       };
                       const mismatchErrors = getBorrowerMatchErrors(form.name, form.studentId);
-                      const mergedErrors = { ...errors, ...mismatchErrors };
+                      const accessErrors = getBorrowerAccessErrors(
+                        form.name,
+                        form.studentId,
+                        borrowerAllowlistBySchoolId,
+                        borrowerAllowlistLoaded
+                      );
+                      const mergedErrors = { ...errors, ...mismatchErrors, ...accessErrors };
                       setFormErrors(mergedErrors);
 
                       if (Object.values(mergedErrors).some(Boolean)) return;
@@ -6491,7 +6638,12 @@ export default function Borrowing() {
                             const unitNum = unit.unitIndex + 1;
                             const groupQty = group.units.length;
                             const opLabel = tabMeta.operational || "Working";
-                            const isNonOperational = sel.checked && sel.returnRemark && sel.returnRemark !== opLabel;
+                            const qLabel = tabMeta.quarantine || "Defective";
+                            const borrowedAsDefective = isBorrowedAsDefective(unit.originalRemark, qLabel);
+                            const lockedReturnRemark = borrowedAsDefective ? qLabel : null;
+                            const allowedOptions = borrowedAsDefective ? [qLabel] : allOptions;
+                            const effectiveReturnRemark = lockedReturnRemark || sel.returnRemark || allowedOptions[0] || opLabel;
+                            const isNonOperational = sel.checked && effectiveReturnRemark && effectiveReturnRemark !== opLabel;
 
                             return (
                               <div key={unit.unitKey}>
@@ -6524,20 +6676,20 @@ export default function Borrowing() {
 
                                   {/* Dynamic remark dropdown */}
                                   <select
-                                    value={sel.returnRemark || allOptions[0] || "Working"}
+                                    value={effectiveReturnRemark}
                                     onChange={(e) =>
                                       setReturnSelections((prev) => ({
                                         ...prev,
                                         [unit.unitKey]: { ...(prev[unit.unitKey] || {}), returnRemark: e.target.value },
                                       }))
                                     }
-                                    disabled={!sel.checked}
+                                    disabled={!sel.checked || borrowedAsDefective}
                                     className={`h-8 rounded-lg border px-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#4a1111] ${sel.checked
                                       ? "border-slate-200 bg-white text-slate-700"
                                       : "border-slate-100 bg-slate-50 text-slate-400"
                                       }`}
                                   >
-                                    {allOptions.map((opt) => (
+                                    {allowedOptions.map((opt) => (
                                       <option key={opt} value={opt}>{opt}</option>
                                     ))}
                                   </select>
