@@ -45,7 +45,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import arkLogoUrl from "@/assets/imgs/ark-logo.png";
+import arkLogoUrl from "@/assets/imgs/teresa-logo.png";
 import InventorySectionHistoryView from "@/components/InventorySectionHistoryView";
 import InventorySectionExportPanel from "@/components/InventorySectionExportPanel";
 import ItemTransferModal from "@/components/ItemTransferModal";

@@ -3161,12 +3161,7 @@ export default function Inventory() {
             >
               <Plus className="w-4 h-4" /> Add Tab
             </Button>
-            <Button
-              onClick={() => setShowSettingsModal(true)}
-              className="gap-2 bg-[#4a1111] hover:bg-[#3f0f0f]"
-            >
-              <Wrench className="w-4 h-4" /> File Export Settings
-            </Button>
+           
           </div>
         </div>
 
@@ -3395,63 +3390,6 @@ export default function Inventory() {
               </div>
             </AlertDialogContent>
           </AlertDialog>
-        )}
-
-        {showSettingsModal && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm !m-0 !p-0">
-            <div className="relative flex w-full max-w-2xl max-h-[85vh] flex-col gap-0 overflow-hidden rounded-[28px] sm:rounded-lg bg-white shadow-2xl ring-1 ring-slate-200">
-              <div className="border-b border-slate-200 bg-slate-50 px-6 py-5 sm:px-8">
-                <h3 className="text-lg font-semibold text-slate-900">File Export Settings</h3>
-                <p className="mt-1 text-sm text-slate-500">Set how long export files should remain available before cleanup runs.</p>
-              </div>
-
-              <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5 sm:px-8">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Delete export files after
-                  </label>
-                  <div className="mt-2 flex items-center gap-3">
-                    <Input
-                      type="number"
-                      min="1"
-                      value={exportRetentionDays}
-                      onChange={(event) => setExportRetentionDays(event.target.value)}
-                      className="w-32"
-                    />
-                    <span className="text-sm text-slate-600">days</span>
-                  </div>
-                </div>
-
-                {cleanupStatus ? (
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                    {cleanupStatus}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-8 sm:space-x-2">
-                <Button
-                  type="button"
-                  onClick={() => setShowSettingsModal(false)}
-                  disabled={savingExportRetention || cleaningExportLogs}
-                  variant="outline"
-                  size="sm"
-                  className="rounded-lg"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  onClick={saveExportRetentionSetting}
-                  disabled={savingExportRetention || cleaningExportLogs}
-                  size="sm"
-                  className="rounded-lg bg-[#4a1111] px-6 text-white hover:bg-[#3f0f0f]"
-                >
-                  {savingExportRetention || cleaningExportLogs ? "Saving..." : "Save"}
-                </Button>
-              </div>
-            </div>
-          </div>
         )}
 
         {showComlabEditModal && (

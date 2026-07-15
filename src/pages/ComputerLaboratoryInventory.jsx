@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { createPortal } from "react-dom";
 import { format } from "date-fns";
 import { supabase } from "@/api/supabaseClient";
-import arkLogoUrl from "@/assets/imgs/ark-logo.png";
+import arkLogoUrl from "@/assets/imgs/teresa-logo.png";
 import InventoryHistoryView from "@/components/InventoryHistoryView";
 import ExportLogsPanel from "@/components/ExportLogsPanel";
 import { useAuth } from "@/lib/AuthContext";
