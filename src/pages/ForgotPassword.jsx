@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/api/supabaseClient";
 import { validatePasswordStrength, sanitizeEmail, sanitizeOtp } from "@/lib/security/sanitize";
 
+const PASSWORD_RESET_FLOW_KEY = "forgot_password_flow_active";
+
 export default function ForgotPassword() {
   const navigate = useNavigate();
   const [step, setStep] = useState("email");
@@ -23,6 +25,18 @@ export default function ForgotPassword() {
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [rateLimitCount, setRateLimitCount] = useState(0);
   const COOLDOWN_STORAGE_KEY = "forgot_pwd_cooldown_until";
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(PASSWORD_RESET_FLOW_KEY, "1");
+    } catch (e) {}
+
+    return () => {
+      try {
+        sessionStorage.removeItem(PASSWORD_RESET_FLOW_KEY);
+      } catch (e) {}
+    };
+  }, []);
 
   const normalizedEmail = sanitizeEmail(email) || email.trim().toLowerCase();
   const otp = sanitizeOtp(otpDigits.join(""));
@@ -201,6 +215,7 @@ export default function ForgotPassword() {
     try {
       const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
       if (updateErr) { setError(updateErr.message || "Failed to reset password."); return; }
+      try { sessionStorage.removeItem(PASSWORD_RESET_FLOW_KEY); } catch (e) {}
       await supabase.auth.signOut();
       navigate("/login", { replace: true });
     } catch (err) {

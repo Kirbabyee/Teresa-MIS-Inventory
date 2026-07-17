@@ -32,6 +32,8 @@ import SecurityRoute from "@/components/SecurityRoute";
 
 function AppContent() {
   const { isAuthenticated, isLoadingAuth, isGlobalLoading, globalLoadingMessage } = useAuth();
+  const isPasswordResetFlowActive =
+    typeof window !== "undefined" && window.sessionStorage.getItem("forgot_password_flow_active") === "1";
 
   // Show a white splash with the institution logo while auth state is being restored
   // — prevents the login page from flashing on every refresh.
@@ -64,7 +66,7 @@ function AppContent() {
         <Route path="/public-borrow" element={<PublicBorrow />} />
         <Route
           path="/forgot-password"
-          element={isAuthenticated ? <Navigate to="/" replace /> : <ForgotPassword />}
+          element={isAuthenticated && !isPasswordResetFlowActive ? <Navigate to="/" replace /> : <ForgotPassword />}
         />
         <Route
           path="/"
